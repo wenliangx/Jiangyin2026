@@ -1,0 +1,131 @@
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "geometry_msgs/PointStamped.h"
+
+using namespace std;
+
+geometry_msgs::PoseStamped msg_pos;
+
+void PoseListenerCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+    // PoseStamped
+    msg_pos.header.frame_id = "usb_cam";
+    msg_pos.header.stamp = ros::Time::now();
+
+    msg_pos.pose.position.x = msg->pose.position.x;
+    msg_pos.pose.position.y = msg->pose.position.y;
+    msg_pos.pose.position.z = msg->pose.position.z;
+
+    msg_pos.pose.orientation.x = msg->pose.orientation.x;
+    msg_pos.pose.orientation.y = msg->pose.orientation.y;
+    msg_pos.pose.orientation.z = msg->pose.orientation.z;
+    msg_pos.pose.orientation.w = msg->pose.orientation.w;
+}
+
+
+void InitMsgPos()
+{
+    msg_pos.header.frame_id = "usb_cam";
+    // msg_pos.header.stamp = ros::Time::now();
+
+    msg_pos.pose.position.x = 1;
+    msg_pos.pose.position.y = 0;
+    msg_pos.pose.position.z = 0;
+
+    msg_pos.pose.orientation.x = 0;
+    msg_pos.pose.orientation.y = 0;
+    msg_pos.pose.orientation.z = 0;
+    msg_pos.pose.orientation.w = 1;
+}
+
+int main(int argc, char *argv[])
+{
+    InitMsgPos();
+
+    setlocale(LC_ALL, "");
+    // 2.初始化 ros 节点
+    ros::init(argc, argv, "tf_pub");
+    // 3.创建 ros 句柄
+    ros::NodeHandle nh;
+
+    // 4.创建 TF 订阅对象
+    tf2_ros::Buffer buffer;
+    tf2_ros::TransformListener listener(buffer);
+
+    // 5.解析订阅信息中获取 son1 坐标系原点在 son2 中的坐标
+    ros::Rate r(10);
+
+    ros::Subscriber sub = nh.subscribe("uav_pos", 10, PoseListenerCallback);
+
+    while (ros::ok())
+    {
+        try
+        {
+            // 解析 usb_cam 中的点在 tf_trans 中的坐标
+            geometry_msgs::TransformStamped tfs = buffer.lookupTransform("tf_trans", "usb_cam", ros::Time(0));
+            string exi_sys = tfs.child_frame_id;
+            string new_sys = tfs.header.frame_id;
+
+            cout << "old system ID: " << exi_sys.c_str() << endl;
+            cout << "new system ID: " << new_sys.c_str() << endl;
+            cout << "transfor function Position:" << endl
+                 << " x=" << tfs.transform.translation.x
+                 << ", y=" << tfs.transform.translation.y
+                 << ", z=" << tfs.transform.translation.z << endl;
+
+            cout << "transfor function Orientation:" << endl
+                 << " x=" << tfs.transform.rotation.x
+                 << ", y=" << tfs.transform.rotation.y
+                 << ", z=" << tfs.transform.rotation.z
+                 << ", w=" << tfs.transform.rotation.w << endl;
+
+            // PointStamped
+            // geometry_msgs::PointStamped ps;
+            // ps.header.frame_id = "usb_cam";
+            // ps.header.stamp = ros::Time::now();
+            // ps.point.x = 0.0;
+            // ps.point.y = 0.0;
+            // ps.point.z = 0.0;
+ 
+            // geometry_msgs::PointStamped psAtSon2;
+            // psAtSon2 = buffer.transform(ps, "tf_trans");
+
+            // cout << "在 tf_trans 中的坐标: x=" << psAtSon2.point.x
+            //      << ", y=" << psAtSon2.point.y
+            //      << ", z=" << psAtSon2.point.z << endl;
+
+            cout << "raw data: " << endl
+                 << "pos: x=" << msg_pos.pose.position.x << " y=" << msg_pos.pose.position.y
+                 << " z=" << msg_pos.pose.position.z << endl;
+
+            geometry_msgs::PoseStamped output_tf_pose;
+            output_tf_pose = buffer.transform(msg_pos, "tf_trans");
+
+            cout << "PoseStamped in tf_trans: Position" << endl
+                 << "  x=" << output_tf_pose.pose.position.x
+                 << ", y=" << output_tf_pose.pose.position.y
+                 << ", z=" << output_tf_pose.pose.position.z << endl;
+            cout << "PoseStamped in tf_trans: Orientation" << endl
+                 << "  x=" << output_tf_pose.pose.orientation.x
+                 << ", y=" << output_tf_pose.pose.orientation.y
+                 << ", z=" << output_tf_pose.pose.orientation.z
+                 << ", w=" << output_tf_pose.pose.orientation.w << endl;
+            
+        }
+        catch(const std::exception& e)
+        {
+            // std::cerr << e.what() << '\n';
+            ROS_ERROR("异常信息:%s", e.what());
+        }
+
+        r.sleep();
+        // 6.spin
+        ros::spinOnce();
+
+        cout << "------------one loop-----------" << endl;
+    }
+    return 0;
+}

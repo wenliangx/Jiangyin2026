@@ -1,0 +1,5 @@
+<launch>
+    <node pkg="rviz" type="rviz" name="rviz_det" args="-d /home/flag/flag-2024-jiangyin/src/plane_Det/cloudplane.rviz" required="true" />
+    <node pkg="plane_Det" type="plane_Det" name="plane_Det" output="screen"/>
+    <!-- <node name="plane_Det" pkg = "plane_Det" type = "plane_Det" output = "screen"> -->
+</launch>

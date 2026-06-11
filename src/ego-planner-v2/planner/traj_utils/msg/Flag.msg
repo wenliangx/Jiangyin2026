@@ -1,0 +1,12 @@
+Header header
+geometry_msgs/Point position
+quadrotor_msgs/PositionCommand[10] cmd
+int16 id
+int16 mode
+int16 is_map
+int16 now_id
+int16 total_waypoint
+int16 now_mode
+int16 touch_goal
+int16 touch_obstacle
+float32 max_vel

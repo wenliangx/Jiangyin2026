@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+
+<launch>
+     
+     <include file="$(find fsm_ctrl)/launch/px4_estimator.launch">
+     
+     </include>
+     
+     <node pkg="fsm_ctrl" type="swarm_user_cmd" name="swarm_user_cmd" output="screen"> 
+     
+     </node>
+
+</launch>

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+
+<launch>
+    <!--
+        pose_monitor.launch — 飞前位姿验证启动文件
+          实时对比三源位姿：原始Mocap | Vision Pose(px4_estimator) | FCU EKF融合
+          用于验证坐标系、右手定则、EKF收敛状态
+    -->
+
+    <node pkg="fsm_ctrl" type="pose_monitor.py" name="pose_monitor" output="screen" />
+
+</launch>
