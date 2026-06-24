@@ -4,7 +4,9 @@ project(gz_external_pose)
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   gazebo_msgs
+  nav_msgs
   rospy
+  std_msgs
 )
 
 catkin_package()

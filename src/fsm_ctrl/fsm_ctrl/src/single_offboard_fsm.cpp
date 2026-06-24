@@ -22,6 +22,7 @@ static bool apland = false;
 
 static bool is_udp_enable = true;         // 1: enable receiving udp command  
 static bool is_ready_fly = false;         // 0: wait for EKF pose fusion converging
+static bool use_external_odom = false;    // 1: use external odometry as NMPC feedback in simulation
 static int cmd = 0;
   
 static bool is_quat_init = false;         // 0: wait to initialize quaternion fusion
@@ -319,6 +320,8 @@ void State_Callback(const mavros_msgs::State::ConstPtr &msg)
  */
 void Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
+    if(use_external_odom) {return;}
+
     pos_fcu = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
     quat_fcu = Eigen::Quaterniond(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
 
@@ -370,6 +373,8 @@ void Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
  */
 void Vel_Callback(const geometry_msgs::TwistStamped::ConstPtr &msg)
 {
+    if(use_external_odom) {return;}
+
     vel_fcu = Eigen::Vector3d(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);
 }
 
@@ -687,6 +692,48 @@ void Odom_Callback(const nav_msgs::Odometry::ConstPtr &msg)
     vel_odom = Eigen::Vector3d(msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z);
     quat_odom = Eigen::Quaterniond(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z);
     euler_odom = QuatToEuler(quat_odom);
+
+    if(!use_external_odom) {return;}
+
+    pos_fcu = pos_odom;
+    vel_fcu = vel_odom;
+    quat_fcu = quat_odom;
+
+    if(!is_quat_init)
+    {
+        is_quat_init = true;
+        if(quat_fcu.w() < 0.0) {is_need_rot = true;}
+        else {is_need_rot = false;}
+    }
+    if(is_need_rot) {quat_fcu = quat_fcu * Eigen::Quaterniond(-1.0, 0.0, 0.0, 0.0);}
+    euler_fcu = QuatToEuler(quat_fcu);
+
+    if (!is_ini_time)
+    {
+        ini_time = msg->header.stamp;
+        is_ini_time = true;
+    }
+    vector<double> fsm_pos_now(7);
+    fsm_pos_now[0] = (msg->header.stamp-ini_time).toSec();
+    fsm_pos_now[1] = pos_fcu[0];
+    fsm_pos_now[2] = pos_fcu[1];
+    fsm_pos_now[3] = pos_fcu[2];
+    fsm_pos_now[4] = euler_fcu[0];
+    fsm_pos_now[5] = euler_fcu[1];
+    fsm_pos_now[6] = euler_fcu[2];
+    if (fsm_pos.size() < fsm_pos_num)
+    {
+        fsm_pos.push_back(fsm_pos_now);
+    }
+    else
+    {
+        for (int i=0;i<fsm_pos_num-1;i++)
+        {
+            fsm_pos[i] = fsm_pos[i+1];
+        }
+        fsm_pos.pop_back();
+        fsm_pos.push_back(fsm_pos_now);
+    }
 }
 
 /*----------LXK----------*/
@@ -1532,6 +1579,7 @@ int main(int argc, char **argv)
     nh.param("single_offboard_fsm/nmpc_mR_pitch", nmpc_mR_pitch, 0.0);
     nh.param("single_offboard_fsm/nmpc_mR_yaw", nmpc_mR_yaw, 0.0);
     nh.param("single_offboard_fsm/nmpc_hover_thrust", nmpc_hover_thrust, 0.196);
+    nh.param("single_offboard_fsm/use_external_odom", use_external_odom, false);
 
     // NMPC Parameter set
     int nmpc_predict_step = 5;
@@ -1641,7 +1689,7 @@ int main(int argc, char **argv)
     Eigen::Matrix<float, 3, 1> nmpc_costRw = {nmpc_Rwx, nmpc_Rwy, nmpc_Rwz};
     Eigen::Matrix<float, 3, 1> nmpc_costQquat = {nmpc_Qquatx, nmpc_Qquaty, nmpc_Qquatz};
 
-    NMPC_Ctrller_simple nmpc_ctrl_simple(INTERV, _acc_z_limit, _w_limit, nmpc_simple_predict_step, nmpc_simple_sample_time, 10, 4, nmpc_costQpos, nmpc_costQvel, nmpc_costQquat, nmpc_costRw, nmpc_costRtotalF);
+    NMPC_Ctrller_simple nmpc_ctrl_simple(INTERV, _acc_z_limit, _w_limit, nmpc_simple_predict_step, nmpc_simple_sample_time, 10, 4, nmpc_costQpos, nmpc_costQvel, nmpc_costQquat, nmpc_costRw, nmpc_costRtotalF, nmpc_hover_thrust);
 
     std::vector<double> current_states;
     std::vector<double> desired_states;

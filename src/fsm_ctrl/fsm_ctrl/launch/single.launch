@@ -4,6 +4,8 @@
 
     <arg name="start_mavros" default="true"/>
     <arg name="fcu_url" default="/dev/ttyACM0:921600"/>
+    <arg name="use_external_odom" default="false"/>
+    <arg name="nmpc_hover_thrust" default="0.385"/>
 
     <include if="$(arg start_mavros)" file="$(find mavros)/launch/px4.launch">
        
@@ -14,6 +16,7 @@
     <node pkg="fsm_ctrl" type="single_offboard_fsm" name="single_offboard_fsm" output="screen">
        
         <remap from = "~odom"        to ="/camera/odom/sample"/>
+        <param name="use_external_odom" value="$(arg use_external_odom)" type="bool"/>
 
         <!-- LYX -->
         <!-- <rosparam file="$(find fsm_ctrl)/config/traj_waypoints.yaml" command="load" /> --><!-- 文件不存在，已注释；NMPC悬停测试不需要此文件 -->
@@ -79,7 +82,7 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
 
-        <param name = "nmpc_hover_thrust" type = "double"  value = "0.385" />
+        <param name = "nmpc_hover_thrust" type = "double"  value = "$(arg nmpc_hover_thrust)" />
 
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />

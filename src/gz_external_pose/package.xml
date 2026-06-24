@@ -11,7 +11,9 @@
 
   <depend>geometry_msgs</depend>
   <depend>gazebo_msgs</depend>
+  <depend>nav_msgs</depend>
   <depend>rospy</depend>
+  <depend>std_msgs</depend>
 
   <export/>
 </package>

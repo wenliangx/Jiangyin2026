@@ -11,7 +11,8 @@ NMPC_Ctrller_simple::NMPC_Ctrller_simple(double _ctrl_T,
                                          Eigen::Matrix<float, 3, 1> _NLP_costQ_vel,
                                          Eigen::Matrix<float, 3, 1> _NLP_costQ_quat,
                                          Eigen::Matrix<float, 3, 1> _NLP_costR_w,
-                                         double _NLP_costR_acc_z)
+                                         double _NLP_costR_acc_z,
+                                         double _hover_thrust)
 {
     //固定参数赋值，包括控制器周期，输入约束，状态约束，NLP问题求解步数，单步时长，状态变量数目，输入变量数目，代价函数系数
     ctrl_T = _ctrl_T; //
@@ -27,7 +28,7 @@ NMPC_Ctrller_simple::NMPC_Ctrller_simple(double _ctrl_T,
     NLP_costR_w = _NLP_costR_w;
     NLP_costR_acc_z = _NLP_costR_acc_z;
 
-    thr_est.Set_Estor(50, 0.196);
+    thr_est.Set_Estor(50, _hover_thrust);
 
     // 初始化初始猜测值
     for (int i = 0; i < NLP_input_num * NLP_predict_step; i++)

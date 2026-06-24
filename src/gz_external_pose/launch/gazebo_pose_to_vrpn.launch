@@ -2,11 +2,19 @@
 <launch>
   <arg name="model_name" default="iris_mid360"/>
   <arg name="output_topic" default="/vrpn_client_node/jy0/pose"/>
+  <arg name="odom_topic" default="/camera/odom/sample"/>
+  <arg name="ready_topic" default="/fsm_ctrl/ekf_ready"/>
   <arg name="frame_id" default="world"/>
+  <arg name="child_frame_id" default="base_link"/>
+  <arg name="zero_origin" default="true"/>
 
   <node pkg="gz_external_pose" type="gazebo_pose_to_vrpn.py" name="gazebo_pose_to_vrpn" output="screen">
     <param name="model_name" value="$(arg model_name)"/>
     <param name="output_topic" value="$(arg output_topic)"/>
+    <param name="odom_topic" value="$(arg odom_topic)"/>
+    <param name="ready_topic" value="$(arg ready_topic)"/>
     <param name="frame_id" value="$(arg frame_id)"/>
+    <param name="child_frame_id" value="$(arg child_frame_id)"/>
+    <param name="zero_origin" value="$(arg zero_origin)"/>
   </node>
 </launch>
