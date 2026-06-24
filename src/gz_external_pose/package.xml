@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>gz_external_pose</name>
+  <version>0.0.1</version>
+  <description>Publishes Gazebo model pose as an external localization PoseStamped topic.</description>
+
+  <maintainer email="wenliangx@outlook.com">wenliangx</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>gazebo_msgs</depend>
+  <depend>rospy</depend>
+
+  <export/>
+</package>
