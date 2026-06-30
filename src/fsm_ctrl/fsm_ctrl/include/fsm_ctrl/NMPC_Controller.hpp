@@ -50,18 +50,19 @@ class NMPC_Ctrller_simple
         ThrEst thr_est;
 
     public:
-        NMPC_Ctrller_simple(double _ctrl_T, 
-                            std::array<double, 2> _acc_z_limit, 
+        NMPC_Ctrller_simple(double _ctrl_T,
+                            std::array<double, 2> _acc_z_limit,
                             std::array<double, 2> _w_limit,
-                            int _NLP_predict_step, 
-                            double _NLP_onestep_time, 
-                            int _NLP_state_num, 
+                            int _NLP_predict_step,
+                            double _NLP_onestep_time,
+                            int _NLP_state_num,
                             int _NLP_input_num,
                             Eigen::Matrix<float, 3, 1> _NLP_costQ_pos,
                             Eigen::Matrix<float, 3, 1> _NLP_costQ_vel,
                             Eigen::Matrix<float, 3, 1> _NLP_costQ_quat,
                             Eigen::Matrix<float, 3, 1> _NLP_costR_w,
-                            double _NLP_costR_acc_z); //构造函数
+                            double _NLP_costR_acc_z,
+                            double _hover_thrust); //构造函数
 
         NMPC_Ctrller_simple(const NMPC_Ctrller_simple& other); // 拷贝构造函数
         NMPC_Ctrller_simple& operator=(const NMPC_Ctrller_simple& other); //赋值运算符重载

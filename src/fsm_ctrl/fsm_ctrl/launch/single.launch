@@ -79,7 +79,7 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
 
-        <param name = "nmpc_hover_thrust" type = "double"  value = "0.385" />
+        <param name = "nmpc_hover_thrust" type = "double"  value = "0.400" />
 
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
@@ -109,6 +109,29 @@
         <param name = "nmpc_Rwy" type = "double" value = "0.1" />
         <param name = "nmpc_Rwz" type = "double" value = "0.1" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.1" />
+
+        <!-- ========== Trajectory Generator (internal, no ego-planner needed) ========== -->
+        <!-- Set use_traj_gen=true to enable.  Works with cmd=5 when ego-planner is not running. -->
+        <param name = "use_traj_gen" type = "bool"   value = "true" />
+        <param name = "traj_type"    type = "string" value = "waypoint" />  <!-- circle | square | waypoint -->
+        <param name = "traj_cx"      type = "double" value = "0.0" />
+        <param name = "traj_cy"      type = "double" value = "0.0" />
+        <param name = "traj_alt"     type = "double" value = "1.0" />
+        <param name = "traj_param1"  type = "double" value = "2.0" />    <!-- circle→radius | square→side -->
+        <param name = "traj_param2"  type = "double" value = "0.6" />    <!-- speed [m/s] -->
+        <param name = "traj_hold_time" type = "double" value = "5.0" />    <!-- seconds to hover before motion -->
+
+        <!-- ===== Custom waypoints for traj_type="waypoint" ===== -->
+        <!-- Each waypoint is [x, y] or [x, y, yaw]. Uncomment to use. -->
+        
+        <rosparam param="traj_waypoints">
+          - [0.0, 0.0, 0.0]
+          - [1.0, 0.0, 0.0]
+          - [1.0, 1.0, 0.0]
+          - [0.0, 1.0, 0.0]
+          - [0.0, 0.0, 0.0]
+        </rosparam>
+       
 
     </node>
 

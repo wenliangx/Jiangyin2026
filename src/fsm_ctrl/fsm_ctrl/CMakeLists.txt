@@ -82,11 +82,15 @@ add_library(FLAG_NMPC
   src/NMPC_test.cpp
 )
 
-add_executable(single_offboard_fsm 
+add_library(traj_gen
+  src/traj_gen.cpp
+)
+
+add_executable(single_offboard_fsm
   src/single_offboard_fsm.cpp
 )
 target_link_libraries(single_offboard_fsm
-  ctrl_math dfbc att_nmpc nmpc_ctrl FLAG_NMPC ${catkin_LIBRARIES} boost_system boost_filesystem
+  ctrl_math dfbc att_nmpc nmpc_ctrl FLAG_NMPC traj_gen ${catkin_LIBRARIES} boost_system boost_filesystem
 )
 target_link_libraries(single_offboard_fsm 
   /usr/local/lib/libcasadi.so.3.7

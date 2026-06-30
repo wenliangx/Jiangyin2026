@@ -1,17 +1,18 @@
 #include "fsm_ctrl/NMPC_Controller.hpp"
 
-NMPC_Ctrller_simple::NMPC_Ctrller_simple(double _ctrl_T, 
-                                         std::array<double, 2> _acc_z_limit, 
+NMPC_Ctrller_simple::NMPC_Ctrller_simple(double _ctrl_T,
+                                         std::array<double, 2> _acc_z_limit,
                                          std::array<double, 2> _w_limit,
-                                         int _NLP_predict_step, 
-                                         double _NLP_onestep_time, 
-                                         int _NLP_state_num, 
+                                         int _NLP_predict_step,
+                                         double _NLP_onestep_time,
+                                         int _NLP_state_num,
                                          int _NLP_input_num,
                                          Eigen::Matrix<float, 3, 1> _NLP_costQ_pos,
                                          Eigen::Matrix<float, 3, 1> _NLP_costQ_vel,
                                          Eigen::Matrix<float, 3, 1> _NLP_costQ_quat,
                                          Eigen::Matrix<float, 3, 1> _NLP_costR_w,
-                                         double _NLP_costR_acc_z)
+                                         double _NLP_costR_acc_z,
+                                         double _hover_thrust)
 {
     //固定参数赋值，包括控制器周期，输入约束，状态约束，NLP问题求解步数，单步时长，状态变量数目，输入变量数目，代价函数系数
     ctrl_T = _ctrl_T; //
@@ -27,11 +28,12 @@ NMPC_Ctrller_simple::NMPC_Ctrller_simple(double _ctrl_T,
     NLP_costR_w = _NLP_costR_w;
     NLP_costR_acc_z = _NLP_costR_acc_z;
 
-    thr_est.Set_Estor(50, 0.196);
+    thr_est.Set_Estor(50, _hover_thrust);
 
-    // 初始化初始猜测值
-    for (int i = 0; i < NLP_input_num * NLP_predict_step; i++)
-    {NLP_initial_u0.push_back(0);}
+    for (int j = 0; j < NLP_predict_step; j++) NLP_initial_u0.push_back(0);          // wx[0..N-1]
+    for (int j = 0; j < NLP_predict_step; j++) NLP_initial_u0.push_back(0);          // wy[0..N-1]
+    for (int j = 0; j < NLP_predict_step; j++) NLP_initial_u0.push_back(0);          // wz[0..N-1]
+    for (int j = 0; j < NLP_predict_step; j++) NLP_initial_u0.push_back(0);          // az[0..N-1]
 
     /* states */
     casadi::SX p = casadi::SX::sym("p", 3);             // position in world frame 3*1
@@ -217,8 +219,21 @@ void NMPC_Ctrller_simple::optimal_solution(std::vector<double> _current_states,
     NLP_args["p"] = parameters;
     NLP_args["x0"] = NLP_initial_u0;
 
-    //求解
+    //求解 — 计时并诊断
+    ros::WallTime t_solve_start = ros::WallTime::now();
     NLP_result = NLP_solver(NLP_args);
+    double solve_time_ms = (ros::WallTime::now() - t_solve_start).toSec() * 1000.0;
+
+    double final_cost = static_cast<double>(NLP_result.at("f"));
+    if (solve_time_ms > 20.0) {
+        ROS_ERROR("NMPC SOLVE TOOK %.1f ms (>20ms! OFFBOARD TIMEOUT RISK!) cost=%.4f",
+                  solve_time_ms, final_cost);
+    } else if (solve_time_ms > 10.0) {
+        ROS_WARN("NMPC solve time: %.1f ms (>10ms, loop budget tight) cost=%.4f",
+                 solve_time_ms, final_cost);
+    } else {
+        ROS_INFO_THROTTLE(2.0, "NMPC solve: %.1f ms  cost=%.4f", solve_time_ms, final_cost);
+    }
 
     //获取优化变量
     std::vector<double> cmd_control_all(NLP_result.at("x"));
