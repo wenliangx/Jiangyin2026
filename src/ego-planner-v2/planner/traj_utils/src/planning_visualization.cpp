@@ -8,12 +8,12 @@ namespace ego_planner
   {
     node = nh;
 
-    goal_point_pub = nh.advertise<visualization_msgs::Marker>("goal_point", 2);
-    global_list_pub = nh.advertise<visualization_msgs::Marker>("global_list", 2);
-    init_list_pub = nh.advertise<visualization_msgs::Marker>("init_list", 2);
-    optimal_list_pub = nh.advertise<visualization_msgs::Marker>("optimal_list", 2);
-    failed_list_pub = nh.advertise<visualization_msgs::Marker>("failed_list", 2);
-    a_star_list_pub = nh.advertise<visualization_msgs::Marker>("a_star_list", 20);
+    goal_point_pub = nh.advertise<visualization_msgs::Marker>("goal_point", 2, true);
+    global_list_pub = nh.advertise<visualization_msgs::Marker>("global_list", 2, true);
+    init_list_pub = nh.advertise<visualization_msgs::Marker>("init_list", 2, true);
+    optimal_list_pub = nh.advertise<visualization_msgs::Marker>("optimal_list", 2, true);
+    failed_list_pub = nh.advertise<visualization_msgs::Marker>("failed_list", 2, true);
+    a_star_list_pub = nh.advertise<visualization_msgs::Marker>("a_star_list", 20, true);
 
     // intermediate_pt0_pub = nh.advertise<visualization_msgs::Marker>("pt0_dur_opt", 10);
     // intermediate_grad0_pub = nh.advertise<visualization_msgs::MarkerArray>("grad0_dur_opt", 10);
@@ -165,22 +165,12 @@ namespace ego_planner
   void PlanningVisualization::displayGlobalPathList(vector<Eigen::Vector3d> init_pts, const double scale, int id)
   {
 
-    if (global_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
-
     Eigen::Vector4d color(0, 0.5, 0.5, 1);
     displayMarkerList(global_list_pub, init_pts, scale, color, id);
   }
 
   void PlanningVisualization::displayMultiInitPathList(vector<vector<Eigen::Vector3d>> init_trajs, const double scale)
   {
-
-    if (init_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
 
     static int last_nums = 0;
 
@@ -206,22 +196,12 @@ namespace ego_planner
   void PlanningVisualization::displayInitPathList(vector<Eigen::Vector3d> init_pts, const double scale, int id)
   {
 
-    if (init_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
-
     Eigen::Vector4d color(0, 0, 1, 1);
     displayMarkerList(init_list_pub, init_pts, scale, color, id);
   }
 
   void PlanningVisualization::displayMultiOptimalPathList(vector<vector<Eigen::Vector3d>> optimal_trajs, const double scale) // zxzxzx
   {
-
-    if (optimal_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
 
     static int last_nums = 0;
 
@@ -247,11 +227,6 @@ namespace ego_planner
   void PlanningVisualization::displayOptimalList(Eigen::MatrixXd optimal_pts, int id)
   {
 
-    if (optimal_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
-
     vector<Eigen::Vector3d> list;
     for (int i = 0; i < optimal_pts.cols(); i++)
     {
@@ -265,11 +240,6 @@ namespace ego_planner
   void PlanningVisualization::displayFailedList(Eigen::MatrixXd failed_pts, int id)
   {
 
-    if (failed_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
-
     vector<Eigen::Vector3d> list;
     for (int i = 0; i < failed_pts.cols(); i++)
     {
@@ -282,11 +252,6 @@ namespace ego_planner
 
   void PlanningVisualization::displayAStarList(std::vector<std::vector<Eigen::Vector3d>> a_star_paths, int id /* = Eigen::Vector4d(0.5,0.5,0,1)*/)
   {
-
-    if (a_star_list_pub.getNumSubscribers() == 0)
-    {
-      return;
-    }
 
     int i = 0;
     vector<Eigen::Vector3d> list;

@@ -41,8 +41,8 @@ generate_messages(
 
 catkin_package(
  INCLUDE_DIRS include
- LIBRARIES traj_utils
- CATKIN_DEPENDS roscpp std_msgs nav_msgs geometry_msgs quadrotor_msgs message_runtime
+ LIBRARIES traj_utils 
+ CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
 )
 

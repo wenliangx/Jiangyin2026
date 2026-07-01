@@ -271,49 +271,49 @@ Visualization Manager:
               Marker Topic: /drone_0_ego_planner_node/goal_point
               Name: goal_point
               Namespaces:
-                "": true
+                {}
               Queue Size: 100
               Value: true
             - Class: rviz/Marker
-              Enabled: false
+              Enabled: true
               Marker Topic: /drone_0_ego_planner_node/global_list
               Name: global_path
               Namespaces:
                 {}
               Queue Size: 100
-              Value: false
+              Value: true
             - Class: rviz/Marker
               Enabled: true
               Marker Topic: /drone_0_ego_planner_node/optimal_list
               Name: optimal_traj
               Namespaces:
-                "": true
+                {}
               Queue Size: 100
               Value: true
             - Class: rviz/Marker
-              Enabled: false
+              Enabled: true
               Marker Topic: /drone_0_ego_planner_node/failed_list
               Name: FailedList
               Namespaces:
                 {}
               Queue Size: 100
-              Value: false
+              Value: true
             - Class: rviz/Marker
-              Enabled: false
+              Enabled: true
               Marker Topic: /ego_planner_node/a_star_list
               Name: AStar
               Namespaces:
                 {}
               Queue Size: 100
-              Value: false
+              Value: true
             - Class: rviz/Marker
-              Enabled: false
+              Enabled: true
               Marker Topic: /drone_0_ego_planner_node/init_list
               Name: InitTraj
               Namespaces:
                 {}
               Queue Size: 100
-              Value: false
+              Value: true
             - Alpha: 1
               Buffer Length: 1
               Class: rviz/Path
@@ -379,7 +379,7 @@ Visualization Manager:
               Marker Topic: /drone_0_odom_visualization/robot
               Name: robot
               Namespaces:
-                drone: true
+                {}
               Queue Size: 100
               Value: true
             - Class: rviz/Image
@@ -5936,7 +5936,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 52.8570671081543
+      Distance: 25.942981719970703
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -5944,17 +5944,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.8392597436904907
-        Y: -6.51273775100708
-        Z: -1.1761690984712914e-05
+        X: -1.7439912557601929
+        Y: -0.89077228307724
+        Z: -1.3669039617525414e-05
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3197975158691406
+      Pitch: 0.7997972965240479
       Target Frame: <Fixed Frame>
-      Yaw: 3.491440773010254
+      Yaw: 3.5295963287353516
     Saved:
       - Class: rviz/FPS
         Enable Stereo Rendering:
@@ -6103,7 +6103,7 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1544
-  X: -47
-  Y: 158
+  X: 72
+  Y: 294
   depth:
     collapsed: false

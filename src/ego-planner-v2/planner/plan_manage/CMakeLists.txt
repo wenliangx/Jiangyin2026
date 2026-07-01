@@ -40,17 +40,18 @@ include_directories(
 
 
 add_executable(ego_planner_node
-  src/ego_planner_node.cpp 
+  src/ego_planner_node.cpp
   src/ego_replan_fsm.cpp
   src/planner_manager.cpp
   )
-target_link_libraries(ego_planner_node 
+target_link_libraries(ego_planner_node
   ${catkin_LIBRARIES}
   )
-#add_dependencies(ego_planner_node ${${PROJECT_NAME}_EXPORTED_TARGETS})
+# Ensure message headers are generated before compiling
+add_dependencies(ego_planner_node traj_utils_generate_messages_cpp quadrotor_msgs_generate_messages_cpp)
 
 add_executable(traj_server src/traj_server.cpp)
 target_link_libraries(traj_server ${catkin_LIBRARIES})
-# add_dependencies(traj_server ${${PROJECT_NAME}_EXPORTED_TARGETS})
+add_dependencies(traj_server traj_utils_generate_messages_cpp quadrotor_msgs_generate_messages_cpp)
 
 
