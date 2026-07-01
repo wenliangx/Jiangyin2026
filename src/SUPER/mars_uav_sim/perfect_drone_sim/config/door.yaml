@@ -1,0 +1,29 @@
+#############| For UAV simulation |#################################
+pcd_name: "door_wall.pcd"
+mesh_resource: "package://perfect_drone_sim/meshes/yunque-M.dae"
+init_position:
+  x: 0.0
+  y: 0.0
+  z: 0.5
+init_yaw: 0.0
+
+#############|For LiDAR perception simulation |#################################
+is_360lidar: true
+polar_resolution: 0.2
+downsample_res: 0.05
+vertical_fov: 178.0
+sensing_blind: 0.1
+sensing_horizon: 10
+sensing_rate: 15
+print_time_consumption: false
+#  enum LiDARType{
+#  UNDEFINED = 0,
+#  AVIA = 1,
+#  GENERAL_360 = 2,
+#  MID_360 = 3
+#  };
+lidar_type: 2
+depth_image_en: false
+
+
+

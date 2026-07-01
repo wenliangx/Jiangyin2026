@@ -1,0 +1,5 @@
+Assembler messages:
+致命错误： can't create CMakeFiles/marsim_render.dir/src/marsim_render.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/marsim_render.dir/build.make:63：CMakeFiles/marsim_render.dir/src/marsim_render.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:565：CMakeFiles/marsim_render.dir/all] 错误 2
+make: *** [Makefile:141：all] 错误 2

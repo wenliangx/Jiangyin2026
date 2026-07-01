@@ -1,0 +1,86 @@
+Scanning dependencies of target quadrotor_msgs_generate_messages_cpp
+Scanning dependencies of target _traj_utils_generate_messages_check_deps_MINCOTraj
+[  0%] Built target quadrotor_msgs_generate_messages_cpp
+Scanning dependencies of target _traj_utils_generate_messages_check_deps_FlagState
+[  0%] Built target _traj_utils_generate_messages_check_deps_FlagState
+[  0%] Built target _traj_utils_generate_messages_check_deps_MINCOTraj
+Scanning dependencies of target std_msgs_generate_messages_cpp
+Scanning dependencies of target geometry_msgs_generate_messages_cpp
+[  0%] Built target std_msgs_generate_messages_cpp
+[  0%] Built target geometry_msgs_generate_messages_cpp
+Scanning dependencies of target _traj_utils_generate_messages_check_deps_DataDisp
+Scanning dependencies of target _traj_utils_generate_messages_check_deps_Flag
+[  0%] Built target _traj_utils_generate_messages_check_deps_DataDisp
+[  0%] Built target _traj_utils_generate_messages_check_deps_Flag
+Scanning dependencies of target _traj_utils_generate_messages_check_deps_PolyTraj
+Scanning dependencies of target std_msgs_generate_messages_nodejs
+[  0%] Built target std_msgs_generate_messages_nodejs
+Scanning dependencies of target quadrotor_msgs_generate_messages_nodejs
+[  0%] Built target _traj_utils_generate_messages_check_deps_PolyTraj
+Scanning dependencies of target geometry_msgs_generate_messages_nodejs
+[  0%] Built target quadrotor_msgs_generate_messages_nodejs
+Scanning dependencies of target std_msgs_generate_messages_lisp
+[  0%] Built target geometry_msgs_generate_messages_nodejs
+Scanning dependencies of target geometry_msgs_generate_messages_lisp
+[  0%] Built target std_msgs_generate_messages_lisp
+Scanning dependencies of target quadrotor_msgs_generate_messages_lisp
+[  0%] Built target geometry_msgs_generate_messages_lisp
+[  0%] Built target quadrotor_msgs_generate_messages_lisp
+Scanning dependencies of target std_msgs_generate_messages_py
+Scanning dependencies of target geometry_msgs_generate_messages_py
+[  0%] Built target std_msgs_generate_messages_py
+[  0%] Built target geometry_msgs_generate_messages_py
+Scanning dependencies of target quadrotor_msgs_generate_messages_py
+Scanning dependencies of target quadrotor_msgs_generate_messages_eus
+[  0%] Built target quadrotor_msgs_generate_messages_py
+[  0%] Built target quadrotor_msgs_generate_messages_eus
+Scanning dependencies of target geometry_msgs_generate_messages_eus
+[  0%] Built target geometry_msgs_generate_messages_eus
+Scanning dependencies of target std_msgs_generate_messages_eus
+Scanning dependencies of target traj_utils_generate_messages_cpp
+[  3%] Generating C++ code from traj_utils/DataDisp.msg
+[  3%] Built target std_msgs_generate_messages_eus
+Scanning dependencies of target traj_utils_generate_messages_nodejs
+[  6%] Generating Javascript code from traj_utils/DataDisp.msg
+[ 10%] Generating Javascript code from traj_utils/Flag.msg
+[ 13%] Generating C++ code from traj_utils/Flag.msg
+[ 17%] Generating Javascript code from traj_utils/FlagState.msg
+[ 20%] Generating C++ code from traj_utils/FlagState.msg
+[ 24%] Generating Javascript code from traj_utils/PolyTraj.msg
+[ 27%] Generating Javascript code from traj_utils/MINCOTraj.msg
+Scanning dependencies of target traj_utils_generate_messages_lisp
+[ 31%] Generating C++ code from traj_utils/PolyTraj.msg
+[ 34%] Generating Lisp code from traj_utils/DataDisp.msg
+[ 34%] Built target traj_utils_generate_messages_nodejs
+Scanning dependencies of target traj_utils_generate_messages_py
+[ 37%] Generating Lisp code from traj_utils/Flag.msg
+[ 41%] Generating Python from MSG traj_utils/DataDisp
+[ 44%] Generating Lisp code from traj_utils/FlagState.msg
+[ 48%] Generating C++ code from traj_utils/MINCOTraj.msg
+[ 51%] Generating Lisp code from traj_utils/PolyTraj.msg
+[ 51%] Built target traj_utils_generate_messages_cpp
+Scanning dependencies of target traj_utils_generate_messages_eus
+[ 55%] Generating Lisp code from traj_utils/MINCOTraj.msg
+[ 58%] Generating EusLisp code from traj_utils/DataDisp.msg
+[ 58%] Built target traj_utils_generate_messages_lisp
+Scanning dependencies of target traj_utils
+[ 62%] Generating Python from MSG traj_utils/Flag
+[ 65%] Generating EusLisp code from traj_utils/Flag.msg
+[ 68%] Building CXX object CMakeFiles/traj_utils.dir/src/planning_visualization.cpp.o
+sh: 0: getcwd() failed: No such file or directory
+Generating EusLisp code from traj_utils/FlagState.msg
+make[2]：catkin_generated/env_cached.sh：命令未找到
+make[2]: *** [CMakeFiles/traj_utils_generate_messages_eus.dir/build.make:84：/home/flag/Jiangyin2026/devel/.private/traj_utils/share/roseus/ros/traj_utils/msg/FlagState.l] 错误 127
+make[1]: *** [CMakeFiles/Makefile2:1683：CMakeFiles/traj_utils_generate_messages_eus.dir/all] 错误 2
+make[1]: *** 正在等待未完成的任务....
+sh: 0: getcwd() failed: No such file or directory
+Generating Python from MSG traj_utils/FlagState
+make[2]：catkin_generated/env_cached.sh：命令未找到
+make[2]: *** [CMakeFiles/traj_utils_generate_messages_py.dir/build.make:84：/home/flag/Jiangyin2026/devel/.private/traj_utils/lib/python3/dist-packages/traj_utils/msg/_FlagState.py] 错误 127
+make[2]: *** 正在等待未完成的任务....
+make[1]: *** [CMakeFiles/Makefile2:1622：CMakeFiles/traj_utils_generate_messages_py.dir/all] 错误 2
+Assembler messages:
+致命错误： can't create CMakeFiles/traj_utils.dir/src/planning_visualization.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/traj_utils.dir/build.make:63：CMakeFiles/traj_utils.dir/src/planning_visualization.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:1199：CMakeFiles/traj_utils.dir/all] 错误 2
+make: *** [Makefile:141：all] 错误 2

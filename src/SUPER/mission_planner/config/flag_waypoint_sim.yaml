@@ -1,0 +1,27 @@
+goal_pub_topic: "/planning/click_goal"
+flag_goal_pub_topic: "/super/flag_goal"
+flag_state_pub_topic: "/super/flag_state"
+odom_topic: "/lidar_slam/odom"
+# odom_topic: "/mavros/local_position/odom"          # 实机里程计话题（被注释，仿真用上面的）
+
+# 触发方式：0=RViz点击；1=遥控器；2=延时自动触发
+start_trigger_type: 2
+
+# 延时自动触发的时间（秒），start_trigger_type=2 时生效
+start_program_delay: 3.0
+
+# 命令类型：0=路径模式；1=航点模式
+cmd_type: 1
+
+# 航点切换距离阈值（米），无人机距目标小于此值即认为"到达"
+switch_dis: 0.5
+
+# 里程计超时阈值（秒），超时后停止分发航点
+odom_timeout: 0.1
+
+# 航点发布间隔（秒），设为 inf 则每个航点只发一次
+publish_dt: 0.1
+
+# 预设航点文件（从 data/ 目录加载），可与 launch 中的 data_name 配合使用
+#    waypoints_file_name: "a_working_waypoints.txt"
+#waypoints_file_name: "benchmark_dense.txt"

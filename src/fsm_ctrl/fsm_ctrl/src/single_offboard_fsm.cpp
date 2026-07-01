@@ -417,8 +417,8 @@ traj_utils::Flag flag_traj_msg;//发布至ego，飞行点信息
 traj_utils::Flag flag_state;//订阅至ego,运行状态信息反馈
 
 //LYX ADD FOR SUPER
-// super_msgs::Flag flag_super_msg;//发布至super，飞行点信息
-// super_msgs::Flag flag_super_state;//接受自super，规划器运行状态
+super_msgs::Flag flag_super_msg;//发布至super，飞行点信息
+super_msgs::Flag flag_super_state;//接受自super，规划器运行状态
 
 static bool dynamic_ready = false;
 /*----------LXK----------*/
@@ -625,7 +625,7 @@ void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
         nmpc_traj_pt[i].acc = Eigen::Vector3d(msg->cmd[i].acceleration.x, msg->cmd[i].acceleration.y, msg->cmd[i].acceleration.z);
     }
 
-    //wsz
+    // //wsz
     // for(int i=0; i<6; i++)
     // {
     //     nmpc_traj_pt[i].pos = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, 1.0);
@@ -633,7 +633,7 @@ void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
     //     nmpc_traj_pt[i].acc = Eigen::Vector3d(0.0, 0.0, 0.0);
     //     cout << i << ":" << nmpc_traj_pt[i].pos[0] << ", " << nmpc_traj_pt[i].pos[1] << endl;
     // }
-    //wsz
+    // //wsz
 
     // vector<CtrlPt> _traj_nmpc;
     // for(int i = 0; i < 6; i++)
@@ -647,33 +647,33 @@ void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
     // }
     // traj_nmpc = _traj_nmpc;
 }
-// void nmpc_super_cb(const super_msgs::Flag::ConstPtr &msg)
-// {
-//     //lyx for super
-//     for(int i=0; i<6; i++)
-//     {
-//         nmpc_traj_pt[i].pos = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
-//         nmpc_traj_pt[i].vel = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
-//         nmpc_traj_pt[i].acc = Eigen::Vector3d(msg->cmd[i].acceleration.x, msg->cmd[i].acceleration.y, msg->cmd[i].acceleration.z);
-//     }
-// }
+void nmpc_super_cb(const super_msgs::Flag::ConstPtr &msg)
+{
+    //lyx for super
+    for(int i=0; i<6; i++)
+    {
+        nmpc_traj_pt[i].pos = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
+        nmpc_traj_pt[i].vel = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
+        nmpc_traj_pt[i].acc = Eigen::Vector3d(msg->cmd[i].acceleration.x, msg->cmd[i].acceleration.y, msg->cmd[i].acceleration.z);
+    }
+}
 
-// /**
-//  * @brief  nmpc 规划轨迹回调函数 - 订阅自planner
-//  * @param
-//  * @return 无
-//  */
-// void PlannerCallback(const super_msgs::Flag::ConstPtr &msg)
-// {
-//     if(is_get_planner_msgs == false)
-//     {is_get_planner_msgs = true;}
+/**
+ * @brief  nmpc 规划轨迹回调函数 - 订阅自planner
+ * @param
+ * @return 无
+ */
+void PlannerCallback(const super_msgs::Flag::ConstPtr &msg)
+{
+    if(is_get_planner_msgs == false)
+    {is_get_planner_msgs = true;}
 
-//     for(int i=0; i<9; i++)
-//     {
-//         nmpc_pos_des[i] = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
-//         nmpc_vel_des[i] = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
-//     }
-// }
+    for(int i=0; i<9; i++)
+    {
+        nmpc_pos_des[i] = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
+        nmpc_vel_des[i] = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
+    }
+}
 
 
 
@@ -1274,15 +1274,15 @@ void EGO_flag_aimpos(TypePoint point)
     flag_traj_msg.position.y = point.y;
     flag_traj_msg.position.z = point.z;
 
-    // flag_super_msg.header.frame_id = "world";
-    // flag_super_msg.header.stamp = ros::Time::now();
-    // flag_super_msg.header.seq = 0;
-    // flag_super_msg.id = point.id;
-    // flag_super_msg.mode = point.mode;
-    // flag_super_msg.is_map = point.is_map;
-    // flag_super_msg.position.x = point.x;
-    // flag_super_msg.position.y = point.y;
-    // flag_super_msg.position.z = point.z;
+    flag_super_msg.header.frame_id = "world";
+    flag_super_msg.header.stamp = ros::Time::now();
+    flag_super_msg.header.seq = 0;
+    flag_super_msg.id = point.id;
+    flag_super_msg.mode = point.mode;
+    flag_super_msg.is_map = point.is_map;
+    flag_super_msg.position.x = point.x;
+    flag_super_msg.position.y = point.y;
+    flag_super_msg.position.z = point.z;
 }
 /**
  * @date 2024-04-11 03:10:00
@@ -1307,11 +1307,11 @@ void EGO_flag_state_cb(const traj_utils::FlagStateConstPtr &msg)
     flag_state.touch_goal = msg->touch_goal;
     
 }
-// void SUPER_flag_state_cb(const super_msgs::FlagConstPtr &msg)
-// {   
-//     flag_super_state.now_id = msg->now_id; 
-//     flag_super_state.touch_goal = msg->touch_goal;
-// }
+void SUPER_flag_state_cb(const super_msgs::FlagConstPtr &msg)
+{   
+    flag_super_state.now_id = msg->now_id; 
+    flag_super_state.touch_goal = msg->touch_goal;
+}
 
 /*--------------------------- Main ---------------------------*/
 
@@ -1471,12 +1471,12 @@ int main(int argc, char **argv)
         ("/globalappos", 10);
 
     /*----------YYZ----------*/
-    // ros::Subscriber planner_msgs_sub = nh.subscribe<super_msgs::Flag>("/super/flag_cmd", 10, PlannerCallback);
-    // /*----------YYZ----------*/
+    ros::Subscriber planner_msgs_sub = nh.subscribe<super_msgs::Flag>("/super/flag_cmd", 10, PlannerCallback);
+    /*----------YYZ----------*/
 
-    // /*----------LYX----------*/
-    // ros::Subscriber planner_state_sub = nh.subscribe<super_msgs::Flag>("/super/flag_state", 10, SUPER_flag_state_cb);
-    // ros::Publisher planner_cmd_pub = nh.advertise<super_msgs::Flag>("/super/flag_waypoint", 10);
+    /*----------LYX----------*/
+    ros::Subscriber planner_state_sub = nh.subscribe<super_msgs::Flag>("/super/flag_state", 10, SUPER_flag_state_cb);
+    ros::Publisher planner_cmd_pub = nh.advertise<super_msgs::Flag>("/super/flag_waypoint", 10);
     /*----------LYX----------*/
     
 
@@ -2304,14 +2304,36 @@ int main(int argc, char **argv)
 
         if (cmd == 6){       //jieyixia super
             // std::cout<<"cmd=6"<<std::endl;
+
+            // Offboard & Arm (same as cmd==5)
+            if (current_state.mode != "OFFBOARD" && (ros::Time::now() - last_request > ros::Duration(5.0)))
+            {
+                if (set_mode_client.call(offboard_mode) && offboard_mode.response.mode_sent)
+                {
+                    ROS_WARN("Mode Offboard!");
+                }
+                last_request = ros::Time::now();
+            }
+            else
+            {
+                if (!current_state.armed && (ros::Time::now() - last_request > ros::Duration(5.0)))
+                {
+                    if (arming_client.call(arm_cmd) && arm_cmd.response.success)
+                    {
+                        ROS_WARN("Mode Armed!");
+                    }
+                    last_request = ros::Time::now();
+                }
+            }
+
             if(need_GeneTraj){
                 EgoGeneTraj();
                 if (Ego_traj_count<Ego_traj_size){
                     EGO_flag_aimpos(Ego_traj[Ego_traj_count]);
                     ROS_INFO("Ego Trajectory Num %d", Ego_traj_count);
                     ROS_INFO("Flag %d: x: %f, y: %f, z: %f", Ego_traj_count, Ego_traj[Ego_traj_count].x, Ego_traj[Ego_traj_count].y, Ego_traj[Ego_traj_count].z);
-                    // planner_cmd_pub.publish(flag_super_msg);
-                    ego_flag_pub.publish(flag_traj_msg);
+                    planner_cmd_pub.publish(flag_super_msg);
+                    // ego_flag_pub.publish(flag_traj_msg);
                 }           
                 Ego_traj_count++;
                     if (Ego_traj_count == Ego_traj_size)
@@ -2344,7 +2366,7 @@ int main(int argc, char **argv)
                 {
                     desired_states.push_back(0.00); 
                     desired_states.push_back(0.00);
-                    desired_states.push_back(0.2);
+                    desired_states.push_back(1.0);
                     desired_states.push_back(0.0);
                     desired_states.push_back(0.0);
                     desired_states.push_back(0.0);
@@ -2360,30 +2382,30 @@ int main(int argc, char **argv)
                 for(int i = 0; i < nmpc_simple_predict_step + 1; i++)
                 {
                     // for super
-                    // desired_states.push_back(nmpc_pos_des[i].x());
-                    // desired_states.push_back(nmpc_pos_des[i].y());
-                    // desired_states.push_back(nmpc_pos_des[i].z());
-                    // desired_states.push_back(nmpc_vel_des[i].x());
-                    // desired_states.push_back(nmpc_vel_des[i].y());
-                    // desired_states.push_back(nmpc_vel_des[i].z());
-                    // desired_states.push_back(1.0);
-                    // desired_states.push_back(0.0);
-                    // desired_states.push_back(0.0);
-                    // desired_states.push_back(0.0);
+                    desired_states.push_back(nmpc_pos_des[i].x());
+                    desired_states.push_back(nmpc_pos_des[i].y());
+                    desired_states.push_back(nmpc_pos_des[i].z());
+                    desired_states.push_back(nmpc_vel_des[i].x());
+                    desired_states.push_back(nmpc_vel_des[i].y());
+                    desired_states.push_back(nmpc_vel_des[i].z());
+                    desired_states.push_back(1.0);
+                    desired_states.push_back(0.0);
+                    desired_states.push_back(0.0);
+                    desired_states.push_back(0.0);
 
                     //for egov2
                     // nmpc_traj_cb only fills indices 0-5; clamp to avoid reading uninit data
-                    int pt_idx = std::min(i, 5);
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].pos.x());
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].pos.y());
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].pos.z());
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].vel.x());
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].vel.y());
-                    desired_states.push_back(nmpc_traj_pt[pt_idx].vel.z());
-                    desired_states.push_back(quat_yaw.w());
-                    desired_states.push_back(quat_yaw.x());
-                    desired_states.push_back(quat_yaw.y());
-                    desired_states.push_back(quat_yaw.z());
+                    // int pt_idx = std::min(i, 5);
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].pos.x());
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].pos.y());
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].pos.z());
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].vel.x());
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].vel.y());
+                    // desired_states.push_back(nmpc_traj_pt[pt_idx].vel.z());
+                    // desired_states.push_back(quat_yaw.w());
+                    // desired_states.push_back(quat_yaw.x());
+                    // desired_states.push_back(quat_yaw.y());
+                    // desired_states.push_back(quat_yaw.z());
                     // ROS_INFO("get nmpc traj  yaw = %f", yaw_now);
 
                 }

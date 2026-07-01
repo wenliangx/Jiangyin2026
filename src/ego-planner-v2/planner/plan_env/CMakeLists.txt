@@ -45,7 +45,9 @@ add_library( plan_env
     src/raycast.cpp
     )
 
+add_dependencies(plan_env traj_utils_generate_messages_cpp)
+
 target_link_libraries( plan_env
-    ${catkin_LIBRARIES} 
+    ${catkin_LIBRARIES}
     ${PCL_LIBRARIES}
-    )  
+    )

@@ -818,7 +818,7 @@ void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
   int inf_step = ceil((mp_.obstacles_inflation_ - 0.001) / mp_.resolution_);
   if (inf_step > 4)
   {
-    ROS_ERROR("Inflation is too big, which will cause siginificant computation! Reduce inflation or enlarge resolution.");
+    ("Inflation is too big, which will cause siginificant computation! Reduce inflation or enlarge resolution.");
   }
   int inf_step_z = 1;
 

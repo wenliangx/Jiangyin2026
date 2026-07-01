@@ -1,0 +1,85 @@
+<launch>    
+    <node pkg ="map_generator" name ="random_forest" type ="random_forest" output = "screen">
+        <param name="map/x_size" value="100" />
+        <param name="map/y_size" value="200" />
+        <param name="map/z_size" value="5" />
+        <param name="map/resolution" value="0.1"/>
+        <param name="ObstacleShape/seed" value="1"/>
+        <param name="map/obs_num" value="1000"/>
+        <param name="ObstacleShape/lower_rad" value="0.5"/>
+        <param name="ObstacleShape/upper_rad" value="0.7"/>
+        <param name="ObstacleShape/lower_hei" value="0.0"/>
+        <param name="ObstacleShape/upper_hei" value="3.0"/>
+        <param name="map/circle_num" value="1000"/>
+        <param name="ObstacleShape/radius_l" value="0.7"/>
+        <param name="ObstacleShape/radius_h" value="0.5"/>
+        <param name="ObstacleShape/z_l" value="0.7"/>
+        <param name="ObstacleShape/z_h" value="0.8"/>
+        <param name="ObstacleShape/theta" value="0.5"/>
+        <param name="pub_rate" value="1.0"/>
+        <param name="min_distance" value="0.8"/>
+    </node>
+
+    <!-- use simulator -->
+    <include file="$(find ego_planner)/launch/include/simulator.xml">
+        <arg name="ego_or_super_" value="1"/>
+        <arg name="drone_id" value="0"/>
+        <arg name="init_x_" value="0.0"/>
+        <arg name="init_y_" value="0.0"/>
+        <arg name="init_z_" value="1.5"/>
+        <arg name="map_size_x_" value="200.0"/>
+        <arg name="map_size_y_" value="200.0"/>
+        <arg name="map_size_z_" value=" 3.0"/>
+        <arg name="odometry_topic" value="lidar_slam/odom" />
+        <arg name="flight_type" value="2"/>
+        <arg name="point_num" default="4"/>
+        <arg name="point0_x" default="0.0"/>
+        <arg name="point0_y" default="8.0"/>
+        <arg name="point0_z" default="1.0"/>
+        <arg name="point1_x" default="8.0"/>
+        <arg name="point1_y" default="0.0"/>
+        <arg name="point1_z" default="1.0"/>
+        <arg name="point2_x" default="0.0"/>
+        <arg name="point2_y" default="-8.0"/>
+        <arg name="point2_z" default="1.0"/>
+        <arg name="point3_x" default="-8.0"/>
+        <arg name="point3_y" default="0.0"/>
+        <arg name="point3_z" default="1.0"/>
+    </include>
+    <!-- <include file="$(find manual_take_over)/launch/take_over_drone.launch">
+        <arg name="drone_id" value="0"/>
+        <arg name="cmd_topic" value="planning/pos_cmd"/>
+    </include> -->
+    
+        <!-- <node pkg="perfect_drone_sim" type="perfect_drone" name="perfect_drone" output="log"> -->
+            <!--     1. use absolute path -->
+            <!--         <param name="config_path" value="" type="string"></param> -->
+            <!--     2. use file name in super_planner/config/... -->
+                    <!-- <param name="config_name" value="click.yaml" type="string"></param> -->
+        <!-- </node> -->
+
+    <!--     click_demo_high_speed.launch -->
+
+    <node pkg="super_planner" name="fsm_node" type="fsm_node" output="screen">
+<!--     1. use absolute path -->
+<!--         <param name="config_path" value="" type="string"></param> -->
+<!--     2. use file name in super_planner/config/... -->
+        <!-- <param name="config_name" value="click_smooth_ros1.yaml" type="string"></param> -->
+        <param name="config_name" value="flag_sim.yaml" type="string"></param>
+    </node>
+
+    <node pkg="mission_planner" name="flag_waypoint_mission_sim" type="flag_waypoint_mission" output="screen">
+        <!--     1. use absolute path -->
+        <!--         <param name="config_path" value="" type="string"></param> -->
+        <!--     2. use file name in super_planner/config/... -->
+        <param name="data_name" value="flag_test.txt" type="string"></param>
+        <param name="cfg_name" value="flag_waypoint_sim.yaml" type="string"></param>
+    </node>
+
+        <!-- <node pkg="rviz" type="rviz" name="top_down" args="-d $(find perfect_drone_sim)/rviz/top_down.rviz" output="log"/>
+        <node pkg="rviz" type="rviz" name="fpv" args="-d $(find perfect_drone_sim)/rviz/fpv.rviz" output="log"/> -->
+
+    <arg name="rviz_config" default="$(find super_planner)/rviz/bench.rviz" />
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" />
+
+</launch>

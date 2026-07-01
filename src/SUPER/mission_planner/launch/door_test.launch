@@ -1,0 +1,22 @@
+<launch>
+    <!-- ===== Door test: 70x70cm door, 25cm inflation ===== -->
+
+    <!-- Mission Planner: waypoint buffering & dispatch -->
+    <node pkg="mission_planner" name="flag_waypoint_mission" type="flag_waypoint_mission" output="screen">
+        <param name="config_name" value="flag_waypoint_sim.yaml" type="string"/>
+    </node>
+
+    <!-- Perfect Drone Sim: door_wall.pcd environment -->
+    <node pkg="perfect_drone_sim" type="perfect_drone" name="perfect_drone" output="screen">
+        <param name="config_name" value="door.yaml" type="string"/>
+    </node>
+
+    <!-- SUPER Planner + ROG-Map -->
+    <node pkg="super_planner" name="fsm_node" type="fsm_node" output="screen">
+        <param name="config_name" value="flag_sim.yaml" type="string"/>
+    </node>
+
+    <!-- RViz -->
+    <arg name="rviz_config" default="$(find super_planner)/rviz/bench.rviz" />
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" />
+</launch>

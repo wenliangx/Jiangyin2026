@@ -46,8 +46,8 @@
 #include <traj_utils/Flag.h>
 #include <traj_utils/FlagState.h>
 #include <fsm_ctrl/ctrl_math.hpp>
-// #include <super_msgs/PositionCommand.h>
-// #include <super_msgs/Flag.h>
+#include <super_msgs/PositionCommand.h>
+#include <super_msgs/Flag.h>
 #include <fsm_ctrl/nmpc_state.h>
 // SYX FSM TEST DONE
 #include <nav_msgs/Path.h>

@@ -1,0 +1,6 @@
+SUPER/mission_planner
+/home/flag/Jiangyin2026/devel/.private/mission_planner/lib/pkgconfig/mission_planner.pc /home/flag/Jiangyin2026/devel/lib/pkgconfig/mission_planner.pc
+/home/flag/Jiangyin2026/devel/.private/mission_planner/lib/mission_planner/flag_waypoint_mission /home/flag/Jiangyin2026/devel/lib/mission_planner/flag_waypoint_mission
+/home/flag/Jiangyin2026/devel/.private/mission_planner/lib/mission_planner/waypoint_mission /home/flag/Jiangyin2026/devel/lib/mission_planner/waypoint_mission
+/home/flag/Jiangyin2026/devel/.private/mission_planner/share/mission_planner/cmake/mission_plannerConfig.cmake /home/flag/Jiangyin2026/devel/share/mission_planner/cmake/mission_plannerConfig.cmake
+/home/flag/Jiangyin2026/devel/.private/mission_planner/share/mission_planner/cmake/mission_plannerConfig-version.cmake /home/flag/Jiangyin2026/devel/share/mission_planner/cmake/mission_plannerConfig-version.cmake

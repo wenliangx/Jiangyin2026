@@ -1,0 +1,5 @@
+SUPER/rog_map
+/home/flag/Jiangyin2026/devel/.private/rog_map/lib/librog_map.a /home/flag/Jiangyin2026/devel/lib/librog_map.a
+/home/flag/Jiangyin2026/devel/.private/rog_map/lib/pkgconfig/rog_map.pc /home/flag/Jiangyin2026/devel/lib/pkgconfig/rog_map.pc
+/home/flag/Jiangyin2026/devel/.private/rog_map/share/rog_map/cmake/rog_mapConfig.cmake /home/flag/Jiangyin2026/devel/share/rog_map/cmake/rog_mapConfig.cmake
+/home/flag/Jiangyin2026/devel/.private/rog_map/share/rog_map/cmake/rog_mapConfig-version.cmake /home/flag/Jiangyin2026/devel/share/rog_map/cmake/rog_mapConfig-version.cmake

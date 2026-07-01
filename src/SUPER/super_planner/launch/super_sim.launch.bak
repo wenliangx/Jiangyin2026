@@ -1,0 +1,56 @@
+<launch>
+    <arg name="init_x" default="0.0"/>
+    <arg name="init_y" default="0.0"/>
+    <arg name="init_z" default="0.5"/>
+    <arg name="map_x" default="200.0"/>
+    <arg name="map_y" default="200.0"/>
+    <arg name="map_z" default="30.0"/>
+
+    <!-- ===== Mission Planner: waypoint buffer middleware ===== -->
+    <!-- Buffers all waypoints, dispatches one-at-a-time to fsm_node -->
+    <node pkg="mission_planner" name="flag_waypoint_mission" type="flag_waypoint_mission" output="screen">
+        <param name="config_name" value="flag_waypoint_sim.yaml" type="string"/>
+    </node>
+
+    <!-- ===== SUPER planner (includes ROG-Map) ===== -->
+    <node pkg="super_planner" name="fsm_node" type="fsm_node" output="screen">
+        <param name="config_name" value="flag_sim.yaml" type="string"/>
+    </node>
+
+    <!-- ===== Simulator ===== -->
+    <!-- Drone dynamics: SUPER PositionCommand -> simulated odometry -->
+    <node pkg="poscmd_2_odom" name="poscmd_2_odom" type="poscmd_2_odom" output="screen">
+        <param name="init_x" value="$(arg init_x)"/>
+        <param name="init_y" value="$(arg init_y)"/>
+        <param name="init_z" value="$(arg init_z)"/>
+        <param name="ego_or_super" value="true"/>
+        <remap from="~command" to="/planning/pos_cmd"/>
+        <remap from="~odometry" to="/visual_slam/odom"/>
+    </node>
+
+    <!-- LiDAR simulator: generates /cloud_registered -->
+    <node pkg="local_sensing_node" type="pcl_render_node" name="pcl_render_node" output="screen">
+        <rosparam command="load" file="$(find local_sensing_node)/params/camera.yaml" />
+        <param name="sensing_horizon" value="5.0"/>
+        <param name="sensing_rate" value="60.0"/>
+        <param name="estimation_rate" value="30.0"/>
+        <param name="map/x_size" value="$(arg map_x)"/>
+        <param name="map/y_size" value="$(arg map_y)"/>
+        <param name="map/z_size" value="$(arg map_z)"/>
+        <remap from="~odometry" to="/visual_slam/odom"/>
+        <remap from="~pcl_render_node/cloud" to="/cloud_registered"/>
+    </node>
+
+    <!-- Odometry visualization -->
+    <node pkg="odom_visualization" name="odom_visualization" type="odom_visualization" output="screen">
+        <remap from="~odom" to="/visual_slam/odom"/>
+        <param name="color/r" value="1.0"/>
+        <param name="color/g" value="0.0"/>
+        <param name="color/b" value="0.0"/>
+        <param name="color/a" value="1.0"/>
+        <param name="robot_scale" value="0.35"/>
+    </node>
+
+    <!-- RViz -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find super_planner)/rviz/bench.rviz" />
+</launch>

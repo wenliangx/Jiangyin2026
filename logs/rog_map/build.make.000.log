@@ -1,0 +1,57 @@
+Scanning dependencies of target rog_map
+[ 11%] Building CXX object CMakeFiles/rog_map.dir/include/rog_map/rog_map_core/raycaster.cpp.o
+[ 22%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/counter_map.cpp.o
+[ 33%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/inf_map.cpp.o
+[ 44%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/esdf_map.cpp.o
+[ 55%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/prob_map.cpp.o
+[ 66%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/sliding_map.cpp.o
+[ 77%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map/rog_map.cpp.o
+[ 88%] Building CXX object CMakeFiles/rog_map.dir/src/rog_map_ros/rog_map_ros1.cpp.o
+/home/flag/Jiangyin2026/src/SUPER/rog_map/src/rog_map/rog_map.cpp: In member function ‘void rog_map::ROGMap::init()’:
+/home/flag/Jiangyin2026/src/SUPER/rog_map/src/rog_map/rog_map.cpp:53:23: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::__cxx11::basic_string<char> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+   53 |     for (int i = 0; i < time_consuming_name_.size(); i++) {
+      |                     ~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/flag/Jiangyin2026/src/SUPER/rog_map/src/rog_map/rog_map.cpp:55:15: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::__cxx11::basic_string<char> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+   55 |         if (i != time_consuming_name_.size() - 1) {
+      |             ~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/flag/Jiangyin2026/src/SUPER/rog_map/include/rog_map/rog_map_core/raycaster.h:30,
+                 from /home/flag/Jiangyin2026/src/SUPER/rog_map/include/rog_map/rog_map_core/raycaster.cpp:24:
+/home/flag/Jiangyin2026/src/SUPER/rog_map/include/rog_map/rog_map_core/common_lib.hpp:120:17: warning: ‘bool rog_map::lineIntersectBox(super_utils::Vec3f, super_utils::Vec3f, super_utils::Vec3f, super_utils::Vec3f, super_utils::Vec3f&)’ defined but not used [-Wunused-function]
+  120 |     static bool lineIntersectBox(super_utils::Vec3f L1, super_utils::Vec3f L2, super_utils::Vec3f B1,
+      |                 ^~~~~~~~~~~~~~~~
+/home/flag/Jiangyin2026/src/SUPER/rog_map/include/rog_map/rog_map_core/common_lib.hpp:76:31: warning: ‘super_utils::Vec3f rog_map::lineBoxIntersectPoint(const Vec3f&, const Vec3f&, const Vec3f&, const Vec3f&)’ defined but not used [-Wunused-function]
+   76 |     static super_utils::Vec3f lineBoxIntersectPoint(const super_utils::Vec3f& pt, const super_utils::Vec3f& pos,
+      |                               ^~~~~~~~~~~~~~~~~~~~~
+/home/flag/Jiangyin2026/src/SUPER/rog_map/include/rog_map/rog_map_core/common_lib.hpp:65:19: warning: ‘double rog_map::computePathLength(super_utils::vec_E<Eigen::Matrix<double, 3, 1> >&)’ defined but not used [-Wunused-function]
+   65 |     static double computePathLength(const super_utils::vec_E<super_utils::Vec3f>& path) {
+      |                   ^~~~~~~~~~~~~~~~~
+cc1plus: warning: unrecognized command line option ‘-Wno-dev’
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/include/rog_map/rog_map_core/raycaster.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:63：CMakeFiles/rog_map.dir/include/rog_map/rog_map_core/raycaster.cpp.o] 错误 1
+make[2]: *** 正在等待未完成的任务....
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/counter_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:76：CMakeFiles/rog_map.dir/src/rog_map/counter_map.cpp.o] 错误 1
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map_ros/rog_map_ros1.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:154：CMakeFiles/rog_map.dir/src/rog_map_ros/rog_map_ros1.cpp.o] 错误 1
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/inf_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:102：CMakeFiles/rog_map.dir/src/rog_map/inf_map.cpp.o] 错误 1
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/sliding_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:141：CMakeFiles/rog_map.dir/src/rog_map/sliding_map.cpp.o] 错误 1
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/esdf_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:89：CMakeFiles/rog_map.dir/src/rog_map/esdf_map.cpp.o] 错误 1
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/prob_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:115：CMakeFiles/rog_map.dir/src/rog_map/prob_map.cpp.o] 错误 1
+At global scope:
+cc1plus: warning: unrecognized command line option ‘-Wno-dev’
+Assembler messages:
+致命错误： can't create CMakeFiles/rog_map.dir/src/rog_map/rog_map.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/rog_map.dir/build.make:128：CMakeFiles/rog_map.dir/src/rog_map/rog_map.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:228：CMakeFiles/rog_map.dir/all] 错误 2
+make: *** [Makefile:141：all] 错误 2

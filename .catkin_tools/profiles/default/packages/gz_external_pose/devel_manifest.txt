@@ -1,0 +1,5 @@
+gz_external_pose
+/home/flag/Jiangyin2026/devel/.private/gz_external_pose/lib/pkgconfig/gz_external_pose.pc /home/flag/Jiangyin2026/devel/lib/pkgconfig/gz_external_pose.pc
+/home/flag/Jiangyin2026/devel/.private/gz_external_pose/lib/gz_external_pose/gazebo_pose_to_vrpn.py /home/flag/Jiangyin2026/devel/lib/gz_external_pose/gazebo_pose_to_vrpn.py
+/home/flag/Jiangyin2026/devel/.private/gz_external_pose/share/gz_external_pose/cmake/gz_external_poseConfig.cmake /home/flag/Jiangyin2026/devel/share/gz_external_pose/cmake/gz_external_poseConfig.cmake
+/home/flag/Jiangyin2026/devel/.private/gz_external_pose/share/gz_external_pose/cmake/gz_external_poseConfig-version.cmake /home/flag/Jiangyin2026/devel/share/gz_external_pose/cmake/gz_external_poseConfig-version.cmake
