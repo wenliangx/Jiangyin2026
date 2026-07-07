@@ -166,7 +166,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   //此处默认init_state.ba=0
   init_state.bg  = mean_gyr;    
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;     
-  init_state.offset_R_L_I = Sophus::SO3(Lidar_R_wrt_IMU);
+  init_state.offset_R_L_I = Sophus::SO3d(Lidar_R_wrt_IMU);
   kf_state.change_x(init_state);      
 
 
@@ -308,7 +308,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf &kf_state
 
         V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);   
 
-        M3D R_i( R_imu*Sophus::SO3::exp(angvel_avr * dt).matrix().transpose());   
+        M3D R_i( R_imu*Sophus::SO3d::exp(angvel_avr * dt).matrix().transpose());   
 
         V3D T_ei(pos_imu - vel_imu * dt - 0.5 * acc_imu * dt * dt - imu_state.pos);   
        
@@ -330,7 +330,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf &kf_state
 
         dt=a;
         V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);   
-        M3D R_i(R_imu * Sophus::SO3::exp(angvel_avr * dt).matrix() );  
+        M3D R_i(R_imu * Sophus::SO3d::exp(angvel_avr * dt).matrix() );  
         V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);   
         V3D P_compensate = imu_state.offset_R_L_I.matrix().transpose() * (imu_state.rot.matrix().transpose() * (R_i * (imu_state.offset_R_L_I.matrix() * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);
         
