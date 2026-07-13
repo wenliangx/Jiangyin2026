@@ -1,0 +1,134 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <world name="obstacle_test">
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <physics type="ode" max_step_size="0.01"/>
+    <real_time_factor>1.0</real_time_factor>
+    <real_time_update_rate>100</real_time_update_rate>
+
+    <model name="test_wall_front">
+      <static>true</static>
+      <pose>4.0 0.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.25 4.0 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.25 4.0 2.0</size></box></geometry>
+          <material>
+            <ambient>0.75 0.35 0.25 1</ambient>
+            <diffuse>0.75 0.35 0.25 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_wall_left">
+      <static>true</static>
+      <pose>0.0 3.0 0.75 0 0 0.35</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>3.0 0.25 1.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.0 0.25 1.5</size></box></geometry>
+          <material>
+            <ambient>0.25 0.45 0.75 1</ambient>
+            <diffuse>0.25 0.45 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_pillar_center">
+      <static>true</static>
+      <pose>2.0 -2.0 1.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><cylinder><radius>0.45</radius><length>2.5</length></cylinder></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><cylinder><radius>0.45</radius><length>2.5</length></cylinder></geometry>
+          <material>
+            <ambient>0.35 0.65 0.35 1</ambient>
+            <diffuse>0.35 0.65 0.35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_low_block">
+      <static>true</static>
+      <pose>-2.0 -1.8 0.4 0 0 -0.25</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.6 1.0 0.8</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.6 1.0 0.8</size></box></geometry>
+          <material>
+            <ambient>0.55 0.55 0.55 1</ambient>
+            <diffuse>0.55 0.55 0.55 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_gate_left">
+      <static>true</static>
+      <pose>-3.0 1.0 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.35 0.35 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.35 0.35 2.0</size></box></geometry>
+          <material>
+            <ambient>0.8 0.65 0.2 1</ambient>
+            <diffuse>0.8 0.65 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_gate_right">
+      <static>true</static>
+      <pose>-3.0 2.6 1.0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.35 0.35 2.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.35 0.35 2.0</size></box></geometry>
+          <material>
+            <ambient>0.8 0.65 0.2 1</ambient>
+            <diffuse>0.8 0.65 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="test_gate_top">
+      <static>true</static>
+      <pose>-3.0 1.8 2.1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.35 1.95 0.25</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.35 1.95 0.25</size></box></geometry>
+          <material>
+            <ambient>0.8 0.65 0.2 1</ambient>
+            <diffuse>0.8 0.65 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

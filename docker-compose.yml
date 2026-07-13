@@ -33,6 +33,7 @@ services:
       - ROS_MASTER_URI=http://sim:11311
       - ROS_IP=sim
       - ROS_HOSTNAME=sim
+      - PX4_SIM_WORLD=obstacle_test
       - GAZEBO_MODEL_PATH=
     volumes:
       - ./sim_logs/gazebo:/root/.gazebo:Z
@@ -88,8 +89,17 @@ services:
     environment:
       - ROS_MASTER_URI=http://sim:11311
       - ROS_IP=jy-dev
+      - DISPLAY=${DISPLAY:-:11.0}
+      - QT_QPA_PLATFORM=xcb
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/root/.Xauthority
+      - GZ_MOCAP_ENABLED=1
+      - GZ_MOCAP_MODEL=iris_mid360
+      - GZ_MOCAP_ZERO_ORIGIN=true
     volumes:
       - .:/ws:Z
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /home/wenliang/.Xauthority:/root/.Xauthority:ro
     command: /opt/start_jy2026.sh --dev
     restart: "no"
     depends_on:

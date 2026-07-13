@@ -76,12 +76,28 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# ---- Launch pipeline -----------------------------------------------------
+if [[ "${DEV_MODE}" == "true" && "${AUTO_START_STACK:-0}" != "1" ]]; then
+  log_info "Dev container ready. Algorithm stack is stopped by default."
+  log_info "Run jy-start-stack to launch mid360_bridge, fake mocap, RA-LIO, px4_estimator, and FSM+NMPC."
+  exec tail -f /dev/null
+fi
+
+if [[ "${AUTO_START_STACK:-0}" == "1" && -x /usr/local/bin/jy-stack ]]; then
+  /usr/local/bin/jy-stack start
+  exec tail -f /dev/null
+fi
+
+# ---- Launch pipeline (production fallback) --------------------------------
 launch_service "mid360_bridge" \
   "rosrun mid360_gazebo mid360_bridge.py" 2
 
 launch_service "IMU relay" \
   "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2
+
+if [[ "${GZ_MOCAP_ENABLED:-0}" == "1" ]]; then
+  launch_service "Gazebo mocap bridge" \
+    "roslaunch gz_external_pose gazebo_pose_to_vrpn.launch model_name:=${GZ_MOCAP_MODEL:-iris_mid360} output_topic:=/vrpn_client_node/jy0/pose odom_topic:=/ground_truth/state ready_topic:=/gz_mocap/ready zero_origin:=${GZ_MOCAP_ZERO_ORIGIN:-true}" 2
+fi
 
 launch_service "RA-LIO" \
   "roslaunch ra_lio mapping_mid360.launch use_sim_time:=false rviz:=false" 5
@@ -92,33 +108,6 @@ launch_service "px4_estimator" \
 launch_service "FSM+NMPC" \
   "roslaunch fsm_ctrl single.launch start_mavros:=false use_external_odom:=true" 8
 
-# ---- Wait for EKF convergence --------------------------------------------
-log_info "Waiting for EKF convergence (up to 120s)..."
-ekf_ready="false"
-for i in $(seq 1 120); do
-  if rostopic echo /fsm_ctrl/ekf_ready -n 1 2>/dev/null | grep -q "data: True"; then
-    log_info "EKF converged after ${i}s"
-    ekf_ready="true"
-    break
-  fi
-  sleep 1
-done
-
-if [[ "${ekf_ready}" == "false" ]]; then
-  log_error "EKF did not converge within 120s — skipping auto-takeoff"
-fi
-
-# ---- Send NMPC hover command ---------------------------------------------
-if [[ "${ekf_ready}" == "true" ]]; then
-  python3 -c "
-import socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(b'2,0,0,1.0,0,0,0,0,0,0', ('127.0.0.1', 12001))
-sock.close()
-"
-  log_info "NMPC hover command sent"
-fi
-
-log_info "Pipeline ready: mid360_bridge → RA-LIO → px4_estimator → FSM+NMPC → PX4 EKF2"
+log_info "Pipeline ready: mid360_bridge -> RA-LIO -> px4_estimator -> FSM+NMPC -> PX4 EKF2"
 
 exec tail -f /dev/null

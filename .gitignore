@@ -2,6 +2,10 @@
 build
 devel
 .vscode
+.cache/clangd
+.clangd-index
+.clangd-cache
 .container
 .catkin_workspace
 sim_logs
+vrpn

@@ -19,6 +19,12 @@ RUN for so in /opt/ros/noetic/lib/*.so; do \
     done 2>/dev/null || true
 
 COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
-RUN chmod +x /opt/start_jy2026.sh
+COPY scripts/jy-sim-control.sh /usr/local/bin/jy-sim-control
+COPY scripts/jy-stack.sh /usr/local/bin/jy-stack
+RUN chmod +x /opt/start_jy2026.sh /usr/local/bin/jy-sim-control /usr/local/bin/jy-stack \
+    && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-takeoff \
+    && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-land \
+    && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-reset \
+    && ln -sf /usr/local/bin/jy-stack /usr/local/bin/jy-start-stack
 
 CMD ["bash", "/opt/start_jy2026.sh", "--dev"]

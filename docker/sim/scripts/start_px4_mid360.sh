@@ -29,6 +29,7 @@ done
 
 export PX4_HOME="${PX4_HOME:-/opt/PX4-Autopilot}"           # PX4源码路径
 export PX4_SIM_MODEL="${PX4_SIM_MODEL:-iris_mid360}"        # 使用的无人机SDF模型名
+export PX4_SIM_WORLD="${PX4_SIM_WORLD:-obstacle_test}"      # 默认障碍物测试地图
 export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
 export HEADLESS
 export QT_X11_NO_MITSHM=1                                    # 避免X11共享内存问题
@@ -66,5 +67,5 @@ echo "MAVROS started"
 px4_build="${PX4_HOME}/build/px4_sitl_default"
 cd "${px4_build}/src/modules/simulation/simulator_mavlink"
 exec "${PX4_HOME}/Tools/simulation/gazebo-classic/sitl_run.sh" \
-  "${px4_build}/bin/px4" none "${PX4_SIM_MODEL}" none \
+  "${px4_build}/bin/px4" none "${PX4_SIM_MODEL}" "${PX4_SIM_WORLD}" \
   "${PX4_HOME}" "${px4_build}"

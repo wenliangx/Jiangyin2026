@@ -131,6 +131,8 @@ RUN pip3 install --no-cache-dir \
     wheel
 
 # === 阶段4: 创建 iris_mid360 无人机模型 + 编译 PX4 SITL ===
+COPY worlds/obstacle_test.world ${PX4_HOME}/Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds/obstacle_test.world
+
 COPY scripts/configure_px4_mid360.py /usr/local/bin/configure_px4_mid360.py
 RUN python3 /usr/local/bin/configure_px4_mid360.py
 
