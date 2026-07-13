@@ -1,0 +1,43 @@
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - -ferror-limit=0
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - modernize-*
+      - performance-*
+      - readability-container-size-empty
+      - readability-delete-null-pointer
+      - readability-misleading-indentation
+      - readability-redundant-*
+      - readability-simplify-boolean-expr
+      - readability-static-accessed-through-instance
+      - readability-string-compare
+    Remove:
+      - modernize-avoid-c-arrays
+      - modernize-use-auto
+      - modernize-use-trailing-return-type
+      - readability-magic-numbers
+      - readability-identifier-length
+      - bugprone-easily-swappable-parameters
+  Suppress:
+    - 'build/**'
+    - 'devel/**'
+
+Index:
+  Background: Build
+
+Completion:
+  AllScopes: true
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  TypeNameLimit: 25
+
+Hover:
+  ShowAKA: Yes

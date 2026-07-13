@@ -4,3 +4,4 @@ devel
 .vscode
 .container
 .catkin_workspace
+sim_logs

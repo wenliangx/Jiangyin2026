@@ -1,0 +1,24 @@
+FROM localhost/jiangyin_core:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcl-dev \
+    ros-noetic-gazebo-msgs \
+    ros-noetic-gazebo-ros \
+    ros-noetic-gazebo-plugins \
+    ros-noetic-gazebo-ros-control \
+    ros-noetic-velodyne-gazebo-plugins \
+    ros-noetic-plotjuggler \
+    ros-noetic-plotjuggler-ros \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN for so in /opt/ros/noetic/lib/*.so; do \
+        ln -sf "$so" "/usr/lib/x86_64-linux-gnu/gazebo-11/plugins/$(basename $so)"; \
+    done 2>/dev/null || true
+
+COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
+RUN chmod +x /opt/start_jy2026.sh
+
+CMD ["bash", "/opt/start_jy2026.sh", "--dev"]
