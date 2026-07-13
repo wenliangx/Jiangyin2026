@@ -1,0 +1,32 @@
+<launch>
+    <node pkg="mission_planner" name="flag_waypoint_mission" type="flag_waypoint_mission" output="screen">
+        <!--     1. use absolute path -->
+        
+        <!--     2. use file name in super_planner/config/... -->
+        <param name="config_name" value="flag_waypoint_sim.yaml" type="string"></param>
+        <param name="data_name" value="flag_test.txt" type="string"></param>
+    </node>
+
+    <node pkg="perfect_drone_sim" type="perfect_drone" name="perfect_drone" output="log">
+        <!--     1. use absolute path -->
+                <!-- <param name="config_path" value="" type="string"></param> -->
+        <!--     2. use file name in super_planner/config/... -->
+        <param name="config_name" value="flag.yaml" type="string"></param>
+    </node>
+
+    <!--     click_demo_high_speed.launch -->
+
+    <node pkg="super_planner" name="fsm_node" type="fsm_node" output="screen">
+        <!--     1. use absolute path -->
+        <!--         <param name="config_path" value="" type="string"></param> -->
+        <!--     2. use file name in super_planner/config/... -->
+        <param name="config_name" value="flag_sim.yaml" type="string"></param>
+    </node>
+
+    <arg name="rviz_config" default="$(find super_planner)/rviz/bench.rviz" />
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" />
+    <!-- <node pkg="rviz" type="rviz" name="top_down" args="-d $(find perfect_drone_sim)/rviz/benchmark.rviz" output="log"/> -->
+    <!-- <node pkg="rviz" type="rviz" name="fpv" args="-d $(find perfect_drone_sim)/rviz/fpv.rviz" output="log"/> -->
+
+
+</launch>
