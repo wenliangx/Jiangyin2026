@@ -1,0 +1,4 @@
+Scanning dependencies of target pose_to_odom_node
+[ 50%] Building CXX object CMakeFiles/pose_to_odom_node.dir/src/pose_to_odom_node.cpp.o
+[100%] Linking CXX executable /home/flag/Jiangyin2026/devel/.private/pose_to_odom/lib/pose_to_odom/pose_to_odom_node
+[100%] Built target pose_to_odom_node

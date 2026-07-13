@@ -2,3 +2,9 @@
 build
 devel
 .vscode
+*.bag
+compile_commands.json
+.catkin_tools/
+.clangd/
+__pycache__/
+*.pyc

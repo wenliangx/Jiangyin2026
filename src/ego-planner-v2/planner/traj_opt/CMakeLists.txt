@@ -35,9 +35,10 @@ include_directories(
     ${PCL_INCLUDE_DIRS}
 )
 
-add_library( traj_opt 
-    src/poly_traj_optimizer.cpp 
+add_library( traj_opt
+    src/poly_traj_optimizer.cpp
     )
+add_dependencies(traj_opt traj_utils_generate_messages_cpp)
 target_link_libraries( traj_opt
     ${catkin_LIBRARIES} 
     )  

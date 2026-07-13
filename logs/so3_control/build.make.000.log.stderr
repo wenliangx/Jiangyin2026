@@ -1,0 +1,10 @@
+Assembler messages:
+致命错误： can't create CMakeFiles/control_example.dir/src/control_example.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/control_example.dir/build.make:63：CMakeFiles/control_example.dir/src/control_example.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:209：CMakeFiles/control_example.dir/all] 错误 2
+make[1]: *** 正在等待未完成的任务....
+Assembler messages:
+致命错误： can't create CMakeFiles/SO3Control.dir/src/SO3Control.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/SO3Control.dir/build.make:63：CMakeFiles/SO3Control.dir/src/SO3Control.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:1856：CMakeFiles/SO3Control.dir/all] 错误 2
+make: *** [Makefile:141：all] 错误 2

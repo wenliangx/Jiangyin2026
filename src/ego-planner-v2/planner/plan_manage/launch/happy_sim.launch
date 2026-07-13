@@ -3,6 +3,7 @@
     <arg name="map_size_y" value="200.0"/>
     <arg name="map_size_z" value="30.0"/>
     <arg name="odom_topic" value="visual_slam/odom" />
+    <arg name="flight_type" default="4"/>
 
     <!-- map -->
     <!-- <node pkg ="map_generator" name ="random_forest" type ="random_forest" output = "screen">
@@ -36,7 +37,7 @@
         <arg name="map_size_z" value="$(arg map_size_z)"/>
         <arg name="odom_topic" value="$(arg odom_topic)"/>
         <!-- " type 4 for flag test"/-->
-        <arg name="flight_type" default="4"/>
+        <arg name="flight_type" value="$(arg flight_type)"/>
         <arg name="point_num" default="5"/>
         <arg name="target0_x" default="-15.0"/>
         <arg name="target0_y" default="0.0"/>

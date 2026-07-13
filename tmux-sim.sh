@@ -13,6 +13,9 @@ tmux set-option -g mouse on
 #  0 |  2  |
 #  1 |  3  |
 tmux split-window -h -t flag:egov2     -p 50
+
+
+
 tmux split-window -v -t flag:egov2.0   -p 50
 tmux split-window -v -t flag:egov2.2   -p 50
 tmux split-window -v -t flag:egov2.3   -p 50

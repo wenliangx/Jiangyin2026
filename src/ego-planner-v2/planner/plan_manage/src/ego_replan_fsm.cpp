@@ -32,7 +32,7 @@ namespace ego_planner
 
     have_trigger_ = !flag_realworld_experiment_;
     // no_replan_thresh_ = 0.5 * emergency_time_ * planner_manager_->pp_.max_vel_;
-    no_replan_thresh_ = 0.5 * planner_manager_->pp_.max_vel_ ;
+    no_replan_thresh_ = 0.5;
     normal_speed_ = planner_manager_->pp_.max_vel_;
     ROS_INFO("NORMAL VEL %f", normal_speed_);
     ROS_INFO("SLOW VEL %f", slow_speed_);
@@ -280,7 +280,8 @@ namespace ego_planner
         // ROS_INFO("LocalReplan");
       }
       // ROS_ERROR("AAAA");
-      flagStatePub(pos,wpt_id_,waypoint_num_,running_mode,touch_final,is_in_obstacle_);
+      if (target_type_ == TARGET_TYPE::FLAG)
+        flagStatePub(pos,wpt_id_,waypoint_num_,running_mode,touch_final,is_in_obstacle_);
       break;
     }
 

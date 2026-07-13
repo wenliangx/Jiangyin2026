@@ -31,8 +31,9 @@ include_directories(
 )
 
 add_executable(bridge_node_udp
-  src/bridge_node_udp.cpp 
+  src/bridge_node_udp.cpp
   )
+add_dependencies(bridge_node_udp traj_utils_generate_messages_cpp quadrotor_msgs_generate_messages_cpp)
 target_link_libraries(bridge_node_udp 
   ${catkin_LIBRARIES}
   )
@@ -51,8 +52,9 @@ if(ENABLE_TCP)
 endif(ENABLE_TCP)
 
 add_executable(traj2odom_node
-  src/traj2odom_node.cpp 
+  src/traj2odom_node.cpp
   )
+add_dependencies(traj2odom_node traj_utils_generate_messages_cpp)
 target_link_libraries(traj2odom_node 
   ${catkin_LIBRARIES}
   )

@@ -34,9 +34,10 @@ include_directories(
     ${PCL_INCLUDE_DIRS}
 )
 
-add_library( path_searching 
+add_library( path_searching
     src/dyn_a_star.cpp
     )
+add_dependencies(path_searching traj_utils_generate_messages_cpp)
 target_link_libraries( path_searching
     ${catkin_LIBRARIES} 
     )  

@@ -1,0 +1,15 @@
+sh: 0: getcwd() failed: No such file or directory
+make[2]：catkin_generated/env_cached.sh：命令未找到
+make[2]: *** [CMakeFiles/traj_utils_generate_messages_eus.dir/build.make:84：/home/flag/Jiangyin2026/devel/.private/traj_utils/share/roseus/ros/traj_utils/msg/FlagState.l] 错误 127
+make[1]: *** [CMakeFiles/Makefile2:1683：CMakeFiles/traj_utils_generate_messages_eus.dir/all] 错误 2
+make[1]: *** 正在等待未完成的任务....
+sh: 0: getcwd() failed: No such file or directory
+make[2]：catkin_generated/env_cached.sh：命令未找到
+make[2]: *** [CMakeFiles/traj_utils_generate_messages_py.dir/build.make:84：/home/flag/Jiangyin2026/devel/.private/traj_utils/lib/python3/dist-packages/traj_utils/msg/_FlagState.py] 错误 127
+make[2]: *** 正在等待未完成的任务....
+make[1]: *** [CMakeFiles/Makefile2:1622：CMakeFiles/traj_utils_generate_messages_py.dir/all] 错误 2
+Assembler messages:
+致命错误： can't create CMakeFiles/traj_utils.dir/src/planning_visualization.cpp.o: 没有那个文件或目录
+make[2]: *** [CMakeFiles/traj_utils.dir/build.make:63：CMakeFiles/traj_utils.dir/src/planning_visualization.cpp.o] 错误 1
+make[1]: *** [CMakeFiles/Makefile2:1199：CMakeFiles/traj_utils.dir/all] 错误 2
+make: *** [Makefile:141：all] 错误 2

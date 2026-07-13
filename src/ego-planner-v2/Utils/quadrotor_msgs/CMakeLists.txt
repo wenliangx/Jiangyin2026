@@ -86,8 +86,9 @@ generate_messages(
 catkin_package(
   #INCLUDE_DIRS include
   LIBRARIES encode_msgs decode_msgs
-  CATKIN_DEPENDS geometry_msgs nav_msgs message_runtime
+  #CATKIN_DEPENDS geometry_msgs nav_msgs
   #DEPENDS system_lib
+  CATKIN_DEPENDS message_runtime
 )
 
 # add_executable(test_exe src/test_exe.cpp)

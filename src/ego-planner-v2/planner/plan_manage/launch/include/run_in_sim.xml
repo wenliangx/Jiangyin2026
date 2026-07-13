@@ -109,6 +109,7 @@
         <arg name="point4_x" value="$(arg target4_x)" />
         <arg name="point4_y" value="$(arg target4_y)" />
         <arg name="point4_z" value="$(arg target4_z)" />
+        <arg name="ego_or_super_" value="0" />
     </include>
     <include file="$(find manual_take_over)/launch/take_over_drone.launch">
         <arg name="drone_id" value="$(arg drone_id)"/>

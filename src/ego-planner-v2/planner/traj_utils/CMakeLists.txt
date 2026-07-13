@@ -41,8 +41,8 @@ generate_messages(
 
 catkin_package(
  INCLUDE_DIRS include
- LIBRARIES traj_utils
- CATKIN_DEPENDS roscpp std_msgs nav_msgs geometry_msgs quadrotor_msgs message_runtime
+ LIBRARIES traj_utils 
+ CATKIN_DEPENDS message_runtime
 #  DEPENDS system_lib
 )
 
@@ -56,8 +56,9 @@ include_directories(
 # link_directories(${PCL_LIBRARY_DIRS})
 
 add_library( traj_utils
-    src/planning_visualization.cpp 
+    src/planning_visualization.cpp
     )
+add_dependencies(traj_utils traj_utils_generate_messages_cpp quadrotor_msgs_generate_messages_cpp)
 target_link_libraries( traj_utils
-    ${catkin_LIBRARIES} 
-    )  
+    ${catkin_LIBRARIES}
+    )
