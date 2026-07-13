@@ -1,7 +1,0 @@
-ego-planner-v2/uav_simulator/so3_control
-/home/flag/Jiangyin2026/devel/.private/so3_control/lib/libso3_control_nodelet.so /home/flag/Jiangyin2026/devel/lib/libso3_control_nodelet.so
-/home/flag/Jiangyin2026/devel/.private/so3_control/lib/libSO3Control.so /home/flag/Jiangyin2026/devel/lib/libSO3Control.so
-/home/flag/Jiangyin2026/devel/.private/so3_control/lib/so3_control/control_example /home/flag/Jiangyin2026/devel/lib/so3_control/control_example
-/home/flag/Jiangyin2026/devel/.private/so3_control/lib/pkgconfig/so3_control.pc /home/flag/Jiangyin2026/devel/lib/pkgconfig/so3_control.pc
-/home/flag/Jiangyin2026/devel/.private/so3_control/share/so3_control/cmake/so3_controlConfig-version.cmake /home/flag/Jiangyin2026/devel/share/so3_control/cmake/so3_controlConfig-version.cmake
-/home/flag/Jiangyin2026/devel/.private/so3_control/share/so3_control/cmake/so3_controlConfig.cmake /home/flag/Jiangyin2026/devel/share/so3_control/cmake/so3_controlConfig.cmake

@@ -1,7 +1,0 @@
-SUPER/mars_uav_sim/marsim_render
-/home/flag/Jiangyin2026/devel/.private/marsim_render/lib/libGLAD.so /home/flag/Jiangyin2026/devel/lib/libGLAD.so
-/home/flag/Jiangyin2026/devel/.private/marsim_render/lib/libmarsim_render.so /home/flag/Jiangyin2026/devel/lib/libmarsim_render.so
-/home/flag/Jiangyin2026/devel/.private/marsim_render/lib/pkgconfig/marsim_render.pc /home/flag/Jiangyin2026/devel/lib/pkgconfig/marsim_render.pc
-/home/flag/Jiangyin2026/devel/.private/marsim_render/lib/marsim_render/test_render /home/flag/Jiangyin2026/devel/lib/marsim_render/test_render
-/home/flag/Jiangyin2026/devel/.private/marsim_render/share/marsim_render/cmake/marsim_renderConfig.cmake /home/flag/Jiangyin2026/devel/share/marsim_render/cmake/marsim_renderConfig.cmake
-/home/flag/Jiangyin2026/devel/.private/marsim_render/share/marsim_render/cmake/marsim_renderConfig-version.cmake /home/flag/Jiangyin2026/devel/share/marsim_render/cmake/marsim_renderConfig-version.cmake
