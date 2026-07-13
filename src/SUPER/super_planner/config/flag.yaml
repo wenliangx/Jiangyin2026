@@ -53,7 +53,7 @@ traj_opt:
     # max_jerk: 120.0
     max_vel: 1.0
     max_acc: 5.0 
-    max_jerk: 60.0 
+    max_jerk: 15.0 #原60.0 
     max_omg: 2.5
     max_acc_thr: 17.0
     min_acc_thr: 6.0
@@ -72,7 +72,7 @@ traj_opt:
     penna_pos: 5.0e+9
     penna_vel: 5.0e+8
     penna_acc: 5.0e+8
-    penna_jerk: -5.0e+8
+    penna_jerk: 5.0e+7 #原-5.0e+8
     penna_attract: 5.0e+8
     penna_omg: -1
     penna_max_acc_thr: -1
@@ -120,12 +120,12 @@ rog_map:
   unk_inflation_step: 1
   map_size: [ 15,110,6 ]
   # If the map rolling is disable, the map origin [m] should be set.
-  fix_map_origin: [ 0,0,1.5 ]
+  fix_map_origin: [0,0,1]  #原[ 0,0,1.5 ]
   frontier_extraction_en: false
 
   # Virtual ceil and ground
   virtual_ceil_height: 1.3
-  virtual_ground_height: -0.35
+  virtual_ground_height: 0.3 #原-0.35
 
   load_pcd_en: false
 

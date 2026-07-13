@@ -146,7 +146,7 @@ namespace mission_planner {
                 return;
             }
             
-            if (CloseToPoint(cfg_.waypoints[waypoint_counter], waypoint_counter)) {
+            if (CloseToPoint(cfg_.waypoints[waypoint_counter], waypoint_counter)) {//到第waypoint_counter个点的距离是否小于阈值
                 cout << RED << " -- [MISSION] Close to goal {}, switch to next." << RESET << endl;
                 waypoint_counter++;
                 if (waypoint_counter >= cfg_.waypoints.size()) {

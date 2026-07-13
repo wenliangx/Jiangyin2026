@@ -61,7 +61,7 @@ namespace mission_planner {
             ifstream theFile(file_name);
             std::string line;
             Vec3f log;
-            while (std::getline(theFile, line)) {
+            while (std::getline(theFile, line)) {// 按空格分割每行,前三个字段是 x, y, z → 存入 Vec3f,最后一个字段是 switch_dis → push 到 switch_dis_vec
                 std::vector<std::string> result;
                 std::istringstream iss(line);
                 for (std::string s; iss >> s;) {

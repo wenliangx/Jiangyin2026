@@ -1846,12 +1846,14 @@ int main(int argc, char **argv)
             current_states.push_back(quat_fcu.y());
             current_states.push_back(quat_fcu.z());
 
+
             // desired states: hover at (0, 0, 0.2), level attitude
             for (int i = 0; i < nmpc_simple_predict_step + 1; i++)
             {
+
                 desired_states.push_back(0.0);   // px
                 desired_states.push_back(0.0);   // py
-                desired_states.push_back(0.3);   // pz
+                desired_states.push_back(1.0);   // pz
                 desired_states.push_back(0.0);   // vx
                 desired_states.push_back(0.0);   // vy
                 desired_states.push_back(0.0);   // vz
@@ -2329,10 +2331,10 @@ int main(int argc, char **argv)
             if(need_GeneTraj){
                 EgoGeneTraj();
                 if (Ego_traj_count<Ego_traj_size){
-                    EGO_flag_aimpos(Ego_traj[Ego_traj_count]);
+                    EGO_flag_aimpos(Ego_traj[Ego_traj_count]);//给定点传到全局变量
                     ROS_INFO("Ego Trajectory Num %d", Ego_traj_count);
                     ROS_INFO("Flag %d: x: %f, y: %f, z: %f", Ego_traj_count, Ego_traj[Ego_traj_count].x, Ego_traj[Ego_traj_count].y, Ego_traj[Ego_traj_count].z);
-                    planner_cmd_pub.publish(flag_super_msg);
+                    //planner_cmd_pub.publish(flag_super_msg);
                     // ego_flag_pub.publish(flag_traj_msg);
                 }           
                 Ego_traj_count++;

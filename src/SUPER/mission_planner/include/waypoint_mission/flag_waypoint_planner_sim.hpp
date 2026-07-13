@@ -99,7 +99,7 @@ namespace mission_planner {
         void GoalPubTimerCallback(const ros::TimerEvent &e) {
             static int last_mkr_sub_num = mkr_pub_.getNumSubscribers();
             int cur_mkr_sub_num = mkr_pub_.getNumSubscribers();
-            if (cur_mkr_sub_num != last_mkr_sub_num && cur_mkr_sub_num > 0) {
+            if (cur_mkr_sub_num != last_mkr_sub_num && cur_mkr_sub_num > 0) {//可视化订阅检测
                 visualizeMission();
             }
             last_mkr_sub_num = cur_mkr_sub_num;
@@ -112,12 +112,12 @@ namespace mission_planner {
                     trigger_once = true;
                 }
             }
-            if (!triggered) {
+            if (!triggered) {//触发检查
                 return;
             }
 
             double cur_t = ros::Time::now().toSec();
-            if (cur_t - odom_rcv_time > cfg_.odom_timeout) {
+            if (cur_t - odom_rcv_time > cfg_.odom_timeout) {//里程计超时检测
                 static double last_print_t = ros::Time::now().toSec();
                 if (cur_t - last_print_t > 1.0) {
                     last_print_t = cur_t;
@@ -127,12 +127,11 @@ namespace mission_planner {
             }
 
 
-            if (CloseToPoint(cfg_.waypoints[waypoint_counter], waypoint_counter)) {
+            if (CloseToPoint(cfg_.waypoints[waypoint_counter], waypoint_counter)) {//航点抵达判定&切换
                 cout << RED << " -- [MISSION] Close to goal {}, switch to next." << RESET << endl;
                 waypoint_counter++;
                 new_goal = true;
-                if (waypoint_counter >= cfg_.waypoints.size()) {
-                    // 结束，停止发布。
+                if (waypoint_counter >= cfg_.waypoints.size()) {//空航点保护
                     waypoint_counter = cfg_.waypoints.size() - 1;
                     triggered = false;
                     new_goal = false;
@@ -141,7 +140,7 @@ namespace mission_planner {
 
             static double last_pub_time = 0;
 
-            if (new_goal || cur_t - last_pub_time > cfg_.publish_dt) {
+            if (new_goal || cur_t - last_pub_time > cfg_.publish_dt) {// 两种情况发布航点：(a)新航点 (b)距上次发布已超过 publish_dt
                 new_goal = false;
                 /*LYX 2025/7/2
                 此处是为了适应更改后mission planner发出的更复杂的航路点指令，包含是否避障、最大速度信息。
