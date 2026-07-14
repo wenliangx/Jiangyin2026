@@ -29,6 +29,14 @@ export ROS_IP="${ROS_IP:-jy-dev}"
 log_info()  { printf '[jy2026] %s\n' "$*"; }
 log_error() { printf '[jy2026 ERROR] %s\n' "$*" >&2; }
 
+
+prepare_livox_ros_driver2_ros1() {
+  local driver_dir="/ws/src/livox_ros_driver2"
+  if [[ -f "${driver_dir}/package_ROS1.xml" ]]; then
+    cp -f "${driver_dir}/package_ROS1.xml" "${driver_dir}/package.xml"
+  fi
+}
+
 launch_service() {
   local name="$1" cmd="$2" delay="${3:-2}"
   log_info "Starting ${name}..."
@@ -46,16 +54,17 @@ if [[ "${DEV_MODE}" == "true" ]]; then
   log_info "Dev mode: compiling from /ws/src/..."
 
   rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
+  prepare_livox_ros_driver2_ros1
 
   cd /ws
   log_info "catkin_make..."
-  catkin_make -j"$(nproc)" 2>&1 | tail -20
+  catkin_make -j"$(nproc)" -DROS_EDITION=ROS1 2>&1 | tail -20
   source /ws/devel/setup.bash
 
   log_info "Building RA-LIO..."
   mkdir -p /ws/src/RA-LIO/build && cd /ws/src/RA-LIO/build
   cmake .. -DCMAKE_BUILD_TYPE=Release \
-    -Dlivox_ros_driver_DIR=/ws/devel/share/livox_ros_driver/cmake 2>&1 | tail -3
+    -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake 2>&1 | tail -3
   make -j"$(nproc)" 2>&1 | tail -3
   cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true
   cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true

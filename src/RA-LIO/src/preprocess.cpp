@@ -54,7 +54,7 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
 
 // === process函数重载 ===
 // 处理Livox自定义消息格式（AVIA雷达）
-void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+void Preprocess::process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   avia_handler(msg);         // 调用AVIA专用处理函数
   *pcl_out = pl_surf;        // 输出处理后的点云
@@ -91,7 +91,7 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
 // === avia_handler：处理Livox AVIA雷达数据 ===
 // 特点：非重复扫描模式，点分布不规则
 // 支持两种模式：特征提取模式、简单降采样模式
-void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+void Preprocess::avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg)
 {
   // 清空所有缓存
   pl_surf.clear();

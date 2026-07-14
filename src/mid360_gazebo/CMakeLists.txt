@@ -7,7 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   gazebo_ros
-  livox_ros_driver
+  livox_ros_driver2
 )
 
 catkin_package()

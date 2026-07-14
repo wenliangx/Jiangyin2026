@@ -5,7 +5,7 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver2/CustomMsg.h>
 #include <pcl/point_types.h>
 
 using namespace std;
@@ -170,7 +170,7 @@ class Preprocess
   ~Preprocess();
 
   // process函数重载：支持Livox自定义消息格式和标准PointCloud2格式
-  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
 
   // 通过参数设置预处理参数
@@ -191,7 +191,7 @@ class Preprocess
   // 各雷达型号的处理函数
   void vanjee_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void rs_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-  void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
+  void avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
 

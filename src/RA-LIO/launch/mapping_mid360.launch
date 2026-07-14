@@ -10,7 +10,7 @@
     LiDAR 系 ──[外参 extrinsic_T/R]──► IMU 系(Body系) ──[状态量 pos/rot]──► 世界系
 
   输入话题（由其他节点或rosbag提供）:
-    /livox/lidar  ── Livox 自定义点云消息 (livox_ros_driver::CustomMsg)
+    /livox/lidar  ── Livox 自定义点云消息 (livox_ros_driver2::CustomMsg)
     /livox/imu    ── IMU 数据 (sensor_msgs::Imu)
 
   输出话题（由 laserMapping 节点发布）:

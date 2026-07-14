@@ -15,7 +15,7 @@ Livox CustomMsg format:
 
 import rospy
 from sensor_msgs.msg import PointCloud2, PointField
-from livox_ros_driver.msg import CustomMsg, CustomPoint
+from livox_ros_driver2.msg import CustomMsg, CustomPoint
 from sensor_msgs import point_cloud2
 import numpy as np
 

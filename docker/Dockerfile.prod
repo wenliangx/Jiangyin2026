@@ -27,14 +27,17 @@ COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
 
 WORKDIR /ws
 
-RUN rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
+RUN rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE && \
+    if [ -f /ws/src/livox_ros_driver2/package_ROS1.xml ]; then \
+        cp -f /ws/src/livox_ros_driver2/package_ROS1.xml /ws/src/livox_ros_driver2/package.xml; \
+    fi
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make -j\$(nproc) 2>&1" || \
-    /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make -j\$(nproc) 2>&1 | tail -80"
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make -j\$(nproc) -DROS_EDITION=ROS1 2>&1" || \
+    /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make -j\$(nproc) -DROS_EDITION=ROS1 2>&1 | tail -80"
 
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && source /ws/devel/setup.bash && \
     mkdir -p /ws/src/RA-LIO/build && cd /ws/src/RA-LIO/build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -Dlivox_ros_driver_DIR=/ws/devel/share/livox_ros_driver/cmake && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake && \
     make -j\$(nproc) && \
     cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true; \
     cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true; \
