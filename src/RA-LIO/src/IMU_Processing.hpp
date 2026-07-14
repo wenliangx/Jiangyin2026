@@ -174,8 +174,9 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   const double acc_norm = mean_acc_ms2.norm();
 
   state_ikfom init_state = kf_state.get_x();
-  // 重力估计：使用测得的重力方向，幅值统一为 G_m_s2
-  init_state.grav = -G_m_s2 * mean_acc.normalized();
+  // g2R(mean_acc) already aligns the measured static acceleration to world +Z.
+  // Gravity is a world-frame state, so keep it fixed in world -Z.
+  init_state.grav = V3D(0, 0, -G_m_s2);
   // 陀螺仪bias等于静止状态下角速度的均值
   init_state.bg = mean_gyr;
   init_state.ba = V3D(0,0,0);    // 加速度计bias初始为0
