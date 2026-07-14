@@ -97,6 +97,7 @@ ImuProcess::ImuProcess()
   last_lidar_end_time_ = 0;
   Lidar_R_wrt_IMU = M3D::Identity();       // 外参旋转初始化为单位阵
   Lidar_T_wrt_IMU = V3D(0, 0, 0);         // 外参平移初始化为零向量
+  Q = process_noise_cov();
 }
 
 ImuProcess::~ImuProcess() {}
@@ -121,6 +122,12 @@ void ImuProcess::set_param(const V3D &transl, const M3D &rot, const V3D &gyr, co
   cov_acc_scale = acc;
   cov_bias_gyr = gyr_bias;     // 陀螺仪bias噪声协方差
   cov_bias_acc = acc_bias;     // 加速度计bias噪声协方差
+
+  Q = Eigen::Matrix<double, 12, 12>::Zero();
+  Q.block<3, 3>(0, 0) = cov_gyr.asDiagonal();
+  Q.block<3, 3>(3, 3) = cov_acc.asDiagonal();
+  Q.block<3, 3>(6, 6) = cov_bias_gyr.asDiagonal();
+  Q.block<3, 3>(9, 9) = cov_bias_acc.asDiagonal();
 }
 
 // === IMU初始化 ===
@@ -186,10 +193,9 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
 }
 
 // === IMU主处理函数 ===
-// 此版本简化了前向传播：
 //   初始化阶段：调用IMU_init进行姿态和bias初始化
-//   正常运行阶段：保留当前帧点云在LiDAR/body系，由后续IEKF观测模型统一变换到世界系
-// 注意：这种简化方式不进行逐点IMU前向传播，适用于低速运动场景
+//   正常运行阶段：用IMU做状态前向预测，同时保留当前帧点云在LiDAR/body系，
+//              由后续IEKF观测模型统一变换到世界系
 void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, PointCloudXYZI::Ptr &cur_pcl_un_)
 {
   if(meas.imu.empty()) return;           // 没有IMU数据则跳过
@@ -214,7 +220,38 @@ void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, Poi
     return;
   }
 
-  // --- 正常运行阶段：保留LiDAR/body系点云 ---
+  // --- 正常运行阶段：用IMU前向预测位姿与协方差 ---
+  double last_timestamp = last_imu_ ? last_imu_->header.stamp.toSec() : meas.imu.front()->header.stamp.toSec();
+  for (const auto &imu : meas.imu)
+  {
+    const double imu_time = imu->header.stamp.toSec();
+    double dt = imu_time - last_timestamp;
+    last_timestamp = imu_time;
+
+    if (!std::isfinite(dt) || dt <= 0.0 || dt > 0.1)
+    {
+      continue;
+    }
+
+    input_ikfom in;
+    in.gyro << imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z;
+    in.acc << imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z;
+
+    const double acc_norm = in.acc.norm();
+    if (!std::isfinite(acc_norm) || acc_norm < 1e-3)
+    {
+      continue;
+    }
+    if (acc_norm < 3.0)
+    {
+      in.acc *= G_m_s2;
+    }
+
+    kf_state.predict(dt, Q, in);
+  }
+  last_imu_ = meas.imu.back();
+
+  // --- 保留LiDAR/body系点云 ---
   cur_pcl_un_->clear();
   if (meas.lidar->empty()) return;
   *cur_pcl_un_ = *meas.lidar;
