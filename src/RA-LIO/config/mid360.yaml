@@ -62,6 +62,25 @@ mapping:
                    0, 1, 0,                      # 当前为单位阵，表示LiDAR和IMU
                    0, 0, 1]                      # 坐标轴方向一致
 
+
+# === 安装坐标修正 ===
+# 所有角度单位为度，旋转顺序为 Rz(yaw) * Ry(pitch) * Rx(roll)。
+# imu_*: 将真实雷达/IMU输出的原始IMU坐标旋到飞机Body坐标。
+# 当前安装判断为IMU绕Z轴转了180度，因此默认 yaw=180。
+# lidar_*: LiDAR坐标到飞机Body坐标的安装角，斜装pitch在这里进入定位估计链路。
+# output_*: 仅用于发布/可视化层的额外补偿；正常应保持0，避免和外参重复补偿。
+mount:
+    imu_roll_deg: 0.0
+    imu_pitch_deg: 0.0
+    imu_yaw_deg: 180.0
+
+    lidar_roll_deg: 0.0
+    lidar_pitch_deg: 20.0
+    lidar_yaw_deg: 0.0
+
+    output_roll_deg: 0.0
+    output_pitch_deg: 0.0
+
 # === 发布控制 ===
 publish:
     path_en:  true               # 是否发布运动轨迹 (nav_msgs::Path, /path话题)
