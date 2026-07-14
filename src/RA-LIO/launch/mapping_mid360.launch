@@ -26,6 +26,17 @@
 	<arg name="rviz" default="true" />         <!-- 是否启动 RViz 可视化（当前注释掉未使用） -->
 	<arg name="use_sim_time" default="false" /> <!-- 是否使用仿真时间（播放rosbag时设为true） -->
 
+	<arg name="output_transform" default="false" />
+	<arg name="output_transform_topic" default="/Odometry_transformed" />
+	<arg name="output_transform_mode" default="child" />
+	<arg name="output_transform_roll_deg" default="0.0" />
+	<arg name="output_transform_pitch_deg" default="0.0" />
+	<arg name="output_transform_yaw_deg" default="0.0" />
+	<arg name="output_transform_x" default="0.0" />
+	<arg name="output_transform_y" default="0.0" />
+	<arg name="output_transform_z" default="0.0" />
+	<arg name="output_transform_child_frame" default="body_transformed" />
+
 	<!-- === 从 YAML 文件加载参数 === -->
 	<rosparam command="load" file="$(find ra_lio)/config/mid360.yaml" />
 
@@ -60,6 +71,22 @@
     <node pkg="ra_lio" type="ralio_mapping" name="laserMapping" output="screen">
         <param name="use_sim_time" value="$(arg use_sim_time)" />
     </node>
+
+
+	<group if="$(arg output_transform)">
+		<node pkg="ra_lio" type="odom_mount_transform.py" name="odom_mount_transform" output="screen">
+			<param name="input_topic" value="/Odometry" />
+			<param name="output_topic" value="$(arg output_transform_topic)" />
+			<param name="mode" value="$(arg output_transform_mode)" />
+			<param name="roll_deg" value="$(arg output_transform_roll_deg)" />
+			<param name="pitch_deg" value="$(arg output_transform_pitch_deg)" />
+			<param name="yaw_deg" value="$(arg output_transform_yaw_deg)" />
+			<param name="x" value="$(arg output_transform_x)" />
+			<param name="y" value="$(arg output_transform_y)" />
+			<param name="z" value="$(arg output_transform_z)" />
+			<param name="output_child_frame_id" value="$(arg output_transform_child_frame)" />
+		</node>
+	</group>
 
 	<!-- === RViz 可视化（默认注释掉，需要时取消注释） === -->
 	<!-- <group if="$(arg rviz)">

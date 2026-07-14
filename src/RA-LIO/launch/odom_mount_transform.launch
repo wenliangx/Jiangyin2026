@@ -1,0 +1,30 @@
+<launch>
+  <arg name="input_topic" default="/Odometry" />
+  <arg name="output_topic" default="/Odometry_transformed" />
+  <arg name="mode" default="child" />
+
+  <!-- Fixed transform angles in degrees, R = Rz(yaw) * Ry(pitch) * Rx(roll). -->
+  <arg name="roll_deg" default="0.0" />
+  <arg name="pitch_deg" default="0.0" />
+  <arg name="yaw_deg" default="0.0" />
+  <arg name="x" default="0.0" />
+  <arg name="y" default="0.0" />
+  <arg name="z" default="0.0" />
+
+  <arg name="output_frame_id" default="" />
+  <arg name="output_child_frame_id" default="body_transformed" />
+
+  <node pkg="ra_lio" type="odom_mount_transform.py" name="odom_mount_transform" output="screen">
+    <param name="input_topic" value="$(arg input_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="mode" value="$(arg mode)" />
+    <param name="roll_deg" value="$(arg roll_deg)" />
+    <param name="pitch_deg" value="$(arg pitch_deg)" />
+    <param name="yaw_deg" value="$(arg yaw_deg)" />
+    <param name="x" value="$(arg x)" />
+    <param name="y" value="$(arg y)" />
+    <param name="z" value="$(arg z)" />
+    <param name="output_frame_id" value="$(arg output_frame_id)" />
+    <param name="output_child_frame_id" value="$(arg output_child_frame_id)" />
+  </node>
+</launch>

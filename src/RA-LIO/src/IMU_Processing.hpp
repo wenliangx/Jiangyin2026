@@ -43,7 +43,7 @@ class ImuProcess
 
   void Reset();  // 重置IMU处理状态（重新初始化）
   // 设置IMU处理参数：LiDAR-IMU外参 (transl, rot)、噪声协方差参数
-  void set_param(const V3D &transl, const M3D &rot, const M3D &imu_raw_to_body, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias);
+  void set_param(const V3D &transl, const M3D &rot, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias);
   Eigen::Matrix<double, 12, 12> Q;  // 过程噪声协方差矩阵
 
   // 主处理函数：对measurement中的点云进行去畸变/坐标变换
@@ -65,9 +65,8 @@ class ImuProcess
 
   PointCloudXYZI::Ptr cur_pcl_un_;  // 当前处理的"去畸变"后点云
   sensor_msgs::ImuConstPtr last_imu_;  // 上一帧IMU数据
-  M3D Lidar_R_wrt_IMU;  // LiDAR -> Body/IMU 旋转外参
-  M3D IMU_Raw_R_wrt_Body;  // 原始IMU坐标 -> Body坐标旋转
-  V3D Lidar_T_wrt_IMU;  // LiDAR -> Body/IMU 平移外参
+  M3D Lidar_R_wrt_IMU;  // LiDAR -> IMU 旋转外参
+  V3D Lidar_T_wrt_IMU;  // LiDAR -> IMU 平移外参
   V3D mean_acc;          // 累计平均加速度（用于初始化重力估计）
   V3D mean_gyr;          // 累计平均角速度（用于初始化陀螺仪bias估计）
   V3D angvel_last;       // 上一次角速度
@@ -97,7 +96,6 @@ ImuProcess::ImuProcess()
   start_timestamp_ = -1;
   last_lidar_end_time_ = 0;
   Lidar_R_wrt_IMU = M3D::Identity();       // 外参旋转初始化为单位阵
-  IMU_Raw_R_wrt_Body = M3D::Identity();
   Lidar_T_wrt_IMU = V3D(0, 0, 0);         // 外参平移初始化为零向量
   Q = process_noise_cov();
 }
@@ -114,11 +112,10 @@ void ImuProcess::Reset()
 }
 
 // 从外部设置IMU处理参数
-void ImuProcess::set_param(const V3D &transl, const M3D &rot, const M3D &imu_raw_to_body, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias)
+void ImuProcess::set_param(const V3D &transl, const M3D &rot, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias)
 {
-  Lidar_T_wrt_IMU = transl;   // LiDAR相对Body/IMU的平移
-  Lidar_R_wrt_IMU = rot;      // LiDAR相对Body/IMU的旋转
-  IMU_Raw_R_wrt_Body = imu_raw_to_body;
+  Lidar_T_wrt_IMU = transl;   // LiDAR相对IMU的平移
+  Lidar_R_wrt_IMU = rot;      // LiDAR相对IMU的旋转
   cov_gyr = gyr;               // 陀螺仪测量噪声协方差
   cov_acc = acc;               // 加速度计测量噪声协方差
   cov_gyr_scale = gyr;         // 保留原始值用于初始化结束后恢复
@@ -149,10 +146,8 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   {
     const auto &acc = imu->linear_acceleration;
     const auto &gyr = imu->angular_velocity;
-    V3D acc_body = IMU_Raw_R_wrt_Body * V3D(acc.x, acc.y, acc.z);
-    V3D gyr_body = IMU_Raw_R_wrt_Body * V3D(gyr.x, gyr.y, gyr.z);
-    mean_acc += acc_body;
-    mean_gyr += gyr_body;
+    mean_acc(0) += acc.x; mean_acc(1) += acc.y; mean_acc(2) += acc.z;
+    mean_gyr(0) += gyr.x; mean_gyr(1) += gyr.y; mean_gyr(2) += gyr.z;
   }
   mean_acc /= N;    // 求平均值
   mean_gyr /= N;
@@ -240,8 +235,8 @@ void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, Poi
     }
 
     input_ikfom in;
-    in.gyro = IMU_Raw_R_wrt_Body * V3D(imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z);
-    in.acc = IMU_Raw_R_wrt_Body * V3D(imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z);
+    in.gyro << imu->angular_velocity.x, imu->angular_velocity.y, imu->angular_velocity.z;
+    in.acc << imu->linear_acceleration.x, imu->linear_acceleration.y, imu->linear_acceleration.z;
 
     const double acc_norm = in.acc.norm();
     if (!std::isfinite(acc_norm) || acc_norm < 1e-3)

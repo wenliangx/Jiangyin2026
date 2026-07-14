@@ -54,18 +54,6 @@
 #define PI 3.1415926
 
 
-static M3D rotation_from_rpy_deg(double roll_deg, double pitch_deg, double yaw_deg)
-{
-    const double roll = roll_deg * PI / 180.0;
-    const double pitch = pitch_deg * PI / 180.0;
-    const double yaw = yaw_deg * PI / 180.0;
-
-    M3D Rx = Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
-    M3D Ry = Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()).toRotationMatrix();
-    M3D Rz = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
-    return Rz * Ry * Rx;
-}
-
 // === 时间统计变量 ===
 int add_point_size = 0, kdtree_delete_counter = 0;      // 添加点数、被删除点数统计
 bool pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true, speed_vector_en= true;
@@ -76,14 +64,8 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-double theta = 0.0;                       // 输出俯仰补偿角 Pitch（度），仅用于发布层
-double alpha = 0.0;                       // 输出横滚补偿角 Roll（度），仅用于发布层
-double imu_mount_roll_deg = 0.0;
-double imu_mount_pitch_deg = 0.0;
-double imu_mount_yaw_deg = 0.0;
-double lidar_mount_roll_deg = 0.0;
-double lidar_mount_pitch_deg = 0.0;
-double lidar_mount_yaw_deg = 0.0;
+double theta = 0.0;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
+double alpha = 0.0;                       // 横滚补偿角 Roll（度），用于输出显示补偿
 
 // === 线程同步 ===
 mutex mtx_buffer;                         // 数据buffer互斥锁
@@ -879,14 +861,6 @@ int main(int argc, char **argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
-    nh.param<double>("mount/imu_roll_deg", imu_mount_roll_deg, 0.0);
-    nh.param<double>("mount/imu_pitch_deg", imu_mount_pitch_deg, 0.0);
-    nh.param<double>("mount/imu_yaw_deg", imu_mount_yaw_deg, 0.0);
-    nh.param<double>("mount/lidar_roll_deg", lidar_mount_roll_deg, 0.0);
-    nh.param<double>("mount/lidar_pitch_deg", lidar_mount_pitch_deg, 0.0);
-    nh.param<double>("mount/lidar_yaw_deg", lidar_mount_yaw_deg, 0.0);
-    nh.param<double>("mount/output_pitch_deg", theta, 0.0);
-    nh.param<double>("mount/output_roll_deg", alpha, 0.0);
 
     cout << "Lidar_type: " << p_pre->lidar_type << endl;
 
@@ -910,18 +884,10 @@ int main(int argc, char **argv)
 
     // === 初始化外参和IMU处理参数 ===
     Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);    // 平移外参
-    M3D lidar_config_R;
-    lidar_config_R << MAT_FROM_ARRAY(extrinR);
-    M3D imu_raw_to_body_R = rotation_from_rpy_deg(imu_mount_roll_deg, imu_mount_pitch_deg, imu_mount_yaw_deg);
-    M3D lidar_mount_R = rotation_from_rpy_deg(lidar_mount_roll_deg, lidar_mount_pitch_deg, lidar_mount_yaw_deg);
-    Lidar_R_wrt_IMU = lidar_mount_R * lidar_config_R;
+    Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);    // 旋转外参
 
-    ROS_INFO("IMU raw->body mount rpy(deg): roll=%.3f pitch=%.3f yaw=%.3f", imu_mount_roll_deg, imu_mount_pitch_deg, imu_mount_yaw_deg);
-    ROS_INFO("LiDAR->body mount rpy(deg): roll=%.3f pitch=%.3f yaw=%.3f", lidar_mount_roll_deg, lidar_mount_pitch_deg, lidar_mount_yaw_deg);
-    ROS_INFO("Output compensation rpy(deg): roll=%.3f pitch=%.3f", alpha, theta);
-
-    // 设置IMU处理模块参数：外参、IMU安装旋转、噪声协方差
-    p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, imu_raw_to_body_R, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
+    // 设置IMU处理模块参数：外参、噪声协方差
+    p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
                       V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
     // 注册信号处理器（Ctrl+C安全退出）
