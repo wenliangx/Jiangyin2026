@@ -44,6 +44,7 @@
 #include "IMU_Processing.hpp"
 
 #include <cmath>
+#include <limits>
 
 // === 常量和宏定义 ===
 #define INIT_TIME (0.1)            // EKF初始化时间（s），系统启动后0.1秒内不进行EKF更新
@@ -627,6 +628,29 @@ void publish_map(const ros::Publisher &pubLaserCloudMap)
 
 // === set_posestamp：设置里程计消息中的位置和姿态 ===
 // 包含姿态补偿：R_3 * R_roll * R_pitch 坐标系调整
+
+static bool set_quaternion_msg(const Eigen::Matrix3d &rot, geometry_msgs::Quaternion &orientation)
+{
+    Eigen::Quaterniond q(rot);
+    const double norm = q.norm();
+    if (!std::isfinite(norm) || norm < 1e-12)
+    {
+        ROS_WARN_THROTTLE(1.0, "Invalid orientation quaternion, use identity instead");
+        orientation.x = 0.0;
+        orientation.y = 0.0;
+        orientation.z = 0.0;
+        orientation.w = 1.0;
+        return false;
+    }
+
+    q.normalize();
+    orientation.x = q.x();
+    orientation.y = q.y();
+    orientation.z = q.z();
+    orientation.w = q.w();
+    return true;
+}
+
 // 位置补偿：pos_comp = R_3 * R_roll * R_pitch * pos
 // 姿态补偿：q_comp = R_3 * R_roll * R_pitch * R * (R_3 * R_roll * R_pitch)^{-1}
 template <typename T>
@@ -648,11 +672,8 @@ void set_posestamp(T &out)
     out.pose.position.z = Pos_compensate(2);
 
     // 姿态补偿：将原始姿态通过坐标变换矩阵进行旋转
-    auto q_ = Eigen::Quaterniond(R_0*R_compensate_roll1*R_compensate*state_point.rot.matrix()*(R_0*R_compensate_roll1*R_compensate).inverse());
-    out.pose.orientation.x = q_.coeffs()[0];
-    out.pose.orientation.y = q_.coeffs()[1];
-    out.pose.orientation.z = q_.coeffs()[2];
-    out.pose.orientation.w = q_.coeffs()[3];
+    set_quaternion_msg(R_0*R_compensate_roll1*R_compensate*state_point.rot.matrix()*(R_0*R_compensate_roll1*R_compensate).inverse(),
+                       out.pose.orientation);
 }
 
 // === set_twiststamp：设置里程计消息中的线速度 ===
@@ -684,11 +705,7 @@ void set_pathstamp(T &out)
     out.pose.position.y = state_point.pos(1);
     out.pose.position.z = state_point.pos(2);
 
-    auto q_ = Eigen::Quaterniond(state_point.rot.matrix());
-    out.pose.orientation.x = q_.coeffs()[0];
-    out.pose.orientation.y = q_.coeffs()[1];
-    out.pose.orientation.z = q_.coeffs()[2];
-    out.pose.orientation.w = q_.coeffs()[3];
+    set_quaternion_msg(state_point.rot.matrix(), out.pose.orientation);
 }
 
 // === publish_odometry：发布里程计Odometry消息 ===
@@ -795,11 +812,7 @@ void Visualization_speed(const ros::Publisher &marker_pub)
     marker.pose.position.z = Pos_compensate(2);
 
     Atti_compensate = Atti_compensate.transpose();
-    auto sq = Eigen::Quaterniond(Atti_compensate);
-    marker.pose.orientation.w = sq.coeffs()[0];
-    marker.pose.orientation.x = sq.coeffs()[1];
-    marker.pose.orientation.y = sq.coeffs()[2];
-    marker.pose.orientation.z = sq.coeffs()[3];
+    set_quaternion_msg(Atti_compensate, marker.pose.orientation);
 
     marker_pub.publish(marker);
 }

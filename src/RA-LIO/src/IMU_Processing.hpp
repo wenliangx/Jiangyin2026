@@ -145,29 +145,32 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   mean_acc /= N;    // 求平均值
   mean_gyr /= N;
 
+  const double raw_acc_norm = mean_acc.norm();
+  if (!std::isfinite(raw_acc_norm) || raw_acc_norm < 1e-3)
+  {
+    ROS_WARN_THROTTLE(1.0, "Invalid IMU acceleration during initialization: [%.6f %.6f %.6f], skip this packet",
+                      mean_acc.x(), mean_acc.y(), mean_acc.z());
+    mean_acc.setZero();
+    mean_gyr.setZero();
+    return;
+  }
+
+  // Livox ROS Driver 2 publishes accelerometer data in g, while ROS/RA-LIO math
+  // expects m/s^2. Detect g-scale data by its static norm and convert it.
+  const double acc_unit_scale = raw_acc_norm < 3.0 ? G_m_s2 : 1.0;
+  const V3D mean_acc_ms2 = mean_acc * acc_unit_scale;
+  const double acc_norm = mean_acc_ms2.norm();
+
   state_ikfom init_state = kf_state.get_x();
-  // 重力估计：加速度均值的方向即为重力方向（大小归一化到G_m_s2）
-  init_state.grav = -mean_acc.norm() * mean_acc.normalized();
+  // 重力估计：使用测得的重力方向，幅值统一为 G_m_s2
+  init_state.grav = -G_m_s2 * mean_acc.normalized();
   // 陀螺仪bias等于静止状态下角速度的均值
   init_state.bg = mean_gyr;
   init_state.ba = V3D(0,0,0);    // 加速度计bias初始为0
   init_state.vel = V3D(0,0,0);   // 速度初始为0
 
-  // 利用重力方向计算初始旋转矩阵（将估计的重力方向对齐到世界系z轴 [0,0,-G]）
-  V3D g_world(0, 0, -G_m_s2);   // 世界系下的理论重力方向
-  M3D R0;
-  R0.col(2) = init_state.grav.normalized();  // 初始旋转矩阵第3列 = 重力方向单位向量
-  V3D cross_g = g_world.cross(R0.col(2));     // 理论重力与实际重力的叉积
-  double sin_g = cross_g.norm();              // 叉积的模 = sin(θ)
-  double cos_g = g_world.dot(R0.col(2));      // 点积 = cos(θ)
-  M3D Sk;
-  Sk << 0.0, -cross_g.z(), cross_g.y(),
-        cross_g.z(), 0.0, -cross_g.x(),
-        -cross_g.y(), cross_g.x(), 0.0;
-  // Rodriguez公式：用反对称矩阵Sk修正旋转矩阵
-  if (sin_g > 1e-6) {
-    R0 += Sk * (R0 - M3D::Identity()) + (Sk * Sk) * ((1.0 - cos_g) / (sin_g * sin_g)) * (R0 - M3D::Identity());
-  }
+  // 利用重力方向计算初始旋转矩阵，避免只初始化一列矩阵导致 NaN 四元数
+  M3D R0 = g2R(mean_acc);
   init_state.rot = Sophus::SO3d(Eigen::Quaterniond(R0));
 
   // 外参初始化（旋转为单位阵，平移使用配置值）
@@ -176,7 +179,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
 
   kf_state.change_x(init_state);  // 将初始化结果写入EKF
   // 根据实际测量的加速度大小缩放加速度噪声协方差
-  cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
+  cov_acc *= pow(G_m_s2 / acc_norm, 2);
 
   N++;
   last_imu_ = imu_dec.back();
