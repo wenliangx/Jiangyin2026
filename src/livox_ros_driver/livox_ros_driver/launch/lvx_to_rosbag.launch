@@ -1,7 +1,7 @@
 <launch>
 
 	<arg name="lvx_file_path" default="livox_test.lvx"/>
-	<arg name="bd_list" default="100000000000000"/>
+	<arg name="bd_list" default="47MDLCC0020285"/>
 	<arg name="xfer_format" default="0"/>
 	<arg name="multi_topic" default="0"/>
 	<arg name="data_src" default="2"/>
