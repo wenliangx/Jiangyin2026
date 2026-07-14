@@ -188,7 +188,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
 // === IMU主处理函数 ===
 // 此版本简化了前向传播：
 //   初始化阶段：调用IMU_init进行姿态和bias初始化
-//   正常运行阶段：直接将整帧点云用当前EKF状态从LiDAR系转换到世界系
+//   正常运行阶段：保留当前帧点云在LiDAR/body系，由后续IEKF观测模型统一变换到世界系
 // 注意：这种简化方式不进行逐点IMU前向传播，适用于低速运动场景
 void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, PointCloudXYZI::Ptr &cur_pcl_un_)
 {
@@ -214,27 +214,8 @@ void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, Poi
     return;
   }
 
-  // --- 正常运行阶段：点云坐标变换 ---
+  // --- 正常运行阶段：保留LiDAR/body系点云 ---
   cur_pcl_un_->clear();
   if (meas.lidar->empty()) return;
-  *cur_pcl_un_ = *meas.lidar;  // 拷贝点云数据
-
-  state_ikfom imu_state = kf_state.get_x();
-
-  // 遍历点云中所有点，从LiDAR系变换到世界系
-  // 变换链: P_world = R_I^W * (R_L^I * P_lidar + T_L^I) + P_I^W
-  int size = cur_pcl_un_->points.size();
-  for (int i = 0; i < size; i++)
-  {
-    V3D P_lidar(cur_pcl_un_->points[i].x, cur_pcl_un_->points[i].y, cur_pcl_un_->points[i].z);
-
-    // 步骤1: LiDAR系 -> IMU系 (外参变换)
-    V3D P_imu = imu_state.offset_R_L_I.matrix() * P_lidar + imu_state.offset_T_L_I;
-    // 步骤2: IMU系 -> 世界系 (当前状态)
-    V3D P_world = imu_state.rot.matrix() * P_imu + imu_state.pos;
-
-    cur_pcl_un_->points[i].x = P_world(0);
-    cur_pcl_un_->points[i].y = P_world(1);
-    cur_pcl_un_->points[i].z = P_world(2);
-  }
+  *cur_pcl_un_ = *meas.lidar;
 }
