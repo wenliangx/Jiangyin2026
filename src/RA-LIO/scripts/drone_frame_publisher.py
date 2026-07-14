@@ -25,9 +25,9 @@ class DroneFramePublisher:
         self.body_frame = rospy.get_param('~body_frame', 'body')
         self.drone_frame = rospy.get_param('~drone_frame', 'drone')
 
-        self.map_world_q = tft.quaternion_from_euler(math.pi, 0.0, 0.0, axes='sxyz')
-        self.body_drone_q = tft.quaternion_from_euler(0.0, math.radians(-40.0), 0.0, axes='sxyz')
-        self.body_drone_t = (0.07, 0.0, 0.0)
+        self.map_world_q = tft.quaternion_from_euler(math.pi, 0.0, math.pi, axes='sxyz')
+        self.body_drone_q = tft.quaternion_from_euler(math.radians(180.0), math.radians(-30.0), math.pi, axes='sxyz')
+        self.body_drone_t = (0.0, 0.0, 0.0)
         self.body_drone_mat = tft.quaternion_matrix(self.body_drone_q)
         self.body_drone_mat[0:3, 3] = self.body_drone_t
 

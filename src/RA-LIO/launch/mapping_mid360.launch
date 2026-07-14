@@ -26,7 +26,7 @@
 	<arg name="rviz" default="true" />         <!-- 是否启动 RViz 可视化（当前注释掉未使用） -->
 	<arg name="use_sim_time" default="false" /> <!-- 是否使用仿真时间（播放rosbag时设为true） -->
 
-	<arg name="drone_frame_publisher" default="false" />
+	<arg name="drone_frame_publisher" default="true" />
 	<arg name="drone_odom_topic" default="/drone/odometry" />
 
 	<!-- === 从 YAML 文件加载参数 === -->
@@ -74,8 +74,8 @@
 	</group>
 
 	<!-- === RViz 可视化（默认注释掉，需要时取消注释） === -->
-	<!-- <group if="$(arg rviz)">
+	<group if="$(arg rviz)">
 	<node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find ra_lio)/rviz_cfg/mid360.rviz" />
-	</group> -->
+	</group>
 
 </launch>
