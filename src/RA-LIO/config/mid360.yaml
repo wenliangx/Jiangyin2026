@@ -62,13 +62,6 @@ mapping:
                    0, 1, 0,                      # 当前为单位阵，表示LiDAR和IMU
                    0, 0, 1]                      # 坐标轴方向一致
 
-
-# === World 初始化 ===
-# 绕 world Z 轴给 RA-LIO 初始 world 方向增加一个 yaw 偏置。
-# 只影响 world 初始化方向，不表示 LiDAR/IMU 安装外参。
-world_init:
-    yaw_deg: 0.0
-
 # === 发布控制 ===
 publish:
     path_en:  true               # 是否发布运动轨迹 (nav_msgs::Path, /path话题)

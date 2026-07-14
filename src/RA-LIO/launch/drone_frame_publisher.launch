@@ -1,0 +1,17 @@
+<launch>
+  <arg name="input_topic" default="/Odometry" />
+  <arg name="output_topic" default="/drone/odometry" />
+  <arg name="map_frame" default="map" />
+  <arg name="world_frame" default="world" />
+  <arg name="body_frame" default="body" />
+  <arg name="drone_frame" default="drone" />
+
+  <node pkg="ra_lio" type="drone_frame_publisher.py" name="drone_frame_publisher" output="screen">
+    <param name="input_topic" value="$(arg input_topic)" />
+    <param name="output_topic" value="$(arg output_topic)" />
+    <param name="map_frame" value="$(arg map_frame)" />
+    <param name="world_frame" value="$(arg world_frame)" />
+    <param name="body_frame" value="$(arg body_frame)" />
+    <param name="drone_frame" value="$(arg drone_frame)" />
+  </node>
+</launch>

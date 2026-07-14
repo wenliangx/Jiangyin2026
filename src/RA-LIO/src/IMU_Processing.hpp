@@ -43,7 +43,7 @@ class ImuProcess
 
   void Reset();  // 重置IMU处理状态（重新初始化）
   // 设置IMU处理参数：LiDAR-IMU外参 (transl, rot)、噪声协方差参数
-  void set_param(const V3D &transl, const M3D &rot, double world_init_yaw_deg, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias);
+  void set_param(const V3D &transl, const M3D &rot, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias);
   Eigen::Matrix<double, 12, 12> Q;  // 过程噪声协方差矩阵
 
   // 主处理函数：对measurement中的点云进行去畸变/坐标变换
@@ -67,7 +67,6 @@ class ImuProcess
   sensor_msgs::ImuConstPtr last_imu_;  // 上一帧IMU数据
   M3D Lidar_R_wrt_IMU;  // LiDAR -> IMU 旋转外参
   V3D Lidar_T_wrt_IMU;  // LiDAR -> IMU 平移外参
-  double world_init_yaw_deg_;  // world 初始化 yaw 偏置（度）
   V3D mean_acc;          // 累计平均加速度（用于初始化重力估计）
   V3D mean_gyr;          // 累计平均角速度（用于初始化陀螺仪bias估计）
   V3D angvel_last;       // 上一次角速度
@@ -98,7 +97,6 @@ ImuProcess::ImuProcess()
   last_lidar_end_time_ = 0;
   Lidar_R_wrt_IMU = M3D::Identity();       // 外参旋转初始化为单位阵
   Lidar_T_wrt_IMU = V3D(0, 0, 0);         // 外参平移初始化为零向量
-  world_init_yaw_deg_ = 0.0;
   Q = process_noise_cov();
 }
 
@@ -114,11 +112,10 @@ void ImuProcess::Reset()
 }
 
 // 从外部设置IMU处理参数
-void ImuProcess::set_param(const V3D &transl, const M3D &rot, double world_init_yaw_deg, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias)
+void ImuProcess::set_param(const V3D &transl, const M3D &rot, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias)
 {
   Lidar_T_wrt_IMU = transl;   // LiDAR相对IMU的平移
   Lidar_R_wrt_IMU = rot;      // LiDAR相对IMU的旋转
-  world_init_yaw_deg_ = world_init_yaw_deg;
   cov_gyr = gyr;               // 陀螺仪测量噪声协方差
   cov_acc = acc;               // 加速度计测量噪声协方差
   cov_gyr_scale = gyr;         // 保留原始值用于初始化结束后恢复
@@ -180,10 +177,9 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, in
   init_state.ba = V3D(0,0,0);    // 加速度计bias初始为0
   init_state.vel = V3D(0,0,0);   // 速度初始为0
 
-  // 利用重力方向计算初始旋转矩阵，并按配置绕 world Z 轴加入初始 yaw 偏置
+  // 利用重力方向计算初始旋转矩阵，避免只初始化一列矩阵导致 NaN 四元数
   M3D R0 = g2R(mean_acc);
-  M3D R_yaw = Eigen::AngleAxisd(world_init_yaw_deg_ * M_PI / 180.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
-  init_state.rot = Sophus::SO3d(Eigen::Quaterniond(R_yaw * R0));
+  init_state.rot = Sophus::SO3d(Eigen::Quaterniond(R0));
 
   // 外参初始化（旋转为单位阵，平移使用配置值）
   init_state.offset_R_L_I = Sophus::SO3d(Eigen::Quaterniond(Lidar_R_wrt_IMU));
