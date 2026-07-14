@@ -64,6 +64,7 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
+double world_init_yaw_deg = 0.0;           // world 初始化 yaw 偏置（度）
 double theta = 0.0;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
 double alpha = 0.0;                       // 横滚补偿角 Roll（度），用于输出显示补偿
 
@@ -839,6 +840,7 @@ int main(int argc, char **argv)
     nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
     nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
+    nh.param<double>("world_init/yaw_deg", world_init_yaw_deg, 0.0);
     nh.param<double>("filter_size_corner", filter_size_corner_min, 0.5);
     nh.param<double>("filter_size_surf", filter_size_surf_min, 0.5);
     nh.param<double>("filter_size_map", filter_size_map_min, 0.5);
@@ -887,7 +889,9 @@ int main(int argc, char **argv)
     Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);    // 旋转外参
 
     // 设置IMU处理模块参数：外参、噪声协方差
-    p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
+    ROS_INFO("World init yaw offset(deg): %.3f", world_init_yaw_deg);
+
+    p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, world_init_yaw_deg, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
                       V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
     // 注册信号处理器（Ctrl+C安全退出）
