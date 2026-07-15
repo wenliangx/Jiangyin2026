@@ -95,7 +95,3 @@ add_dependencies(ralio_mapping ra_lio_generate_messages)
 target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} /opt/ros/noetic/lib/librosfmt9.so)
 target_include_directories(ralio_mapping PRIVATE /usr/local/include ${PYTHON_INCLUDE_DIRS})
 
-catkin_install_python(PROGRAMS
-  scripts/drone_frame_publisher.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
