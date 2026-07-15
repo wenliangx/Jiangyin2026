@@ -64,8 +64,8 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-double theta = 0.0;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
-double alpha = 0.0;                       // 横滚补偿角 Roll（度），用于输出显示补偿
+double theta = 30.0;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
+double alpha = 180.0;                       // 横滚补偿角 Roll（度），用于输出显示补偿
 
 // === 线程同步 ===
 mutex mtx_buffer;                         // 数据buffer互斥锁
@@ -803,7 +803,7 @@ void Visualization_speed(const ros::Publisher &marker_pub)
     marker.color.a = 1.0;
 
     // 应用姿态补偿（13.5647°俯仰补偿，针对特定安装角度）
-    Eigen::Matrix3d R_compensate = Eigen::AngleAxisd(13.5647*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
+    Eigen::Matrix3d R_compensate = Eigen::AngleAxisd(30*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
     Eigen::Vector3d Pos_(odomAftMapped.pose.pose.position.x, odomAftMapped.pose.pose.position.y, odomAftMapped.pose.pose.position.z);
     Eigen::Vector3d Pos_compensate= R_compensate* Pos_;
     Eigen::Matrix3d Atti_compensate= R_compensate* kf.get_x().rot.matrix();
@@ -987,8 +987,8 @@ int main(int argc, char **argv)
 
             // --- 姿态补偿角度计算 ---
             // 基于估计的重力向量计算俯仰(pitch)和横滚(roll)补偿角
-            // theta = -atan(g_x / g_z): 俯仰角（绕y轴）
-            // alpha = -atan(g_y / g_z): 横滚角（绕x轴）
+            // theta = -atan(g_x / g_z);
+            // alpha = -atan(g_y / g_z);
             std::printf(" theta: %.4f \n", theta);
             std::printf(" alpha: %.4f \n", alpha);
 

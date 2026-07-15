@@ -14,7 +14,6 @@ Panels:
         - /Odometry1/Odometry1/Covariance1/Position1
         - /Odometry1/Odometry1/Covariance1/Orientation1
         - /MarkerArray1/Namespaces1
-        - /Axes3
       Splitter Ratio: 0.6432291865348816
     Tree Height: 777
   - Class: rviz/Selection
@@ -83,7 +82,7 @@ Visualization Manager:
           Color: 238; 238; 236
           Color Transformer: Intensity
           Decay Time: 0
-          Enabled: true
+          Enabled: false
           Invert Rainbow: false
           Max Color: 255; 255; 255
           Min Color: 238; 238; 236
@@ -98,12 +97,12 @@ Visualization Manager:
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
-          Value: true
+          Value: false
         - Alpha: 0.10000000149011612
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 2.8468618392944336
-            Min Value: -0.8402483463287354
+            Max Value: 3.3507370948791504
+            Min Value: -0.877446711063385
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -155,7 +154,7 @@ Visualization Manager:
           Use Fixed Frame: true
           Use rainbow: true
           Value: false
-      Enabled: false
+      Enabled: true
       Name: mapping
     - Class: rviz/Group
       Displays:
@@ -279,14 +278,14 @@ Visualization Manager:
       Length: 1
       Name: Axes
       Radius: 0.10000000149011612
-      Reference Frame: drone
+      Reference Frame: body
       Show Trail: false
       Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
     Default Light: true
-    Fixed Frame: map
+    Fixed Frame: world
     Frame Rate: 10
   Name: root
   Tools:
@@ -310,7 +309,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 10
+      Distance: 3.7421727180480957
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -326,9 +325,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9203981757164001
+      Pitch: 0.2803990840911865
       Target Frame: global
-      Yaw: 3.0103983879089355
+      Yaw: 0.0963883101940155
     Saved: ~
 Window Geometry:
   Displays:

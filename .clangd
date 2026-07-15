@@ -1,7 +1,5 @@
 CompileFlags:
-  CompilationDatabase: build
   Add:
-    - -std=c++17
     - -ferror-limit=0
     - -Wall
     - -Wextra
@@ -54,12 +52,3 @@ InlayHints:
 Hover:
   ShowAKA: Yes
 
----
-If:
-  PathMatch: .*(third_party|Livox-SDK|cv_bridge_new/src/boost|uav_simulator/so3_quadrotor_simulator/include/ode)/.*
-Diagnostics:
-  ClangTidy:
-    Remove:
-      - '*'
-  Suppress:
-    - '*'
