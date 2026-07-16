@@ -783,41 +783,44 @@ void publish_path(const ros::Publisher pubPath)
 
 // === Visualization_speed：发布速度向量可视化Marker ===
 // 在世界坐标系中显示一个箭头，表示当前运动方向
-void Visualization_speed(const ros::Publisher &marker_pub)
-{
-    marker.header.frame_id = "world";
-    marker.header.stamp = ros::Time::now();
-    marker.lifetime = ros::Duration();
+static void visualization_speed(const ros::Publisher &marker_pub) {
+  marker.header.frame_id = "world";
+  marker.header.stamp = ros::Time::now();
+  marker.lifetime = ros::Duration();
 
-    marker.ns = "speed";
-    marker.id = 0;
-    marker.type =  visualization_msgs::Marker::ARROW;   // 箭头类型
-    marker.action = visualization_msgs::Marker::ADD;     // 添加操作
+  marker.ns = "speed";
+  marker.id = 0;
+  marker.type = visualization_msgs::Marker::ARROW; // 箭头类型
+  marker.action = visualization_msgs::Marker::ADD; // 添加操作
 
-    marker.scale.x = 2.0;   // 箭头大小
-    marker.scale.y = 2.0;
-    marker.scale.z = 3;
+  marker.scale.x = 2.0; // 箭头大小
+  marker.scale.y = 2.0;
+  marker.scale.z = 3;
 
-    marker.color.r = 1.0f;  // 颜色：品红
-    marker.color.g = 0.0f;
-    marker.color.b = 1.0f;
-    marker.color.a = 1.0;
+  marker.color.r = 1.0f; // 颜色：品红
+  marker.color.g = 0.0f;
+  marker.color.b = 1.0f;
+  marker.color.a = 1.0;
 
-    // 应用姿态补偿（13.5647°俯仰补偿，针对特定安装角度）
-    Eigen::Matrix3d R_compensate = Eigen::AngleAxisd(30*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-    Eigen::Vector3d Pos_(odomAftMapped.pose.pose.position.x, odomAftMapped.pose.pose.position.y, odomAftMapped.pose.pose.position.z);
-    Eigen::Vector3d Pos_compensate= R_compensate* Pos_;
-    Eigen::Matrix3d Atti_compensate= R_compensate* kf.get_x().rot.matrix();
+  // 应用姿态补偿（13.5647°俯仰补偿，针对特定安装角度）
+  Eigen::Matrix3d R_compensate =
+      Eigen::AngleAxisd(30 * PI / 180.0, Eigen::Vector3d(0, 1, 0))
+          .toRotationMatrix();
+  Eigen::Vector3d Pos_(odomAftMapped.pose.pose.position.x,
+                       odomAftMapped.pose.pose.position.y,
+                       odomAftMapped.pose.pose.position.z);
+  Eigen::Vector3d Pos_compensate = R_compensate * Pos_;
+  Eigen::Matrix3d Atti_compensate = R_compensate * kf.get_x().rot.matrix();
 
-    // 设置marker的位置和姿态
-    marker.pose.position.x = Pos_compensate(0);
-    marker.pose.position.y = Pos_compensate(1);
-    marker.pose.position.z = Pos_compensate(2);
+  // 设置marker的位置和姿态
+  marker.pose.position.x = Pos_compensate(0);
+  marker.pose.position.y = Pos_compensate(1);
+  marker.pose.position.z = Pos_compensate(2);
 
-    Atti_compensate = Atti_compensate.transpose();
-    set_quaternion_msg(Atti_compensate, marker.pose.orientation);
+  Atti_compensate = Atti_compensate.transpose();
+  set_quaternion_msg(Atti_compensate, marker.pose.orientation);
 
-    marker_pub.publish(marker);
+  marker_pub.publish(marker);
 }
 
 // =================================================================
@@ -1010,7 +1013,7 @@ int main(int argc, char **argv)
                 speed(0) = kf.get_x().vel(0);
                 speed(1) = kf.get_x().vel(1);
                 speed(2) = kf.get_x().vel(2);
-                Visualization_speed(marker_pub);
+                visualization_speed(marker_pub);
             }
 
             // --- 步骤13：发布点云 ---

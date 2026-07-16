@@ -10,8 +10,6 @@
 
 using namespace std;
 
-
-
 /**
  * @brief  motion capture pose subscriber callback
  * @param  msg: from MoCap
