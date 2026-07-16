@@ -1,7 +1,6 @@
 [submodule "src/libs/livox_ros_driver2"]
 	path = src/libs/livox_ros_driver2
 	url = https://github.com/Livox-SDK/livox_ros_driver2.git
-	ignore = untracked
 [submodule "src/libs/px4_plugs"]
 	path = src/libs/px4_plugs
 	url = https://github.com/wenliangx/px4_plugs.git

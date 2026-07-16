@@ -87,7 +87,7 @@ services:
     networks:
       - jy-net
     environment:
-      - ROS_MASTER_URI=http://sim:11311
+      - ROS_MASTER_URI=http://localhost:11311
       - ROS_IP=jy-dev
       - DISPLAY=${DISPLAY:-:11.0}
       - QT_QPA_PLATFORM=xcb
@@ -102,5 +102,3 @@ services:
       - /home/wenliang/.Xauthority:/root/.Xauthority:ro
     command: /opt/start_jy2026.sh --dev
     restart: "no"
-    depends_on:
-      - sim

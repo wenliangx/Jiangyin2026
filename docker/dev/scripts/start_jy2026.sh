@@ -30,13 +30,6 @@ log_info()  { printf '[jy2026] %s\n' "$*"; }
 log_error() { printf '[jy2026 ERROR] %s\n' "$*" >&2; }
 
 
-prepare_livox_ros_driver2_ros1() {
-  local driver_dir="/ws/src/livox_ros_driver2"
-  if [[ -f "${driver_dir}/package_ROS1.xml" ]]; then
-    cp -f "${driver_dir}/package_ROS1.xml" "${driver_dir}/package.xml"
-  fi
-}
-
 launch_service() {
   local name="$1" cmd="$2" delay="${3:-2}"
   log_info "Starting ${name}..."
@@ -54,9 +47,10 @@ if [[ "${DEV_MODE}" == "true" ]]; then
   log_info "Dev mode: compiling from /ws/src/..."
 
   rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
-  prepare_livox_ros_driver2_ros1
-
   cd /ws
+  log_info "Preparing livox_ros_driver2 for ROS1..."
+  cp -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml /ws/src/libs/livox_ros_driver2/package.xml
+
   log_info "catkin_make..."
   catkin_make -j"$(nproc)" -DROS_EDITION=ROS1 2>&1 | tail -20
   source /ws/devel/setup.bash
@@ -75,6 +69,12 @@ else
   source /ws/devel/setup.bash
 fi
 
+if [[ "${DEV_MODE}" == "true" && "${AUTO_START_STACK:-0}" != "1" ]]; then
+  log_info "Dev container ready. Algorithm stack is stopped by default."
+  log_info "Run jy-start-stack to launch mid360_bridge, fake mocap, RA-LIO, px4_estimator, and FSM+NMPC."
+  exec tail -f /dev/null
+fi
+
 # ---- Wait for ROS master ------------------------------------------------
 log_info "Waiting for ROS master (${ROS_MASTER_URI})..."
 for i in $(seq 1 60); do
@@ -84,12 +84,6 @@ for i in $(seq 1 60); do
   [[ $i -eq 60 ]] && { log_error "ROS master not reachable after 60s"; exit 1; }
   sleep 1
 done
-
-if [[ "${DEV_MODE}" == "true" && "${AUTO_START_STACK:-0}" != "1" ]]; then
-  log_info "Dev container ready. Algorithm stack is stopped by default."
-  log_info "Run jy-start-stack to launch mid360_bridge, fake mocap, RA-LIO, px4_estimator, and FSM+NMPC."
-  exec tail -f /dev/null
-fi
 
 if [[ "${AUTO_START_STACK:-0}" == "1" && -x /usr/local/bin/jy-stack ]]; then
   /usr/local/bin/jy-stack start

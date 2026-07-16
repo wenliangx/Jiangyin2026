@@ -76,19 +76,19 @@ RUN git init casadi \
     && grep -q "optimal cost:" /tmp/casadi-ipopt-smoke.log \
     && rm -rf casadi /tmp/casadi-ipopt-smoke.log
 
-ARG LIVOX_SDK_COMMIT=9306596a2bf15c1343bc023b497465ed0a32909d
+ARG LIVOX_SDK2_COMMIT=master
 
-RUN git init Livox-SDK \
-    && git -C Livox-SDK remote add origin https://github.com/Livox-SDK/Livox-SDK.git \
-    && git -C Livox-SDK fetch --depth 1 origin "${LIVOX_SDK_COMMIT}" \
-    && git -C Livox-SDK checkout --detach FETCH_HEAD \
-    && cmake -S Livox-SDK -B Livox-SDK/build -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build Livox-SDK/build --parallel "$(nproc)" \
-    && cmake --install Livox-SDK/build \
+RUN git init Livox-SDK2 \
+    && git -C Livox-SDK2 remote add origin https://github.com/Livox-SDK/Livox-SDK2.git \
+    && git -C Livox-SDK2 fetch --depth 1 origin "${LIVOX_SDK2_COMMIT}" \
+    && git -C Livox-SDK2 checkout --detach FETCH_HEAD \
+    && cmake -S Livox-SDK2 -B Livox-SDK2/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build Livox-SDK2/build --parallel "$(nproc)" \
+    && cmake --install Livox-SDK2/build \
     && ldconfig \
-    && test -f /usr/local/include/livox_sdk.h \
-    && test -f /usr/local/lib/liblivox_sdk_static.a \
-    && rm -rf Livox-SDK
+    && test -f /usr/local/include/livox_lidar_api.h \
+    && test -f /usr/local/lib/liblivox_lidar_sdk_static.a \
+    && rm -rf Livox-SDK2
 
 # Last upstream revision before Sophus raised its Eigen requirement to 3.4.
 ARG SOPHUS_COMMIT=49c07cca02c80781274c25d39e4f1f28c9092e03
