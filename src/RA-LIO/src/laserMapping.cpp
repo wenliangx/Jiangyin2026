@@ -13,8 +13,9 @@
 //   LiDAR系 -> 外参变换 -> IMU系(body系) -> 状态量(姿态/位置) -> 世界系
 //   发布时额外支持姿态补偿变换（用于倾斜安装的无人机平台）
 
-#include <omp.h>
+
 #include <mutex>
+#include <omp.h>
 #include <condition_variable>
 #include <math.h>
 #include <thread>

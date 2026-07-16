@@ -33,7 +33,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: surround
+    SyncSource: currPoints
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -101,8 +101,8 @@ Visualization Manager:
         - Alpha: 0.10000000149011612
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 3.3507370948791504
-            Min Value: -0.877446711063385
+            Max Value: 5.044757843017578
+            Min Value: -0.2888813614845276
             Value: true
           Axis: Z
           Channel Name: intensity

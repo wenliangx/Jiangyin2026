@@ -35,10 +35,10 @@ else()
   add_definitions(-DMP_PROC_NUM=1)
 endif()
 
-find_package(OpenMP QUIET)
+find_package(OpenMP REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
-set(Sophus_DIR "/usr/local/share/sophus")
+# set(Sophus_DIR "/usr/local/share/sophus")
 
 
 find_package(catkin REQUIRED COMPONENTS
@@ -58,10 +58,10 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
-find_package( Sophus REQUIRED )
+find_package(Sophus REQUIRED )
 set(Sophus_INCLUDE_DIRS "/usr/local/include")
 find_package(rosfmt REQUIRED)
-find_library(ROSFMT_LIB NAMES rosfmt9 PATHS /opt/ros/noetic/lib NO_DEFAULT_PATH)
+# find_library(ROSFMT_LIB NAMES rosfmt9 PATHS /opt/ros/noetic/lib NO_DEFAULT_PATH)
 message(STATUS "rosfmt library: ${ROSFMT_LIB}")
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
