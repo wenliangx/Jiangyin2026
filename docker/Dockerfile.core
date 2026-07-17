@@ -1,0 +1,113 @@
+FROM docker.io/osrf/ros:noetic-desktop-full
+
+ARG CMAKE_VERSION=3.28.3
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH=/opt/cmake/bin:${PATH}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    ca-certificates \
+    clangd \
+    cmake \
+    coinor-libipopt-dev \
+    curl \
+    genromfs \
+    gfortran \
+    git \
+    gnupg \
+    libdw-dev \
+    libeigen3-dev \
+    libgazebo11-dev \
+    libglfw3-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer1.0-dev \
+    liblapack-dev \
+    libopencv-dev \
+    libprotobuf-dev \
+    lsb-release \
+    ninja-build \
+    pkg-config \
+    protobuf-compiler \
+    python3-dev \
+    python3-empy \
+    python3-jinja2 \
+    python3-numpy \
+    python3-pip \
+    python3-setuptools \
+    python3-toml \
+    python3-wheel \
+    python3-yaml \
+    ros-noetic-mavros \
+    ros-noetic-mavros-extras \
+    ros-noetic-rosfmt \
+    swig \
+    tmux \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ubuntu 20.04 provides CMake 3.16, while the pinned Sophus requires 3.24+.
+RUN curl -fsSL \
+      "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+      -o /tmp/cmake.tar.gz \
+    && mkdir -p /opt/cmake \
+    && tar -xzf /tmp/cmake.tar.gz --strip-components=1 -C /opt/cmake \
+    && rm /tmp/cmake.tar.gz \
+    && cmake --version
+
+WORKDIR /tmp
+
+ARG CASADI_COMMIT=7c4670ff02cc66bf2c08915d7679eed31adefc79
+
+RUN git init casadi \
+    && git -C casadi remote add origin https://github.com/casadi/casadi.git \
+    && git -C casadi fetch --depth 1 origin "${CASADI_COMMIT}" \
+    && git -C casadi checkout --detach FETCH_HEAD \
+    && cmake -S casadi -B casadi/build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DWITH_IPOPT=ON \
+    && cmake --build casadi/build --parallel "$(nproc)" \
+    && cmake --install casadi/build \
+    && ldconfig \
+    && /usr/local/bin/rocket_ipopt >/tmp/casadi-ipopt-smoke.log \
+    && grep -q "optimal cost:" /tmp/casadi-ipopt-smoke.log \
+    && rm -rf casadi /tmp/casadi-ipopt-smoke.log
+
+ARG LIVOX_SDK2_COMMIT=master
+
+RUN git init Livox-SDK2 \
+    && git -C Livox-SDK2 remote add origin https://github.com/Livox-SDK/Livox-SDK2.git \
+    && git -C Livox-SDK2 fetch --depth 1 origin "${LIVOX_SDK2_COMMIT}" \
+    && git -C Livox-SDK2 checkout --detach FETCH_HEAD \
+    && cmake -S Livox-SDK2 -B Livox-SDK2/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build Livox-SDK2/build --parallel "$(nproc)" \
+    && cmake --install Livox-SDK2/build \
+    && ldconfig \
+    && test -f /usr/local/include/livox_lidar_api.h \
+    && test -f /usr/local/lib/liblivox_lidar_sdk_static.a \
+    && rm -rf Livox-SDK2
+
+# Last upstream revision before Sophus raised its Eigen requirement to 3.4.
+ARG SOPHUS_COMMIT=49c07cca02c80781274c25d39e4f1f28c9092e03
+
+RUN git init Sophus \
+    && git -C Sophus remote add origin https://github.com/strasdat/Sophus.git \
+    && git -C Sophus fetch --depth 1 origin "${SOPHUS_COMMIT}" \
+    && git -C Sophus checkout --detach FETCH_HEAD \
+    && cmake -S Sophus -B Sophus/build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SOPHUS_EXAMPLES=OFF \
+      -DBUILD_SOPHUS_TESTS=OFF \
+    && cmake --build Sophus/build --parallel "$(nproc)" \
+    && cmake --install Sophus/build \
+    && test -f /usr/local/share/sophus/cmake/SophusConfig.cmake \
+    && rm -rf Sophus
+
+WORKDIR /ws
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+CMD ["bash"]

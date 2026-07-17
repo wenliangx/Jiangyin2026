@@ -1,21 +1,73 @@
 <launch>
-<!-- Launch file for Livox MID360 LiDAR -->
+<!-- =============================================================================
+  RA-LIO 启动文件 —— Livox MID360 激光雷达
+  =============================================================================
+  用法: roslaunch ra_lio mapping_mid360.launch
 
-	<arg name="rviz" default="true" />
+  用于启动激光雷达-惯性里程计实时建图节点
 
+  坐标系关系:
+    LiDAR 系 ──[外参 extrinsic_T/R]──► IMU 系(Body系) ──[状态量 pos/rot]──► 世界系
+
+  输入话题（由其他节点或rosbag提供）:
+    /livox/lidar  ── Livox 自定义点云消息 (livox_ros_driver2::CustomMsg)
+    /livox/imu    ── IMU 数据 (sensor_msgs::Imu)
+
+  输出话题（由 laserMapping 节点发布）:
+    /Odometry                ── 里程计 (nav_msgs::Odometry)
+    /path                    ── 运动轨迹 (nav_msgs::Path)
+    /cloud_registered        ── 世界坐标系点云 (sensor_msgs::PointCloud2)
+    /cloud_registered_body   ── Body(IMU)坐标系点云
+    /Laser_map               ── 全局地图点云
+    /speed_vector            ── 速度向量可视化箭头 (Marker)
+  ============================================================================= -->
+
+	<!-- === 启动参数 === -->
+	<arg name="rviz" default="true" />         <!-- 是否启动 RViz 可视化（当前注释掉未使用） -->
+	<arg name="use_sim_time" default="false" /> <!-- 是否使用仿真时间（播放rosbag时设为true） -->
+
+	<arg name="drone_odom_topic" default="/drone/odometry" />
+
+	<!-- === 从 YAML 文件加载参数 === -->
 	<rosparam command="load" file="$(find ra_lio)/config/mid360.yaml" />
 
+	<!-- === 额外参数（覆盖或补充 YAML 中的配置） === -->
 	<param name="feature_extract_enable" type="bool" value="0"/>
-	<param name="point_filter_num" type="int" value="2"/>
-	<param name="max_iteration" type="int" value="3" />
-	<param name="filter_size_surf" type="double" value="0.05" />
-	<param name="filter_size_map" type="double" value="0.05" />
-	<param name="cube_side_length" type="double" value="1000" />
-	<!-- param name="runtime_pos_log_enable" type="bool" value="0" /-->
-    <node pkg="ra_lio" type="ralio_mapping" name="laserMapping" output="screen" /> 
+		<!-- 是否启用特征提取模式
+		     0(默认): 简单降采样模式，输出所有非盲区点
+		     1: 特征提取模式（平面点/角点分类），仅适用于室内结构化环境 -->
 
-	<!-- <group if="$(arg rviz)">
+	<param name="point_filter_num" type="int" value="2"/>
+		<!-- 降采样间隔：每隔 N 个有效点取 1 个
+		     1=不降采样, 2=隔1取1, 值越大点数越少 -->
+
+	<param name="max_iteration" type="int" value="3" />
+		<!-- ESKF 最大迭代次数
+		     越大精度越高但耗时增加，一般 3~4 次即可收敛 -->
+
+	<param name="filter_size_surf" type="double" value="0.05" />
+		<!-- 当前帧点云体素降采样分辨率（米）
+		     点云加入地图前先降采样到 0.05m 网格 -->
+
+	<param name="filter_size_map" type="double" value="0.05" />
+		<!-- 地图体素降采样分辨率（米）
+		     地图中每个 0.05m 体素只保留一个最近点 -->
+
+	<param name="cube_side_length" type="double" value="1000" />
+		<!-- 局部地图立方体边长（米）
+		     地图会以当前位置为中心，保持一个 1000m×1000m×1000m 的窗口
+		     移动超过阈值时动态滑动地图并删除超出范围的点 -->
+
+	<!-- === 主建图节点 === -->
+    <node pkg="ra_lio" type="ralio_mapping" name="laserMapping" output="screen">
+        <param name="use_sim_time" value="$(arg use_sim_time)" />
+    </node>
+
+
+
+	<!-- === RViz 可视化（默认注释掉，需要时取消注释） === -->
+	<group if="$(arg rviz)">
 	<node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find ra_lio)/rviz_cfg/mid360.rviz" />
-	</group> -->
+	</group>
 
 </launch>

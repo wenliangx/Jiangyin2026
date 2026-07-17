@@ -1,0 +1,54 @@
+CompileFlags:
+  Add:
+    - -ferror-limit=0
+    - -Wall
+    - -Wextra
+    - -Wno-unused-parameter
+    - -Wno-unused-variable
+
+Diagnostics:
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - modernize-*
+      - performance-*
+      - readability-container-size-empty
+      - readability-delete-null-pointer
+      - readability-misleading-indentation
+      - readability-redundant-*
+      - readability-simplify-boolean-expr
+      - readability-static-accessed-through-instance
+      - readability-string-compare
+    Remove:
+      - modernize-avoid-c-arrays
+      - modernize-pass-by-value
+      - modernize-use-auto
+      - modernize-use-nodiscard
+      - modernize-use-trailing-return-type
+      - readability-magic-numbers
+      - readability-identifier-length
+      - bugprone-easily-swappable-parameters
+  Suppress:
+    - 'build/**'
+    - 'devel/**'
+
+Index:
+  Background: Build
+
+Completion:
+  AllScopes: true
+  ArgumentLists: FullPlaceholders
+  HeaderInsertion: IWYU
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  Designators: Yes
+  DefaultArguments: Yes
+  BlockEnd: Yes
+  TypeNameLimit: 25
+
+Hover:
+  ShowAKA: Yes
+

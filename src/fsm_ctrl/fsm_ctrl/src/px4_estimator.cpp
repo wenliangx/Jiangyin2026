@@ -10,8 +10,6 @@
 
 using namespace std;
 
-
-
 /**
  * @brief  motion capture pose subscriber callback
  * @param  msg: from MoCap
@@ -185,7 +183,7 @@ int main(int argc, char **argv)
     ros::NodeHandle nh;
     
     /* parameter */
-    nh.param("/px4_estimator/vision_source", flag_vision_source, 0);
+    nh.param("vision_source", flag_vision_source, 0);
 
     /* publisher */
     ros::Publisher ready_pub = nh.advertise<std_msgs::Bool>("/fsm_ctrl/ekf_ready", 1);

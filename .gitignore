@@ -1,7 +1,15 @@
 .DS_Store
 build
 devel
-.vscode
+.vscode/
+!.vscode/settings.json
+.cache/clangd
+.clangd-index
+.clangd-cache
+.container
+.catkin_workspace
+sim_logs
+vrpn
 *.bag
 compile_commands.json
 .catkin_tools/
