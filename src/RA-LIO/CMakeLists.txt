@@ -35,10 +35,10 @@ else()
   add_definitions(-DMP_PROC_NUM=1)
 endif()
 
-find_package(OpenMP QUIET)
+find_package(OpenMP REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
-set(Sophus_DIR "/home/flag/local/share/sophus")
+# set(Sophus_DIR "/usr/local/share/sophus")
 
 
 find_package(catkin REQUIRED COMPONENTS
@@ -50,7 +50,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  livox_ros_driver
+  livox_ros_driver2
   message_generation
   eigen_conversions
   visualization_msgs
@@ -58,12 +58,16 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
-find_package( Sophus REQUIRED )
+find_package(Sophus REQUIRED )
+set(Sophus_INCLUDE_DIRS "/usr/local/include")
+find_package(rosfmt REQUIRED)
+# find_library(ROSFMT_LIB NAMES rosfmt9 PATHS /opt/ros/noetic/lib NO_DEFAULT_PATH)
+message(STATUS "rosfmt library: ${ROSFMT_LIB}")
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 
 include_directories(
-	${catkin_INCLUDE_DIRS} 
+	${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
@@ -87,5 +91,6 @@ catkin_package(
 )
 
 add_executable(ralio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
-target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES})
-target_include_directories(ralio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+add_dependencies(ralio_mapping ra_lio_generate_messages)
+target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} /opt/ros/noetic/lib/librosfmt9.so)
+target_include_directories(ralio_mapping PRIVATE /usr/local/include ${PYTHON_INCLUDE_DIRS})

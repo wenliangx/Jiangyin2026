@@ -1,29 +1,37 @@
 #include "ikd_Tree.h"
 
-/*
-Description: ikd-Tree: an incremental k-d tree for robotic applications 
-Author: Yixi Cai
-email: yixicai@connect.hku.hk
-*/
+// ikd_Tree.cpp - ikd-Tree 增量KD树实现
+// Description: ikd-Tree: an incremental k-d tree for robotic applications
+// Author: Yixi Cai
+// email: yixicai@connect.hku.hk
+// 核心特性：
+//   1. 惰性删除 + 标记传播：删除操作O(1)完成，累积到阈值时后台重建
+//   2. 多线程重建：大子树在后台线程重建，不阻塞主线程的搜索操作
+//   3. 降采样策略：体素内保持最近点，自动替换旧点
+//   4. 读写锁模拟：search_mutex_counter统计当前搜索线程数
 
+// === 构造函数 ===
+// 设置删除/平衡准则参数、降采样大小，并启动后台重建线程
 template <typename PointType>
 KD_TREE<PointType>::KD_TREE(float delete_param, float balance_param, float box_length)
 {
-    delete_criterion_param = delete_param;
-    balance_criterion_param = balance_param;
-    downsample_size = box_length;
+    delete_criterion_param = delete_param;  // 删除点比例阈值（默认0.5，超过即重建）
+    balance_criterion_param = balance_param; // 平衡度阈值（默认0.6，超过即重建）
+    downsample_size = box_length;           // 体素降采样大小
     Rebuild_Logger.clear();
     termination_flag = false;
-    start_thread();
+    start_thread();                          // 启动后台重建线程
 }
 
+// === 析构函数 ===
+// 停止重建线程，回收所有树节点内存
 template <typename PointType>
 KD_TREE<PointType>::~KD_TREE()
 {
-    stop_thread();
+    stop_thread();                               // 停止后台重建线程
     Delete_Storage_Disabled = true;
-    delete_tree_nodes(&Root_Node);
-    PointVector().swap(PCL_Storage);
+    delete_tree_nodes(&Root_Node);               // 递归删除所有节点
+    PointVector().swap(PCL_Storage);             // 释放点云存储内存
     Rebuild_Logger.clear();
 }
 
@@ -37,6 +45,9 @@ void KD_TREE<PointType>::InitializeKDTree(float delete_param, float balance_para
     set_downsample_param(box_length);
 }
 
+// === InitTreeNode：初始化树节点 ===
+// 将所有成员变量设置为默认值（零/空指针/false）
+// 并初始化push_down_mutex_lock互斥锁
 template <typename PointType>
 void KD_TREE<PointType>::InitTreeNode(KD_TREE_NODE *root)
 {
@@ -226,6 +237,16 @@ void *KD_TREE<PointType>::multi_thread_ptr(void *arg)
     return nullptr;
 }
 
+// === multi_thread_rebuild：后台重建线程主函数 ===
+// 持续运行的后台线程，流程如下：
+//   1. 等待Rebuild_Ptr被设置为某个需要重建的子树
+//   2. 获取读写锁（search_mutex_counter置-1，等待所有搜索线程退出）
+//   3. 展平该子树：flatten获取所有有效点
+//   4. 重建：BuildTree构建新的平衡子树
+//   5. 重放操作日志：重建期间累积的操作逐条应用到新树上
+//   6. 原子替换：将新子树挂接到父节点上
+//   7. 释放读写锁，释放旧子树内存
+// 这种设计确保了搜索操作的实时性不受大规模重建影响
 template <typename PointType>
 void KD_TREE<PointType>::multi_thread_rebuild()
 {
@@ -405,6 +426,8 @@ void KD_TREE<PointType>::run_operation(KD_TREE_NODE **root, Operation_Logger_Typ
     }
 }
 
+// === Build：从点云构建整棵KD树 ===
+// 删除旧树（如果有），创建静态根节点，递归构建新的左右子树
 template <typename PointType>
 void KD_TREE<PointType>::Build(PointVector point_cloud)
 {
@@ -422,6 +445,9 @@ void KD_TREE<PointType>::Build(PointVector point_cloud)
     Root_Node = STATIC_ROOT_NODE->left_son_ptr;
 }
 
+// === Nearest_Search：K最近邻搜索 ===
+// 使用MANUAL_HEAP维护k个最近邻，利用包围盒距离剪枝加速搜索
+// 多线程安全：通过search_mutex_counter读写锁机制，避免与重建冲突
 template <typename PointType>
 void KD_TREE<PointType>::Nearest_Search(PointType point, int k_nearest, PointVector &Nearest_Points, vector<float> &Point_Distance, float max_dist)
 {
@@ -474,6 +500,13 @@ void KD_TREE<PointType>::Radius_Search(PointType point, const float radius, Poin
     Search_by_radius(Root_Node, point, radius, Storage);
 }
 
+// === Add_Points：批量添加点到KD树 ===
+// downsample_on = true: 启用体素降采样
+//   体素降采样策略：
+//     - 体素内若无点：直接添加
+//     - 体素内已有1个点：保留距离体素中心更近的点，删除另一个
+//     - 体素内已有多个点：表示之前降采样过程中出现了异常，全删后添加新点
+// 如果后台正在重建，操作会被记录到Rebuild_Logger队列中以便重放
 template <typename PointType>
 int KD_TREE<PointType>::Add_Points(PointVector &PointToAdd, bool downsample_on)
 {
@@ -628,6 +661,8 @@ void KD_TREE<PointType>::Delete_Points(PointVector &PointToDel)
     return;
 }
 
+// === Delete_Point_Boxes：批量删除盒范围内的点 ===
+// 返回实际删除的点数
 template <typename PointType>
 int KD_TREE<PointType>::Delete_Point_Boxes(vector<BoxPointType> &BoxPoints)
 {
@@ -675,6 +710,12 @@ void KD_TREE<PointType>::acquire_removed_points(PointVector &removed_points)
     return;
 }
 
+// === BuildTree：递归构建KD树 ===
+// 步骤：
+//   1. 选择空间范围最大的维度作为分割轴
+//   2. 在该轴上使用 nth_element 进行中位数划分
+//   3. 递归构建左右子树
+// 复杂度: O(n log n)（每层O(n)，共log n层）
 template <typename PointType>
 void KD_TREE<PointType>::BuildTree(KD_TREE_NODE **root, int l, int r, PointVector &Storage)
 {
@@ -732,6 +773,10 @@ void KD_TREE<PointType>::BuildTree(KD_TREE_NODE **root, int l, int r, PointVecto
     return;
 }
 
+// === Rebuild：重建子树 ===
+// 策略：
+//   - 子树点数 >= Multi_Thread_Rebuild_Point_Num(1500)：委托后台线程异步重建
+//   - 子树点数 < 1500：在当前线程同步重建（展平->排序构建->替换）
 template <typename PointType>
 void KD_TREE<PointType>::Rebuild(KD_TREE_NODE **root)
 {
@@ -1331,6 +1376,11 @@ void KD_TREE<PointType>::Search_by_radius(KD_TREE_NODE *root, PointType point, f
     return;
 }
 
+// === Criterion_Check：重建准则检查 ===
+// 两个触发条件：
+//   1. 删除比例 > delete_criterion_param（默认50%）：太多删除点，浪费查询效率
+//   2. 平衡度 > balance_criterion_param 或 < 1-balance_criterion_param（默认70%）：树严重不平衡
+// 注意：小于 Minimal_Unbalanced_Tree_Size(10) 节点的子树不触发重建
 template <typename PointType>
 bool KD_TREE<PointType>::Criterion_Check(KD_TREE_NODE *root)
 {
@@ -1356,6 +1406,11 @@ bool KD_TREE<PointType>::Criterion_Check(KD_TREE_NODE *root)
     return false;
 }
 
+// === Push_Down：向下传播删除/降采样标记 ===
+// 功能：将父节点的惰性删除标记同步到子节点
+// 这是惰性删除的核心机制：只在需要访问子树时才传播删除信息
+// 传播内容：tree_deleted, tree_downsample_deleted, point_deleted, invalid_point_num, down_del_num
+// 如果子节点正在被后台重建（Rebuild_Ptr指向的子节点），则将操作记录到日志队列
 template <typename PointType>
 void KD_TREE<PointType>::Push_Down(KD_TREE_NODE *root)
 {
@@ -1454,6 +1509,14 @@ void KD_TREE<PointType>::Push_Down(KD_TREE_NODE *root)
     return;
 }
 
+// === Update：更新节点的统计信息 ===
+// 自底向上更新：
+//   1. TreeSize：子树总节点数（含已删除点）
+//   2. invalid_point_num：子树中已删除节点数
+//   3. node_range_x/y/z：子树的空间包围盒（考虑已删除点）
+//   4. radius_sq：包围盒外接球半径平方
+//   5. 根节点额外更新 alpha_bal（平衡度）和 alpha_del（删除率）
+// 包围盒更新策略：如果整个子树和当前点都已删除，则从兄弟节点继承范围
 template <typename PointType>
 void KD_TREE<PointType>::Update(KD_TREE_NODE *root)
 {
@@ -1623,6 +1686,12 @@ void KD_TREE<PointType>::Update(KD_TREE_NODE *root)
     return;
 }
 
+// === flatten：展平子树到点云容器 ===
+// 中序遍历子树，将所有有效点（未标记删除）添加到Storage容器
+// storage_type控制被删除点的记录方式：
+//   NOT_RECORD: 不记录被删除点
+//   DELETE_POINTS_REC: 记录被删除点到 Points_deleted
+//   MULTI_THREAD_REC: 记录被删除点到 Multithread_Points_deleted
 template <typename PointType>
 void KD_TREE<PointType>::flatten(KD_TREE_NODE *root, PointVector &Storage, delete_point_storage_set storage_type)
 {
@@ -1657,6 +1726,8 @@ void KD_TREE<PointType>::flatten(KD_TREE_NODE *root, PointVector &Storage, delet
     return;
 }
 
+// === delete_tree_nodes：递归删除子树节点 ===
+// 释放子树所有节点的内存，并销毁互斥锁
 template <typename PointType>
 void KD_TREE<PointType>::delete_tree_nodes(KD_TREE_NODE **root)
 {
@@ -1687,6 +1758,10 @@ float KD_TREE<PointType>::calc_dist(PointType a, PointType b)
     return dist;
 }
 
+// === calc_box_dist：计算点到节点包围盒的最小平方距离 ===
+// 如果点在包围盒内，距离为0
+// 如果点在包围盒外，计算到最近面的垂直距离
+// 用于KNN搜索时剪枝：dist_to_box > 当前最远距离时可以跳过该子树
 template <typename PointType>
 float KD_TREE<PointType>::calc_box_dist(KD_TREE_NODE *node, PointType point)
 {

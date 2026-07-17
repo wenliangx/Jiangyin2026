@@ -1,36 +1,84 @@
+# =============================================================================
+# RA-LIO 配置文件 —— Livox MID360 激光雷达
+# =============================================================================
+# 本文件被 launch/mapping_mid360.launch 中的 <rosparam> 标签加载
+# 所有参数通过 ros::NodeHandle 在 laserMapping.cpp 的 main() 中读取
+#
+# 坐标系约定:
+#   LiDAR系 → IMU系 (外参 extrinsic_T/R) → 世界系 (状态量 pos/rot)
+# =============================================================================
+
+# === 传感器话题配置 ===
 common:
-    lid_topic:  "/livox/lidar"
-    imu_topic:  "/livox/imu"
-    time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
-    time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
-                                  # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
+    lid_topic:  "/livox/lidar"   # LiDAR点云数据话题名
+    imu_topic:  "/livox/imu"     # IMU数据话题名
+    time_sync_en: true            # 是否自动同步IMU和LiDAR时间戳
+                                  # true: 系统自动估算 LiDAR-IMU 时间偏移
+                                  # false: 使用下面的固定偏移量
+    time_offset_lidar_to_imu: 0.0 # LiDAR到IMU的固定时间偏移（秒）
+                                  # LiDAR时间 = IMU时间 - time_offset
+                                  # 如果不知道精确偏移，设为0.0即可
+                                  # 可通过 LI-Init 等外参标定工具获得
 
+# === 点云预处理参数 ===
 preprocess:
-    lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
-    scan_line: 4
-    blind: 0.4
+    lidar_type: 1                # 激光雷达型号：
+                                 #   1 = Livox AVIA/MID360（固态非重复扫描）
+                                 #   2 = Velodyne VLP-16
+                                 #   3 = Ouster OS1-64
+                                 #   4 = 速腾聚创 RS-32
+                                 #   5 = 万集 Vanjee-16
+    scan_line: 4                 # Livox MID360 的扫描线数为 4
+                                 # （Velodyne VLP-16 = 16，Ouster OS1-64 = 64 等）
+    blind: 0.4                   # 盲区距离（米），小于此距离的激光点被过滤
+                                 # MID360 最小测距约0.1m，这里滤掉0.4m内的点
 
+# === 建图 & ESKF 参数 ===
 mapping:
-    acc_cov: 0.1
-    gyr_cov: 0.1
-    b_acc_cov: 0.0001
-    b_gyr_cov: 0.0001
-    fov_degree:    360
-    det_range:     100.0
-    extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
-    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
-    extrinsic_R: [ 1, 0, 0,
-                   0, 1, 0,
-                   0, 0, 1]
+    acc_cov: 5.3e-6                 # 加速度计测量噪声协方差（每轴，m²/s⁴）
+                                 # 越大 → 越不信任加速度计 → 更新时更依赖LiDAR
+    gyr_cov: 4.8e-6                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）
+                                 # 越大 → 越不信任陀螺仪 → 姿态更依赖LiDAR约束
+    b_acc_cov: 3.2e-9            # 加速度计 bias 随机游走噪声协方差
+                                 # 控制 bias 估计的变化速率
+    b_gyr_cov: 4.9e-9            # 陀螺仪 bias 随机游走噪声协方差
 
+    fov_degree:    360           # LiDAR 视场角（度），用于局部地图范围判定
+                                 # MID360 水平视场角为360°，设为360
+
+    det_range:     100.0         # 局部地图探测范围（米）
+                                 # 当LiDAR靠近局部地图边界 < 1.5×det_range 时
+                                 # 地图会自动向运动方向滑动
+
+    extrinsic_est_en:  false     # 是否在线估计 LiDAR→IMU 外参
+                                 # true: 外参作为状态量参与优化（用于未标定场景）
+                                 # false: 使用下方固定外参值（标定后用此模式）
+
+    # LiDAR 到 IMU 的外参（LiDAR系在IMU系下的位姿）
+    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]  # 平移 [x, y, z] 单位：米
+                                                 # MID360出厂外参，实际可根据标定修改
+
+    extrinsic_R: [ 1, 0, 0,                      # 旋转矩阵（行优先 3×3）
+                   0, 1, 0,                      # 当前为单位阵，表示LiDAR和IMU
+                   0, 0, 1]                      # 坐标轴方向一致
+
+# === 发布控制 ===
 publish:
-    path_en:  true
-    speed_vector_en: false    #publish speed vector
-    scan_publish_en:  true       # false: close all the point cloud output
-    dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
-    scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+    path_en:  true               # 是否发布运动轨迹 (nav_msgs::Path, /path话题)
+    speed_vector_en: false       # 是否发布速度向量可视化箭头 (rviz Marker)
+                                 # 开启后会持续发布，可在rviz中查看运动方向
+    scan_publish_en:  true       # 是否发布点云（主开关）
+                                 # false: 关闭所有点云输出（节省带宽和CPU）
+    dense_publish_en: true       # 是否发布稠密点云
+                                 # true: 发布去畸变后的全部点云
+                                 # false: 发布降采样后的稀疏点云（减少数据量）
+    scan_bodyframe_pub_en: true  # 是否额外发布 IMU坐标系(Body系)的点云
+                                 # true: 同时发布 /cloud_registered_body 话题
 
+# === PCD 文件保存 ===
 pcd_save:
-    pcd_save_en: false
-    interval: -1                 # how many LiDAR frames saved in each pcd file; 
-                                 # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+    pcd_save_en: false           # 是否保存点云到PCD文件
+    interval: -1                 # 每多少帧LiDAR保存一个PCD文件
+                                 # -1 : 所有帧合并保存为一个PCD文件
+                                 #       （帧数过多时可能内存溢出）
+                                 # N  : 每N帧保存一个文件，文件名 scans_1.pcd, scans_2.pcd...
