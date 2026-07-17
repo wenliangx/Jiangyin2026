@@ -3,11 +3,11 @@ index 7344d08..6618ca6 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -5,6 +5,7 @@ if(ROS_EDITION STREQUAL "ROS1")
- 
+
    cmake_minimum_required(VERSION 3.0)
- 
+
 +  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
- 
+
    #---------------------------------------------------------------------------------------
    # Start livox_ros_driver2 project
 diff --git a/config/MID360_config.json b/config/MID360_config.json
@@ -46,24 +46,24 @@ index 1e08745..95e67fd 100644
 --- a/launch_ROS1/msg_MID360.launch
 +++ b/launch_ROS1/msg_MID360.launch
 @@ -2,7 +2,7 @@
- 
- 	<!--user configure parameters for ros start-->
- 	<arg name="lvx_file_path" default="livox_test.lvx"/>
+
+	<!--user configure parameters for ros start-->
+	<arg name="lvx_file_path" default="livox_test.lvx"/>
 -	<arg name="bd_list" default="100000000000000"/>
 +	<arg name="bd_list" default="47MDLCC0020285"/>
- 	<arg name="xfer_format" default="1"/>
- 	<arg name="multi_topic" default="0"/>
- 	<arg name="data_src" default="0"/>
+	<arg name="xfer_format" default="1"/>
+	<arg name="multi_topic" default="0"/>
+	<arg name="data_src" default="0"/>
 diff --git a/launch_ROS1/rviz_MID360.launch b/launch_ROS1/rviz_MID360.launch
 index 44c8bff..4697906 100644
 --- a/launch_ROS1/rviz_MID360.launch
 +++ b/launch_ROS1/rviz_MID360.launch
 @@ -2,7 +2,7 @@
- 
- 	<!--user configure parameters for ros start-->
- 	<arg name="lvx_file_path" default="livox_test.lvx"/>
+
+	<!--user configure parameters for ros start-->
+	<arg name="lvx_file_path" default="livox_test.lvx"/>
 -	<arg name="bd_list" default="100000000000000"/>
 +	<arg name="bd_list" default="47MDLCC0020285"/>
- 	<arg name="xfer_format" default="0"/>
- 	<arg name="multi_topic" default="0"/>
- 	<arg name="data_src" default="0"/>
+	<arg name="xfer_format" default="0"/>
+	<arg name="multi_topic" default="0"/>
+	<arg name="data_src" default="0"/>
