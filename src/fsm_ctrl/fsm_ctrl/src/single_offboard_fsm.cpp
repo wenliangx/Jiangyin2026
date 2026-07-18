@@ -82,7 +82,7 @@ static int yaw_print_count = 0;
 
 static vector<TypePoint> Ego_traj;
 static int Ego_traj_count = 0;                     // 当前飞往点的标号
-static int Ego_traj_size = 46;
+static int Ego_traj_size = 3;
 static bool need_GeneTraj = true;                 // 是否需要修改轨迹
 
 //存放历史一段时间内的位姿
@@ -1157,54 +1157,56 @@ void EgoGeneTraj()
     // EgoAddPoint(8, 3, 0, double_pose1(0)+1.8, double_pose1(1), 1.50, 3.13, 0);
     // EgoAddPoint(9, 3, 0, double_pose1(0)+1.8, double_pose1(1)-1, 0.5, 3.13, 0);
 
-
+    EgoAddPoint(0, 2, 1, 0.0, 0.0, 1.0, 0.0, 3);
+    EgoAddPoint(1, 2, 1, 2.0, 0.0, 1.0, 0.0, 0);
+    EgoAddPoint(2, 2, 1, 0.0, 0.0, 1.0, 0.0, 0);
     
-    EgoAddPoint(0, 2, 0, 1.35, 0.0, 1.08, 0.0, 3);
-    EgoAddPoint(1, 3, 0, 3.2, 0.09, 1.85, 0.0, 0);
-    EgoAddPoint(2, 3, 0, 5.3, 0.195, 1.85, 0.0, 0);
-    EgoAddPoint(3, 3, 0, 6.28, 0.902, 1.85, 0.0, 0);
-    EgoAddPoint(4, 3, 0, 7.16, 0.95, 1.85, 0.0, 0);
-    EgoAddPoint(5, 3, 0, 7.68, 0.16, 1.85, 0.0, 0);
-    EgoAddPoint(6, 3, 0, 9.15, 0.35, 1.85, 0.0, 0);
-    EgoAddPoint(7, 3, 0, 10.32, 0.53, 1.85, 0.0, 0);
-    EgoAddPoint(8, 3, 0, 12.32, 0.53, 1.85, 0.0, 2);
-    EgoAddPoint(9, 3, 0, 12.89, 0.05, 1.85, 0.0, 2);
-    EgoAddPoint(10, 3, 0, 13.12, -0.48, 1.85, 0.0, 2);
-    EgoAddPoint(11, 3, 0, tunnel_pose1(0)-0.8, tunnel_pose1(1), 1.75, 0.0, 0);
-    EgoAddPoint(12, 3, 0, tunnel_pose1(0), tunnel_pose1(1), 1.75, 0.0, 0);
-    EgoAddPoint(13, 3, 0, tunnel_pose1(0)+0.8, tunnel_pose1(1), 1.85, 0.0, 0);
-    EgoAddPoint(14, 3, 0, tunnel_pose3(0)-0.5, tunnel_pose3(1), 1.85, 0.0, 0);
-    EgoAddPoint(15, 3, 0, tunnel_pose3(0), tunnel_pose3(1), 1.85, 0.0, 0);
-    EgoAddPoint(16, 3, 0, tunnel_pose3(0)+0.5, tunnel_pose3(1), 1.85, 0.0, 0);
-    EgoAddPoint(17, 3, 0, tunnel_pose2(0)-1.0, tunnel_pose2(1), 1.85, 0.0, 0);
-    EgoAddPoint(18, 3, 0, tunnel_pose2(0), tunnel_pose2(1), 1.85, 0.0, 0);
-    EgoAddPoint(19, 3, 0, tunnel_pose2(0)+1.0, tunnel_pose2(1), 1.85, 0.0, 0);
-    EgoAddPoint(20, 3, 0, 24.65, 0.85, 1.8, 0.0, 0);
-    EgoAddPoint(21, 3, 0, 20.80, 7.55, 2.0, 1.57, 0);
-    EgoAddPoint(22, 3, 0, 19.85, 8.34, 2.0, 1.57, 3);
-    EgoAddPoint(23, 2, 0, maze_pose1(0), maze_pose1(1)-0.8, 2.0, 1.57, 0);
-    EgoAddPoint(24, 2, 0, maze_pose1(0), maze_pose1(1), 2.0, 1.57, 0);
-    EgoAddPoint(25, 2, 0, maze_pose1(0), maze_pose1(1)+0.8, 2.0, 1.57, 0);
-    EgoAddPoint(26, 2, 0, maze_pose2(0), maze_pose2(1)-0.8, 2.0, 1.57, 0);
-    EgoAddPoint(27, 2, 0, maze_pose2(0), maze_pose2(1), 2.0, 1.57, 0);
-    EgoAddPoint(28, 2, 0, maze_pose2(0), maze_pose2(1)+0.8, 2.0, 1.57, 0);
-    EgoAddPoint(29, 2, 0, maze_pose3(0), maze_pose3(1)-0.8, 2.0, 1.57, 0);
-    EgoAddPoint(30, 2, 0, maze_pose3(0), maze_pose3(1), 2.0, 1.57, 0);
-    EgoAddPoint(31, 2, 0, maze_pose3(0), maze_pose3(1)+0.8, 2.0, 1.57, 0);
-    EgoAddPoint(32, 3, 0, 19.00, 18.00, 1.8, 1.57, 0);
-    EgoAddPoint(33, 3, 0, 14.80, 15.42, 1.0, 3.13, 0);
-    EgoAddPoint(34, 2, 0, 2.479, 0.0, 1.0, 0.0, 7);
-    EgoAddPoint(34, 3, 0, 3.26, 4.0, 1.65, 1.57, 7);
-    EgoAddPoint(36, 3, 0, 1.12, 4.37, 1.65, 3.13, 7);
-    EgoAddPoint(37, 3, 0, double_pose2(0)+0.8, double_pose2(1), 1.65, 3.13, 0);
-    EgoAddPoint(38, 3, 0, double_pose2(0), double_pose2(1), 1.65, 3.13, 0);
-    EgoAddPoint(39, 3, 0, double_pose2(0)-0.8, double_pose2(1), 1.65, 3.13, 0);
-    EgoAddPoint(40, 3, 0, double_pose1(0)-0.8, double_pose1(1), 1.65, 3.13, 0);
-    EgoAddPoint(41, 3, 0, double_pose1(0), double_pose1(1), 1.65, 3.13, 0);
-    EgoAddPoint(42, 3, 0, double_pose1(0)+1.8, double_pose1(1), 1.65, 3.13, 0);
-    EgoAddPoint(43, 3, 0, double_pose1(0)+1.8, double_pose1(1)-1, 1.65, 3.13, 0);
-    EgoAddPoint(44, 3, 0, -4.3, 2.12, 1.65, 3.13, 5);
-    EgoAddPoint(45, 3, 0, ring2_pose(0)+1,ring2_pose(1), 1.65, 3.13, 5);
+    // EgoAddPoint(0, 2, 0, 1.35, 0.0, 1.08, 0.0, 3);
+    // EgoAddPoint(1, 3, 0, 3.2, 0.09, 1.85, 0.0, 0);
+    // EgoAddPoint(2, 3, 0, 5.3, 0.195, 1.85, 0.0, 0);
+    // EgoAddPoint(3, 3, 0, 6.28, 0.902, 1.85, 0.0, 0);
+    // EgoAddPoint(4, 3, 0, 7.16, 0.95, 1.85, 0.0, 0);
+    // EgoAddPoint(5, 3, 0, 7.68, 0.16, 1.85, 0.0, 0);
+    // EgoAddPoint(6, 3, 0, 9.15, 0.35, 1.85, 0.0, 0);
+    // EgoAddPoint(7, 3, 0, 10.32, 0.53, 1.85, 0.0, 0);
+    // EgoAddPoint(8, 3, 0, 12.32, 0.53, 1.85, 0.0, 2);
+    // EgoAddPoint(9, 3, 0, 12.89, 0.05, 1.85, 0.0, 2);
+    // EgoAddPoint(10, 3, 0, 13.12, -0.48, 1.85, 0.0, 2);
+    // EgoAddPoint(11, 3, 0, tunnel_pose1(0)-0.8, tunnel_pose1(1), 1.75, 0.0, 0);
+    // EgoAddPoint(12, 3, 0, tunnel_pose1(0), tunnel_pose1(1), 1.75, 0.0, 0);
+    // EgoAddPoint(13, 3, 0, tunnel_pose1(0)+0.8, tunnel_pose1(1), 1.85, 0.0, 0);
+    // EgoAddPoint(14, 3, 0, tunnel_pose3(0)-0.5, tunnel_pose3(1), 1.85, 0.0, 0);
+    // EgoAddPoint(15, 3, 0, tunnel_pose3(0), tunnel_pose3(1), 1.85, 0.0, 0);
+    // EgoAddPoint(16, 3, 0, tunnel_pose3(0)+0.5, tunnel_pose3(1), 1.85, 0.0, 0);
+    // EgoAddPoint(17, 3, 0, tunnel_pose2(0)-1.0, tunnel_pose2(1), 1.85, 0.0, 0);
+    // EgoAddPoint(18, 3, 0, tunnel_pose2(0), tunnel_pose2(1), 1.85, 0.0, 0);
+    // EgoAddPoint(19, 3, 0, tunnel_pose2(0)+1.0, tunnel_pose2(1), 1.85, 0.0, 0);
+    // EgoAddPoint(20, 3, 0, 24.65, 0.85, 1.8, 0.0, 0);
+    // EgoAddPoint(21, 3, 0, 20.80, 7.55, 2.0, 1.57, 0);
+    // EgoAddPoint(22, 3, 0, 19.85, 8.34, 2.0, 1.57, 3);
+    // EgoAddPoint(23, 2, 0, maze_pose1(0), maze_pose1(1)-0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(24, 2, 0, maze_pose1(0), maze_pose1(1), 2.0, 1.57, 0);
+    // EgoAddPoint(25, 2, 0, maze_pose1(0), maze_pose1(1)+0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(26, 2, 0, maze_pose2(0), maze_pose2(1)-0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(27, 2, 0, maze_pose2(0), maze_pose2(1), 2.0, 1.57, 0);
+    // EgoAddPoint(28, 2, 0, maze_pose2(0), maze_pose2(1)+0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(29, 2, 0, maze_pose3(0), maze_pose3(1)-0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(30, 2, 0, maze_pose3(0), maze_pose3(1), 2.0, 1.57, 0);
+    // EgoAddPoint(31, 2, 0, maze_pose3(0), maze_pose3(1)+0.8, 2.0, 1.57, 0);
+    // EgoAddPoint(32, 3, 0, 19.00, 18.00, 1.8, 1.57, 0);
+    // EgoAddPoint(33, 3, 0, 14.80, 15.42, 1.0, 3.13, 0);
+    // EgoAddPoint(34, 2, 0, 2.479, 0.0, 1.0, 0.0, 7);
+    // EgoAddPoint(34, 3, 0, 3.26, 4.0, 1.65, 1.57, 7);
+    // EgoAddPoint(36, 3, 0, 1.12, 4.37, 1.65, 3.13, 7);
+    // EgoAddPoint(37, 3, 0, double_pose2(0)+0.8, double_pose2(1), 1.65, 3.13, 0);
+    // EgoAddPoint(38, 3, 0, double_pose2(0), double_pose2(1), 1.65, 3.13, 0);
+    // EgoAddPoint(39, 3, 0, double_pose2(0)-0.8, double_pose2(1), 1.65, 3.13, 0);
+    // EgoAddPoint(40, 3, 0, double_pose1(0)-0.8, double_pose1(1), 1.65, 3.13, 0);
+    // EgoAddPoint(41, 3, 0, double_pose1(0), double_pose1(1), 1.65, 3.13, 0);
+    // EgoAddPoint(42, 3, 0, double_pose1(0)+1.8, double_pose1(1), 1.65, 3.13, 0);
+    // EgoAddPoint(43, 3, 0, double_pose1(0)+1.8, double_pose1(1)-1, 1.65, 3.13, 0);
+    // EgoAddPoint(44, 3, 0, -4.3, 2.12, 1.65, 3.13, 5);
+    // EgoAddPoint(45, 3, 0, ring2_pose(0)+1,ring2_pose(1), 1.65, 3.13, 5);
     
     // EgoAddPoint(8, 3, 0, double_pose2(0)+0.8, double_pose2(1), 1.65, 0.0, 0);
     // EgoAddPoint(9, 3, 0, double_pose2(0)-0.8, double_pose2(1), 1.65, 0.0, 0);
@@ -2334,7 +2336,7 @@ int main(int argc, char **argv)
                     EGO_flag_aimpos(Ego_traj[Ego_traj_count]);//给定点传到全局变量
                     ROS_INFO("Ego Trajectory Num %d", Ego_traj_count);
                     ROS_INFO("Flag %d: x: %f, y: %f, z: %f", Ego_traj_count, Ego_traj[Ego_traj_count].x, Ego_traj[Ego_traj_count].y, Ego_traj[Ego_traj_count].z);
-                    //planner_cmd_pub.publish(flag_super_msg);
+                    planner_cmd_pub.publish(flag_super_msg);
                     // ego_flag_pub.publish(flag_traj_msg);
                 }           
                 Ego_traj_count++;

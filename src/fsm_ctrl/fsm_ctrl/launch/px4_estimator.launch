@@ -4,7 +4,7 @@
 
 	<node pkg="fsm_ctrl" type="px4_estimator" name="px4_estimator" output="screen">
 
-		<!-- 0: mocap  1: lidar (RA-LIO)  2: camera -->
+		<!-- 0: mocap  1: lidar  2: camera -->
 		<param name="vision_source" value="1" type="int"/>
 		
 		<remap from = "~odom"    to ="/Odometry"/>
