@@ -1,7 +1,7 @@
 .DS_Store
 build
 devel
-.vscode/
+.vscode
 !.vscode/settings.json
 .cache/clangd
 .clangd-index
@@ -16,3 +16,5 @@ compile_commands.json
 .clangd/
 __pycache__/
 *.pyc
+*.png
+*.ipynb

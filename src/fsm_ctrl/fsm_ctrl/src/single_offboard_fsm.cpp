@@ -82,7 +82,7 @@ static int yaw_print_count = 0;
 
 static vector<TypePoint> Ego_traj;
 static int Ego_traj_count = 0;                     // 当前飞往点的标号
-static int Ego_traj_size = 3;
+static int Ego_traj_size = 8;
 static bool need_GeneTraj = true;                 // 是否需要修改轨迹
 
 //存放历史一段时间内的位姿
@@ -1157,9 +1157,15 @@ void EgoGeneTraj()
     // EgoAddPoint(8, 3, 0, double_pose1(0)+1.8, double_pose1(1), 1.50, 3.13, 0);
     // EgoAddPoint(9, 3, 0, double_pose1(0)+1.8, double_pose1(1)-1, 0.5, 3.13, 0);
 
-    EgoAddPoint(0, 2, 1, 0.0, 0.0, 1.0, 0.0, 3);
-    EgoAddPoint(1, 2, 1, 2.0, 0.0, 1.0, 0.0, 0);
-    EgoAddPoint(2, 2, 1, 0.0, 0.0, 1.0, 0.0, 0);
+    EgoAddPoint(0, 2, 1, 1.4, 1.5, 1.0, 0.0, 3);
+    EgoAddPoint(1, 2, 1, 1.6, 1.2, 1.65, 0.0, 0);
+    EgoAddPoint(2, 2, 1, 2.6, 0.7, 1.7, 0.0, 0);
+    EgoAddPoint(3, 2, 1, 3.6, 0.2, 1.65, 0.0, 0);
+    EgoAddPoint(4, 2, 1, 3.6, 0.2, 0.5, 0.0, 0);
+    EgoAddPoint(5, 2, 1, 2.6, 0.7, 0.45, 0.0, 0);
+    EgoAddPoint(6, 2, 1, 1.6, 1.2, 0.5, 0.0, 0);
+    EgoAddPoint(7, 2, 1, 0.0, 0.0, 0.5, 0.0, 0);
+    
     
     // EgoAddPoint(0, 2, 0, 1.35, 0.0, 1.08, 0.0, 3);
     // EgoAddPoint(1, 3, 0, 3.2, 0.09, 1.85, 0.0, 0);
@@ -1855,7 +1861,7 @@ int main(int argc, char **argv)
 
                 desired_states.push_back(0.0);   // px
                 desired_states.push_back(0.0);   // py
-                desired_states.push_back(1.0);   // pz
+                desired_states.push_back(0.5);   // pz
                 desired_states.push_back(0.0);   // vx
                 desired_states.push_back(0.0);   // vy
                 desired_states.push_back(0.0);   // vz

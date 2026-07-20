@@ -124,7 +124,7 @@ rog_map:
   frontier_extraction_en: false
 
   # Virtual ceil and ground
-  virtual_ceil_height: 1.3
+  virtual_ceil_height: 2.3
   virtual_ground_height: -0.3 #原-0.35
 
   load_pcd_en: false

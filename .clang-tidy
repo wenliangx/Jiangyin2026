@@ -29,7 +29,6 @@ WarningsAsErrors: ''
 
 HeaderFilterRegex: '^(?!.*[/\\](third_party|external|build|vendor)[/\\]).*$'
 
-AnalyzeTemporaryDtors: false
 
 CheckOptions:
   - key: modernize-use-nullptr.NullMacros
