@@ -6,6 +6,7 @@
  * @date    2024-06-03
  */
 
+#include "ros/console.h"
 #include <fsm_ctrl/single_offboard_fsm.hpp>
 #include <fsm_ctrl/traj_gen.hpp>
 
@@ -606,6 +607,8 @@ void Traj_Callback(const quadrotor_msgs::PositionCommand::ConstPtr &msg)
  * @param
  * @return 无
  */
+
+ // 20260720 WSZ TEST
 void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
 {
     // if (is_arrive_ap_prepoint)
@@ -616,14 +619,25 @@ void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
     // {
     //     return;
     // }
-    is_get_planner_msgs = true;
+    // is_get_planner_msgs = true;
 
-    for(int i=0; i<6; i++)
+    // for(int i=0; i<6; i++)
+    // {
+    //     nmpc_traj_pt[i].pos = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
+    //     nmpc_traj_pt[i].vel = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
+    //     nmpc_traj_pt[i].acc = Eigen::Vector3d(msg->cmd[i].acceleration.x, msg->cmd[i].acceleration.y, msg->cmd[i].acceleration.z);
+    // }
+
+    if(is_get_planner_msgs == false)
+    {is_get_planner_msgs = true;}
+
+    for(int i=0; i<9; i++)
     {
-        nmpc_traj_pt[i].pos = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
-        nmpc_traj_pt[i].vel = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
-        nmpc_traj_pt[i].acc = Eigen::Vector3d(msg->cmd[i].acceleration.x, msg->cmd[i].acceleration.y, msg->cmd[i].acceleration.z);
+        nmpc_pos_des[i] = Eigen::Vector3d(msg->cmd[i].position.x, msg->cmd[i].position.y, msg->cmd[i].position.z);
+        nmpc_vel_des[i] = Eigen::Vector3d(msg->cmd[i].velocity.x, msg->cmd[i].velocity.y, msg->cmd[i].velocity.z);
     }
+
+
 
     // //wsz
     // for(int i=0; i<6; i++)
@@ -647,6 +661,8 @@ void nmpc_traj_cb(const traj_utils::Flag::ConstPtr &msg)
     // }
     // traj_nmpc = _traj_nmpc;
 }
+
+
 void nmpc_super_cb(const super_msgs::Flag::ConstPtr &msg)
 {
     //lyx for super
@@ -1460,8 +1476,9 @@ int main(int argc, char **argv)
         ("/drone_0_planning/pos_cmd", 10, Traj_Callback);
     // SYX FSM TEST
     // We can try new control using this topic 
-    ros::Subscriber nmpc_traj_sub = nh.subscribe<traj_utils::Flag>("/position_cmd_nmpc", 10, nmpc_traj_cb);
- 
+    // ros::Subscriber nmpc_traj_sub = nh.subscribe<traj_utils::Flag>("/position_cmd_nmpc", 10, nmpc_traj_cb);
+    ros::Subscriber nmpc_traj_sub = nh.subscribe<traj_utils::Flag>("/ergodic_cmd", 10, nmpc_traj_cb);
+
     ros::Subscriber ego_flag_state_sub = nh.subscribe<traj_utils::FlagState>("/ego_planner/flag_state", 10, EGO_flag_state_cb);
     // SYX FSM TEST DONE
 
@@ -2336,22 +2353,22 @@ int main(int argc, char **argv)
                 }
             }
 
-            if(need_GeneTraj){
-                EgoGeneTraj();
-                if (Ego_traj_count<Ego_traj_size){
-                    EGO_flag_aimpos(Ego_traj[Ego_traj_count]);//给定点传到全局变量
-                    ROS_INFO("Ego Trajectory Num %d", Ego_traj_count);
-                    ROS_INFO("Flag %d: x: %f, y: %f, z: %f", Ego_traj_count, Ego_traj[Ego_traj_count].x, Ego_traj[Ego_traj_count].y, Ego_traj[Ego_traj_count].z);
-                    planner_cmd_pub.publish(flag_super_msg);
-                    // ego_flag_pub.publish(flag_traj_msg);
-                }           
-                Ego_traj_count++;
-                    if (Ego_traj_count == Ego_traj_size)
-                    {
-                        need_GeneTraj = false;
-                        Ego_traj_count = 0;
-                    }
-            }
+            // if(need_GeneTraj){
+            //     EgoGeneTraj();
+            //     if (Ego_traj_count<Ego_traj_size){
+            //         EGO_flag_aimpos(Ego_traj[Ego_traj_count]);//给定点传到全局变量
+            //         ROS_INFO("Ego Trajectory Num %d", Ego_traj_count);
+            //         ROS_INFO("Flag %d: x: %f, y: %f, z: %f", Ego_traj_count, Ego_traj[Ego_traj_count].x, Ego_traj[Ego_traj_count].y, Ego_traj[Ego_traj_count].z);
+            //         // planner_cmd_pub.publish(flag_super_msg);
+            //         // ego_flag_pub.publish(flag_traj_msg);
+            //     }           
+            //     Ego_traj_count++;
+            //         if (Ego_traj_count == Ego_traj_size)
+            //         {
+            //             need_GeneTraj = false;
+            //             Ego_traj_count = 0;
+            //         }
+            // }
 
             quat_yaw = EulerToQuat(0, 0, YawSmooth(yaw_now, Ego_traj[flag_state.now_id].yaw));
 
@@ -2376,7 +2393,7 @@ int main(int argc, char **argv)
                 {
                     desired_states.push_back(0.00); 
                     desired_states.push_back(0.00);
-                    desired_states.push_back(1.0);
+                    desired_states.push_back(0.5);
                     desired_states.push_back(0.0);
                     desired_states.push_back(0.0);
                     desired_states.push_back(0.0);
@@ -2394,10 +2411,10 @@ int main(int argc, char **argv)
                     // for super
                     desired_states.push_back(nmpc_pos_des[i].x());
                     desired_states.push_back(nmpc_pos_des[i].y());
-                    desired_states.push_back(nmpc_pos_des[i].z());
+                    desired_states.push_back(0.5);
                     desired_states.push_back(nmpc_vel_des[i].x());
                     desired_states.push_back(nmpc_vel_des[i].y());
-                    desired_states.push_back(nmpc_vel_des[i].z());
+                    desired_states.push_back(0.0);
                     desired_states.push_back(1.0);
                     desired_states.push_back(0.0);
                     desired_states.push_back(0.0);
