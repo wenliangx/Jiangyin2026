@@ -63,13 +63,8 @@ RUN mkdir -p livox-ws/src \
       && catkin_init_workspace src \
       && catkin_make -j${BUILD_JOBS} -DROS_EDITION=ROS1 -DCMAKE_INSTALL_PREFIX=/opt/ros/noetic \
       && DESTDIR=/pkg/livox-ros-driver2 cmake --build build --target install --parallel ${BUILD_JOBS} \
-      && rm -f \
-        /pkg/livox-ros-driver2/opt/ros/noetic/.catkin \
-        /pkg/livox-ros-driver2/opt/ros/noetic/.rosinstall \
-        /pkg/livox-ros-driver2/opt/ros/noetic/_setup_util.py \
-        /pkg/livox-ros-driver2/opt/ros/noetic/env.sh \
-        /pkg/livox-ros-driver2/opt/ros/noetic/setup.* \
-        /pkg/livox-ros-driver2/opt/ros/noetic/local_setup.*'
+      && find /pkg/livox-ros-driver2/opt/ros/noetic -mindepth 1 -maxdepth 1 \
+        ! -name include ! -name lib ! -name share -exec rm -rf {} +'
 
 RUN git init Sophus \
     && git -C Sophus remote add origin https://github.com/strasdat/Sophus.git \

@@ -63,7 +63,7 @@ make_package \
 
 make_package \
     jiangyin-livox-ros-driver2 \
-    1.0.0-1 \
+    1.0.0-5 \
     "$package_root/livox-ros-driver2" \
     'Livox ROS Driver 2 for ROS Noetic and Jiangyin2026.' \
     'jiangyin-livox-sdk2-dev (= 0.0.0-1), ros-noetic-roscpp, ros-noetic-rospy, ros-noetic-sensor-msgs, ros-noetic-std-msgs, ros-noetic-message-runtime, ros-noetic-rosbag, ros-noetic-pcl-ros, libapr1'
@@ -99,7 +99,7 @@ Section: metapackages
 Priority: optional
 Architecture: all
 Maintainer: Jiangyin2026 <maintainers@jiangyin2026.local>
-Depends: jiangyin-livox-ros-driver2 (= 1.0.0-1), ros-noetic-mavros, ros-noetic-mavros-extras, ros-noetic-rosfmt, ros-noetic-gazebo-msgs, ros-noetic-gazebo-ros, ros-noetic-gazebo-plugins, ros-noetic-gazebo-ros-control, ros-noetic-plotjuggler, ros-noetic-plotjuggler-ros
+Depends: jiangyin-livox-ros-driver2 (= 1.0.0-5), ros-noetic-mavros, ros-noetic-mavros-extras, ros-noetic-rosfmt, ros-noetic-gazebo-msgs, ros-noetic-gazebo-ros, ros-noetic-gazebo-plugins, ros-noetic-gazebo-ros-control, ros-noetic-plotjuggler, ros-noetic-plotjuggler-ros
 Recommends: ros-noetic-velodyne-gazebo-plugins
 Description: ROS Noetic runtime and simulation dependencies for Jiangyin2026.
 EOF
