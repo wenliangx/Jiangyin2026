@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+
+import socket
+import threading
+import time
+import unittest
+import math
+
+import rosnode
+import rospy
+from fsm_ctrl.msg import nmpc_state
+from geometry_msgs.msg import PoseStamped
+from mavros_msgs.msg import AttitudeTarget
+from mavros_msgs.msg import RCIn
+from super_msgs.msg import Flag as SuperFlag
+from traj_utils.msg import Flag as EgoFlag
+from traj_utils.msg import FlagState
+
+
+class SingleOffboardSmlSmoke(unittest.TestCase):
+    def setUp(self):
+        self._lock = threading.Lock()
+        self._positions = []
+        self._super_flags = []
+        self._ego_flags = []
+        self._reference_positions = []
+        self._feedback_positions = []
+        self._nmpc_states = []
+        self._attitudes = []
+        self._position_sub = rospy.Subscriber(
+            "/mavros/setpoint_position/local", PoseStamped,
+            self._position_callback, queue_size=100)
+        self._super_flag_sub = rospy.Subscriber(
+            "/super/flag_waypoint", SuperFlag,
+            self._super_flag_callback, queue_size=100)
+        self._ego_flag_sub = rospy.Subscriber(
+            "/ego_planner/flag_msg", EgoFlag,
+            self._ego_flag_callback, queue_size=100)
+        self._reference_sub = rospy.Subscriber(
+            "/nmpc_posref", PoseStamped,
+            self._reference_callback, queue_size=100)
+        self._feedback_sub = rospy.Subscriber(
+            "/nmpc_posfdb", PoseStamped,
+            self._feedback_callback, queue_size=100)
+        self._nmpc_state_sub = rospy.Subscriber(
+            "/nmpc_state", nmpc_state,
+            self._nmpc_state_callback, queue_size=100)
+        self._attitude_sub = rospy.Subscriber(
+            "/mavros/setpoint_raw/attitude", AttitudeTarget,
+            self._attitude_callback, queue_size=100)
+        self._rc_pub = rospy.Publisher("/mavros/rc/in", RCIn, queue_size=1)
+        self._planner_pub = rospy.Publisher(
+            "/position_cmd_nmpc", EgoFlag, queue_size=1)
+        self._ego_state_pub = rospy.Publisher(
+            "/ego_planner/flag_state", FlagState, queue_size=1)
+        self._local_pose_pub = rospy.Publisher(
+            "/mavros/local_position/pose", PoseStamped, queue_size=1)
+        self._target_pose_pub = rospy.Publisher(
+            "/target_pose", PoseStamped, queue_size=1)
+
+    def _position_callback(self, message):
+        with self._lock:
+            self._positions.append((time.monotonic(), message.pose.position.z))
+
+    def _super_flag_callback(self, message):
+        with self._lock:
+            self._super_flags.append((time.monotonic(), message.id))
+
+    def _ego_flag_callback(self, message):
+        with self._lock:
+            self._ego_flags.append((time.monotonic(), message.id))
+
+    def _reference_callback(self, message):
+        with self._lock:
+            self._reference_positions.append(
+                (time.monotonic(), message.pose.position.x,
+                 message.pose.position.y, message.pose.position.z))
+
+    def _feedback_callback(self, message):
+        with self._lock:
+            self._feedback_positions.append(
+                (time.monotonic(), message.pose.position.x,
+                 message.pose.position.y, message.pose.position.z))
+
+    def _nmpc_state_callback(self, message):
+        with self._lock:
+            self._nmpc_states.append(
+                (time.monotonic(), message.pos_ref[0].x,
+                 message.pos_ref[0].y, message.pos_ref[0].z,
+                 message.target.thrust))
+
+    def _attitude_callback(self, message):
+        with self._lock:
+            self._attitudes.append(
+                (time.monotonic(), message.body_rate.x, message.body_rate.y,
+                 message.body_rate.z, message.thrust))
+
+    def _send_udp_command(self, command):
+        payload = str(command).encode("ascii")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+            for _ in range(10):
+                udp.sendto(payload, ("127.0.0.1", 12001))
+                time.sleep(0.02)
+
+    def _select_udp_command(self, command):
+        # Force a fresh typed-command transition, independent of whatever
+        # command the persistent test node held before this assertion window.
+        self._send_udp_command(0)
+        time.sleep(0.15)
+        self._send_udp_command(command)
+
+    def _wait_for_node(self):
+        deadline = time.monotonic() + 6.0
+        while time.monotonic() < deadline:
+            if "/single_offboard_fsm" in rosnode.get_node_names():
+                break
+            time.sleep(0.05)
+        self.assertIn("/single_offboard_fsm", rosnode.get_node_names())
+        time.sleep(0.5)
+
+    def _wait_for(self, predicate, timeout=6.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                if predicate():
+                    return True
+            time.sleep(0.02)
+        with self._lock:
+            return predicate()
+
+    def _clear_observations(self):
+        with self._lock:
+            self._positions.clear()
+            self._super_flags.clear()
+            self._ego_flags.clear()
+            self._reference_positions.clear()
+            self._feedback_positions.clear()
+            self._nmpc_states.clear()
+            self._attitudes.clear()
+
+    def _publish_ego_state(self, now_id, touch_goal):
+        message = FlagState()
+        message.now_id = now_id
+        message.touch_goal = int(touch_goal)
+        for _ in range(5):
+            self._ego_state_pub.publish(message)
+            time.sleep(0.02)
+
+    def _publish_planner_z(self, z):
+        message = EgoFlag()
+        for command in message.cmd:
+            command.position.z = z
+        for _ in range(5):
+            self._planner_pub.publish(message)
+            time.sleep(0.02)
+
+    def _publish_planner_position(self, x, y, z):
+        message = EgoFlag()
+        for command in message.cmd:
+            command.position.x = x
+            command.position.y = y
+            command.position.z = z
+        for _ in range(5):
+            self._planner_pub.publish(message)
+            time.sleep(0.02)
+
+    def _publish_pose(self, publisher, x, y, z):
+        message = PoseStamped()
+        message.pose.position.x = x
+        message.pose.position.y = y
+        message.pose.position.z = z
+        message.pose.orientation.w = 1.0
+        for _ in range(20):
+            publisher.publish(message)
+            time.sleep(0.01)
+
+    def _has_finite_attitude_since(self, start_index):
+        return any(math.isfinite(wx) and math.isfinite(wy) and
+                   math.isfinite(wz) and math.isfinite(thrust)
+                   for _, wx, wy, wz, thrust in
+                   self._attitudes[start_index:])
+
+    def test_contract_udp_rate_and_short_rc(self):
+        self._wait_for_node()
+
+        # A short RC array must be rejected without indexing channels 8/10.
+        self._rc_pub.publish(RCIn(channels=[1000]))
+        # Flag.cmd is a fixed-size ROS array; publishing its default value
+        # exercises all planner indices without relying on external planners.
+        self._planner_pub.publish(EgoFlag())
+
+        self._send_udp_command(2)
+
+        self.assertTrue(self._wait_for(
+            lambda: any(abs(z - 1.0) < 1e-9
+                        for _, z in self._positions)))
+
+        start = time.monotonic()
+        time.sleep(0.6)
+        with self._lock:
+            recent = sum(1 for timestamp, _ in self._positions
+                         if timestamp >= start)
+        self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
+
+    def test_cmd678_runtime_ros_contracts(self):
+        self._clear_observations()
+        self._wait_for_node()
+
+        self._select_udp_command(6)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._super_flags) >= 1))
+        self.assertTrue(self._wait_for(
+            lambda: any(abs(x) < 1e-9 and abs(y) < 1e-9 and
+                        abs(z - 1.0) < 1e-9
+                        for _, x, y, z in self._reference_positions) and
+            len(self._feedback_positions) >= 1))
+        self.assertTrue(self._wait_for(
+            lambda: any(abs(x) < 1e-9 and abs(y) < 1e-9 and
+                        abs(z - 1.0) < 1e-9 and thrust > 0.0
+                        for _, x, y, z, thrust in self._nmpc_states)))
+        self.assertTrue(self._wait_for(
+            lambda: any(thrust > 0.0 for _, _, _, _, thrust in
+                        self._attitudes)))
+
+        with self._lock:
+            ref_before_cmd7 = len(self._reference_positions)
+            att_before_cmd7 = len(self._attitudes)
+        self._publish_ego_state(now_id=7, touch_goal=True)
+        self._publish_pose(self._local_pose_pub, 0.0, 0.05, 0.8)
+        self._publish_pose(self._target_pose_pub, 2.0, 0.2, 1.0)
+        self._select_udp_command(7)
+        self._publish_ego_state(now_id=7, touch_goal=True)
+        self._publish_pose(self._local_pose_pub, 0.0, 0.05, 0.8)
+        self._publish_pose(self._target_pose_pub, 2.0, 0.2, 1.0)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._reference_positions) > ref_before_cmd7 and
+            any(2.0 <= x <= 3.0 and abs(y - 0.2) < 1e-9 and
+                abs(z - 1.65) < 1e-9
+                for _, x, y, z in self._reference_positions[ref_before_cmd7:])))
+        self.assertTrue(self._wait_for(
+            lambda: len(self._attitudes) > att_before_cmd7 and
+            self._has_finite_attitude_since(att_before_cmd7)))
+
+        with self._lock:
+            ref_before_cmd8 = len(self._reference_positions)
+            att_before_cmd8 = len(self._attitudes)
+        self._publish_planner_position(0.4, -0.3, 1.23)
+        self._select_udp_command(8)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._reference_positions) > ref_before_cmd8 and
+            any(abs(x - 0.4) < 1e-9 and abs(y + 0.3) < 1e-9 and
+                abs(z - 1.23) < 1e-9
+                for _, x, y, z in self._reference_positions[ref_before_cmd8:])))
+        self.assertTrue(self._wait_for(
+            lambda: len(self._attitudes) > att_before_cmd8 and
+            self._has_finite_attitude_since(att_before_cmd8)))
+
+
+if __name__ == "__main__":
+    rospy.init_node("single_offboard_sml_smoke_test")
+    import rostest
+    rostest.rosrun("fsm_ctrl", "single_offboard_sml_smoke",
+                   SingleOffboardSmlSmoke)

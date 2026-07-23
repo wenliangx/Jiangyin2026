@@ -2,7 +2,8 @@ CompileFlags:
   CompilationDatabase: build
   Add:
     - -isystem
-    - /home/flag/.local/share/clangd-headers/gcc10-openmp
+    - /usr/lib/llvm-10/include/openmp
+    - -fopenmp
     - -ferror-limit=0
     - -Wall
     - -Wextra
@@ -16,7 +17,6 @@ Diagnostics:
       - bugprone-*
       - modernize-*
       - performance-*
-      - readability-container-size-empty
       - readability-delete-null-pointer
       - readability-misleading-indentation
       - readability-redundant-*

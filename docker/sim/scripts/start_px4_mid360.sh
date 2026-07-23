@@ -45,7 +45,7 @@ source "${PX4_HOME}/Tools/simulation/gazebo-classic/setup_gazebo.bash" \
 
 # ---- 1. 启动 roscore -------------------------------------------------------
 if ! pgrep -f "roscore" >/dev/null 2>&1; then
-  roscore >/tmp/roscore.log 2>&1 &
+  roscore >/dev/null 2>&1 &
 fi
 
 # 等待 roscore 就绪（最多等待30秒）
@@ -58,7 +58,7 @@ done
 # ---- 2. 启动 MAVROS（PX4 ↔ ROS 通信桥）-------------------------------------
 # fcu_url: udp://:14540@127.0.0.1:14557
 #   本地14540端口监听 → 转发到PX4 SITL的14557端口
-roslaunch mavros px4.launch fcu_url:=udp://:14540@127.0.0.1:14557 >/tmp/mavros.log 2>&1 &
+roslaunch mavros px4.launch fcu_url:=udp://:14540@127.0.0.1:14557 >/dev/null 2>&1 &
 echo "MAVROS started"
 
 # ---- 3. 启动 PX4 SITL + Gazebo --------------------------------------------

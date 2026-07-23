@@ -1,5 +1,13 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.1)
 project(fsm_ctrl)
+
+## ------------------------------------------------------------------
+## Boost.SML v1.2.0 (vendored, header-only)
+## ------------------------------------------------------------------
+add_library(boost_sml INTERFACE)
+target_include_directories(boost_sml SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/third_party/boost_sml/include)
+target_compile_features(boost_sml INTERFACE cxx_std_14)
+find_package(Threads REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
   message_generation
@@ -11,7 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   visualization_msgs
   quadrotor_msgs
-  # super_msgs
+  super_msgs
   traj_utils
 )
 find_package(Eigen3 REQUIRED)
@@ -110,8 +118,42 @@ target_link_libraries(swarm_user_cmd
   ctrl_math ${catkin_LIBRARIES} boost_system boost_filesystem
 )
 
+# ------------------------------------------------------------------
+# single_offboard_sml  (C++14, Boost.SML FSM)
+# ------------------------------------------------------------------
+add_executable(single_offboard_sml
+  src/single_offboard_sml.cpp
+)
+target_compile_features(single_offboard_sml PRIVATE cxx_std_14)
+add_dependencies(single_offboard_sml
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(single_offboard_sml
+  boost_sml
+  dfbc att_nmpc FLAG_NMPC traj_gen nmpc_ctrl ctrl_math
+  ${catkin_LIBRARIES}
+  boost_system boost_filesystem
+  Threads::Threads
+  /usr/local/lib/libcasadi.so.3.7
+)
+
 catkin_install_python(PROGRAMS
   scripts/pose_monitor.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
+## ------------------------------------------------------------------
+## Tests  (GTest, no CasADi / no ROS control linkage)
+## ------------------------------------------------------------------
+if(CATKIN_ENABLE_TESTING)
+  find_package(rostest REQUIRED)
+  catkin_add_gtest(single_offboard_sml_test
+    test/single_offboard_sml_test.cpp
+  )
+  target_link_libraries(single_offboard_sml_test
+    boost_sml
+  )
+  target_compile_features(single_offboard_sml_test PRIVATE cxx_std_14)
+  add_rostest(test/single_offboard_sml_smoke.test)
+endif()
