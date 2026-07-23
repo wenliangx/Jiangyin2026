@@ -1190,11 +1190,22 @@ class SingleOffboardNode {
   }
 
  private:
-  // 加载 SML 状态机配置；未暴露的参数沿用 Config 默认值。
+  // 加载 SML 状态机配置；默认值继续来自 Config，保证未配置时行为不变。
   smlfsm::Config loadConfig() {
     smlfsm::Config config;
+    private_node_.param("service_retry_seconds", config.service_retry_seconds,
+                        config.service_retry_seconds);
+    private_node_.param("low_thrust", config.low_thrust, config.low_thrust);
     private_node_.param("nmpc_hover_thrust", config.hover_thrust,
                         config.hover_thrust);
+    private_node_.param("position_hold_z", config.position_hold_z,
+                        config.position_hold_z);
+    private_node_.param("landing_target_z", config.landing_target_z,
+                        config.landing_target_z);
+    private_node_.param("landing_reference_z", config.landing_reference_z,
+                        config.landing_reference_z);
+    private_node_.param("landing_tolerance_z", config.landing_tolerance_z,
+                        config.landing_tolerance_z);
     return config;
   }
 
