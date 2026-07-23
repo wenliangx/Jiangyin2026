@@ -167,7 +167,7 @@ struct Config {
   // cmd9 应急输出使用的悬停油门基准。
   double hover_thrust{0.196};
   // cmd2 位置保持高度，也是启动 warmup 的高度。
-  double position_hold_z{1.0};
+  double position_hold_z{0.4};
   // cmd4 降落位置目标高度。
   double landing_target_z{0.005};
   // cmd4 判断接近地面的参考高度。
