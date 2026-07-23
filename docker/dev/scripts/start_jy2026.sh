@@ -21,10 +21,14 @@ if [[ "${1:-}" == "--dev" ]]; then
   shift
 fi
 
-source /opt/ros/noetic/setup.bash
-
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://sim:11311}"
+if [[ "${DEV_MODE}" == "true" ]]; then
+  export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
+else
+  export ROS_MASTER_URI="${ROS_MASTER_URI:-http://sim:11311}"
+fi
 export ROS_IP="${ROS_IP:-jy-dev}"
+
+source /opt/ros/noetic/setup.bash
 
 log_info()  { printf '[jy2026] %s\n' "$*"; }
 log_error() { printf '[jy2026 ERROR] %s\n' "$*" >&2; }
@@ -46,19 +50,66 @@ launch_service() {
 if [[ "${DEV_MODE}" == "true" ]]; then
   log_info "Dev mode: compiling from /ws/src/..."
 
+  if ! dpkg-query -W -f='${Status}' jiangyin-livox-ros-driver2 2>/dev/null \
+      | grep -qx 'install ok installed'; then
+    log_error "jiangyin-livox-ros-driver2 is not installed in the jy-dev image."
+    log_error "Rebuild localhost/jiangyin_core:latest from docker/Dockerfile.core.prebuilt, then rebuild jy-dev."
+    exit 1
+  fi
+
+  livox_driver_share="/opt/ros/noetic/share/livox_ros_driver2"
+  livox_driver_cmake="${livox_driver_share}/cmake"
+  if [[ ! -f "${livox_driver_cmake}/livox_ros_driver2Config.cmake" ]]; then
+    log_error "Missing Livox CMake package: ${livox_driver_cmake}/livox_ros_driver2Config.cmake"
+    exit 1
+  fi
+
+  stale_livox_paths=(
+    /ws/build/livox_ros_driver2
+    /ws/devel/include/livox_ros_driver2
+    /ws/devel/lib/livox_ros_driver2
+    /ws/devel/lib/pkgconfig/livox_ros_driver2.pc
+    /ws/devel/lib/python3/dist-packages/livox_ros_driver2
+    /ws/devel/share/common-lisp/ros/livox_ros_driver2
+    /ws/devel/share/gennodejs/ros/livox_ros_driver2
+    /ws/devel/share/livox_ros_driver2
+    /ws/devel/share/roseus/ros/livox_ros_driver2
+  )
+  for path in "${stale_livox_paths[@]}"; do
+    if [[ -e "${path}" ]]; then
+      log_info "Removing stale source-built Livox artifact: ${path}"
+      rm -rf "${path}"
+    fi
+  done
+  log_info "Using Livox ROS driver deb from ${livox_driver_share}"
+
+  if [[ -f /ws/build/Makefile || -f /ws/build/CMakeCache.txt ]]; then
+    cached_cmake=""
+    if [[ -f /ws/build/Makefile ]]; then
+      cached_cmake="$(sed -n 's/^CMAKE_COMMAND = //p' /ws/build/Makefile)"
+    fi
+    if [[ -z "${cached_cmake}" && -f /ws/build/CMakeCache.txt ]]; then
+      cached_cmake="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' /ws/build/CMakeCache.txt)"
+    fi
+    if [[ -n "${cached_cmake}" && ! -x "${cached_cmake}" ]]; then
+      log_info "Removing stale catkin build cache (missing ${cached_cmake})"
+      rm -rf /ws/build
+    fi
+  fi
+
   rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
   cd /ws
-  log_info "Preparing livox_ros_driver2 for ROS1..."
-  cp -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml /ws/src/libs/livox_ros_driver2/package.xml
 
   log_info "catkin_make..."
-  catkin_make -j"$(nproc)" -DROS_EDITION=ROS1 2>&1 | tail -20
+  catkin_make -j"$(nproc)" \
+    -DROS_EDITION=ROS1 \
+    -DCATKIN_BLACKLIST_PACKAGES=livox_ros_driver2 2>&1 | tail -20
   source /ws/devel/setup.bash
 
   log_info "Building RA-LIO..."
   mkdir -p /ws/src/RA-LIO/build && cd /ws/src/RA-LIO/build
   cmake .. -DCMAKE_BUILD_TYPE=Release \
-    -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake 2>&1 | tail -3
+    -Dlivox_ros_driver2_DIR="${livox_driver_cmake}" 2>&1 | tail -3
   make -j"$(nproc)" 2>&1 | tail -3
   cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true
   cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true

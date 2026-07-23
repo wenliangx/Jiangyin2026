@@ -35,9 +35,6 @@ services:
       - ROS_HOSTNAME=sim
       - PX4_SIM_WORLD=obstacle_test
       - GAZEBO_MODEL_PATH=
-    volumes:
-      - ./sim_logs/gazebo:/root/.gazebo:Z
-      - ./sim_logs/ros:/root/.ros:Z
     command: --gui=false
     restart: "no"
 
