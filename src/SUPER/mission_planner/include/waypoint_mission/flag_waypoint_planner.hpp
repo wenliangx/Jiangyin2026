@@ -38,6 +38,7 @@ namespace mission_planner {
         ros::Timer goal_pub_timer_;
         double system_start_time{0};
         bool trigger_once{false};
+        vector<super_msgs::Flag> waypoint_flags_;
 
 
         void OdomCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -85,7 +86,8 @@ namespace mission_planner {
         }
 
         void FlagCallback(const super_msgs::FlagConstPtr &msg){
-            if (!had_odom) {
+            if (msg->id < 0) {
+                ROS_WARN_STREAM("Ignore waypoint with invalid negative id: " << msg->id);
                 return;
             }
             if(msg->id >= cfg_.waypoints.size()){
@@ -95,6 +97,8 @@ namespace mission_planner {
                 cfg_.is_map_vec.resize(msg->id+1);
                 cfg_.mode_vec.resize(msg->id+1);
             }
+            waypoint_flags_.resize(cfg_.waypoints.size());
+            waypoint_flags_[msg->id] = *msg;
             cfg_.waypoints[msg->id]= Eigen::Vector3d(msg->position.x,
                                                 msg->position.y,
                                                 msg->position.z);
@@ -172,13 +176,12 @@ namespace mission_planner {
                 // goal.header.stamp = ros::Time::now();
                 // goal_pub_.publish(goal);
 
-                super_msgs::Flag flag_goal;
-                flag_goal.position.x = cfg_.waypoints[waypoint_counter].x();
-                flag_goal.position.y = cfg_.waypoints[waypoint_counter].y();
-                flag_goal.position.z = cfg_.waypoints[waypoint_counter].z();
-                // flag_goal.position.pose.orientation.w = 1;
-                flag_goal.is_map = cfg_.is_map_vec[waypoint_counter];
-                flag_goal.mode = cfg_.mode_vec[waypoint_counter];
+                if (waypoint_counter >= waypoint_flags_.size()) {
+                    ROS_WARN_STREAM("Waypoint " << waypoint_counter
+                                    << " has no Flag data; waiting for /flag/waypoint.");
+                    return;
+                }
+                super_msgs::Flag flag_goal = waypoint_flags_[waypoint_counter];
                 flag_goal.header.frame_id = "world";
                 flag_goal.header.stamp = ros::Time::now();
                 flag_goal_pub_.publish(flag_goal);
@@ -241,7 +244,7 @@ namespace mission_planner {
             /*LYX for flag */
             flag_goal_pub_ = nh_.advertise<super_msgs::Flag>(cfg_.flag_goal_pub_topic, 10);
             flag_state_pub_ = nh_.advertise<super_msgs::Flag>(cfg_.flag_state_pub_topic, 10);
-            flag_sub_ = nh_.subscribe("/super/flag_waypoint", 100, &WaypointPlanner::FlagCallback, this);
+            flag_sub_ = nh_.subscribe("/flag/waypoint", 100, &WaypointPlanner::FlagCallback, this);
 
         }
 

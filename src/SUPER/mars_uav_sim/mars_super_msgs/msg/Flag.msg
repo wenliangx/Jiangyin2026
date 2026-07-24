@@ -1,5 +1,7 @@
 Header header
 geometry_msgs/Point position       # 当前目标位置（xyz）
+float32 yaw                        # 最终偏航角（rad）；NaN 表示不固定最终 yaw
+float32 desired_speed              # 终端速度（m/s）；小于或等于 0 时终端速度为 0
 super_msgs/PositionCommand[] cmd   
 int16 id                           # 航点编号（0,1,2,...）
 int16 now_id                       # 当前已经飞到的航点编号

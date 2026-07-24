@@ -1,8 +1,0 @@
-<launch>
-  <!-- Convert /mavros/local_position/pose (PoseStamped) to /Odometry (Odometry)
-       for testing without real LiDAR perception. -->
-
-  <node pkg="pose_to_odom" type="pose_to_odom_node" name="pose_to_odom_node"
-        output="screen" respawn="true">
-  </node>
-</launch>
