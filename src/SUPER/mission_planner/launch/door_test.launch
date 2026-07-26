@@ -6,11 +6,6 @@
         <param name="config_name" value="flag_waypoint_sim.yaml" type="string"/>
     </node>
 
-    <!-- Load goal.yaml and publish waypoints to /flag/waypoint -->
-    <node pkg="mission_planner" name="goal_waypoint_publisher" type="goal_waypoint_publisher" output="screen">
-        <param name="config_path" value="$(find mission_planner)/config/goal.yaml" type="string"/>
-    </node>
-
     <!-- Perfect Drone Sim: door_wall.pcd environment -->
     <node pkg="perfect_drone_sim" type="perfect_drone" name="perfect_drone" output="screen">
         <param name="config_name" value="door.yaml" type="string"/>

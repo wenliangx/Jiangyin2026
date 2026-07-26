@@ -155,26 +155,6 @@ namespace perfect_drone {
             pcl::PointCloud<marsim::PointType>::Ptr local_map(new pcl::PointCloud<marsim::PointType>);
             const auto cur_t = this->get_clock()->now().seconds();
             render_ptr_->renderOnceInWorld(position_.cast<float>(), q_.cast<float>(), cur_t, local_map);
-            if (cfg_.conical_fov_en) {
-                pcl::PointCloud<marsim::PointType>::Ptr filtered_map(
-                        new pcl::PointCloud<marsim::PointType>);
-                filtered_map->header = local_map->header;
-                filtered_map->points.reserve(local_map->points.size());
-                const Eigen::Quaterniond world_to_body = q_.conjugate();
-                for (const auto &point : local_map->points) {
-                    const Eigen::Vector3d ray_world(
-                            point.x - position_.x(),
-                            point.y - position_.y(),
-                            point.z - position_.z());
-                    if (cfg_.pointInLidarFov(world_to_body * ray_world)) {
-                        filtered_map->points.push_back(point);
-                    }
-                }
-                filtered_map->width = filtered_map->points.size();
-                filtered_map->height = 1;
-                filtered_map->is_dense = local_map->is_dense;
-                local_map.swap(filtered_map);
-            }
             sensor_msgs::msg::PointCloud2 pc_msg;
             pcl::toROSMsg(*local_map, pc_msg);
             pc_msg.header.frame_id = "world";

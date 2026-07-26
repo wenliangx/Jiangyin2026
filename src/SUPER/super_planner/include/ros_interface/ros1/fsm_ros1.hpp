@@ -336,11 +336,8 @@ namespace fsm {
         // }
         void goalCallback(const super_msgs::FlagConstPtr &msg) {
             super_utils::Vec3f goal_p = Vec3f{msg->position.x, msg->position.y, msg->position.z};
-            super_utils::Quatf goal_q{NAN, NAN, NAN, NAN};
-            if (std::isfinite(msg->yaw)) {
-                goal_q = Quatf(Eigen::AngleAxisd(msg->yaw, Vec3f::UnitZ()));
-            }
-            setGoalPosiAndYaw(goal_p, goal_q, msg->desired_speed);
+            super_utils::Quatf goal_q = super_utils::Quatf{1,0,0,0};
+            setGoalPosiAndYaw(goal_p, goal_q);
 
             //开关避障is_map：在rog_map中的prob_map中，有raycast环节，虽然实际上可能未开启raycast，但是仍然提供了过滤点云的接口。此处将参数通过配置文件传入。
             //

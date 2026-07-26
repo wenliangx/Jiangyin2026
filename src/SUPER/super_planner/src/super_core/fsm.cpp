@@ -65,8 +65,7 @@ namespace fsm {
 
         TimeConsuming replan_once_time("replan_once_time", false);
 
-        RET_CODE ret_code = planner_ptr_->ReplanOnce(
-                gi_.goal_p, gi_.goal_yaw, gi_.desired_speed, gi_.new_goal);
+        RET_CODE ret_code = planner_ptr_->ReplanOnce(gi_.goal_p, gi_.goal_yaw, gi_.new_goal);
         if (ret_code == FAILED) {
 //            cout << YELLOW << " -- [Fsm] ReplanOnce failed." << RESET << endl;
         } else { cout << GREEN << " -- [Fsm] ReplanOnce succeed." << RESET << endl; }
@@ -138,8 +137,7 @@ namespace fsm {
                     finish_plan = true;
                     return;
                 }
-                int retcode = planner_ptr_->PlanFromRest(
-                        gi_.goal_p, gi_.goal_yaw, gi_.desired_speed, gi_.new_goal);
+                int retcode = planner_ptr_->PlanFromRest(gi_.goal_p, gi_.goal_yaw, gi_.new_goal);
                 if (!planner_ptr_->goalValid()) {
                     cout << YELLOW << " -- [Fsm] Goal is invalid, skip this goal." << RESET << endl;
                     ChangeState("MainFsmCallback", WAIT_GOAL);
@@ -185,7 +183,7 @@ namespace fsm {
         return dis < thresh_dis;
     }
 
-    void Fsm::setGoalPosiAndYaw(const Vec3f &p, const Quatf &q, const double desired_speed) {
+    void Fsm::setGoalPosiAndYaw(const Vec3f &p, const Quatf &q) {
 
         auto click_point = p;
         if (cfg_.click_goal_en && cfg_.click_height > -5) {
@@ -223,7 +221,6 @@ namespace fsm {
                  << RESET << endl;
         }
 
-        gi_.desired_speed = std::max(0.0, desired_speed);
         started_ = true;
         gi_.new_goal = true;
     }

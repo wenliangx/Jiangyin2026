@@ -69,7 +69,6 @@ namespace super_planner {
     RET_CODE
     SuperPlanner::PlanFromRest(const Vec3f &goal_p,
                                const double &goal_yaw,
-                               const double &desired_speed,
                                const bool &new_goal) {
         std::lock_guard<std::mutex> guard(replan_lock_);
         latest_replan.reset();
@@ -81,7 +80,6 @@ namespace super_planner {
         }
         gi_.goal_p = goal_p;
         gi_.goal_yaw = goal_yaw;
-        gi_.desired_speed = std::max(0.0, desired_speed);
         gi_.new_goal = new_goal;
         gi_.goal_valid = true;
         vec_Vec3f viz_pts{goal_p, robot_state_.p};
@@ -176,14 +174,12 @@ namespace super_planner {
     RET_CODE
     SuperPlanner::ReplanOnce(const Vec3f &goal_p,
                              const double &goal_yaw,
-                             const double &desired_speed,
                              const bool &new_goal) {
         TimeConsuming replan_total_t("ReplanOnce", false);
         std::lock_guard<std::mutex> guard(replan_lock_);
 
         gi_.goal_p = goal_p;
         gi_.goal_yaw = goal_yaw;
-        gi_.desired_speed = std::max(0.0, desired_speed);
         gi_.new_goal = new_goal;
         gi_.goal_valid = true;
         latest_replan.reset();
@@ -803,22 +799,8 @@ namespace super_planner {
             pos_fina_state.col(1) = (gi_.goal_p - robot_state_.p).normalized() * cfg_.exp_traj_cfg.max_vel / 2;
         }
         if ((pos_fina_state.col(0) - gi_.goal_p).norm() < cfg_.resolution * 2) {
-            pos_fina_state.col(0) = gi_.goal_p;
             pos_fina_state.col(1).setZero();
-            if (gi_.desired_speed > 0.0) {
-                Vec3f terminal_direction = Vec3f::Zero();
-                if (guide_path.size() >= 2) {
-                    terminal_direction = guide_path.back() - guide_path[guide_path.size() - 2];
-                }
-                if (terminal_direction.norm() <= 1e-6) {
-                    terminal_direction = gi_.goal_p - robot_state_.p;
-                }
-                if (terminal_direction.norm() > 1e-6) {
-                    const double terminal_speed =
-                            std::min(gi_.desired_speed, cfg_.exp_traj_cfg.max_vel);
-                    pos_fina_state.col(1) = terminal_direction.normalized() * terminal_speed;
-                }
-            }
+            pos_fina_state.col(0) = gi_.goal_p;
         }
 
         // optimize and update exp traj

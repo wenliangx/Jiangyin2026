@@ -50,19 +50,12 @@ add_executable(waypoint_mission
 add_executable(flag_waypoint_mission
         Apps/flag_waypoint_mission.cpp
         )
-add_executable(goal_waypoint_publisher
-        Apps/goal_waypoint_publisher.cpp
-        )
 target_link_libraries(waypoint_mission
         ${THIRD_PARTY}
         )
 target_link_libraries(flag_waypoint_mission
         ${THIRD_PARTY}
         )
-target_link_libraries(goal_waypoint_publisher
-        ${THIRD_PARTY}
-        )
 # Ensure super_msgs headers are generated before compiling
 add_dependencies(waypoint_mission super_msgs_generate_messages_cpp)
 add_dependencies(flag_waypoint_mission super_msgs_generate_messages_cpp)
-add_dependencies(goal_waypoint_publisher super_msgs_generate_messages_cpp)
