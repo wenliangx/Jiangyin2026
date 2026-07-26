@@ -67,6 +67,21 @@ namespace marsim {
             loader.LoadParam("depth_image_en", depth_image_en, false, false);
             loader.LoadParam("inf_point_en", inf_point_en, false, false);
             loader.LoadParam("print_time_consumption", print_time_consumption, false, false);
+            loader.LoadParam("annular_fov_en", annular_fov_en, false, false);
+            loader.LoadParam("annular_fov_axis_tilt_from_up_deg",
+                             annular_fov_axis_tilt_from_up_deg, 30.0f, false);
+            loader.LoadParam("annular_fov_min_angle_deg", annular_fov_min_angle_deg, 38.0f, false);
+            loader.LoadParam("annular_fov_max_angle_deg", annular_fov_max_angle_deg, 97.0f, false);
+
+            if (annular_fov_en &&
+                (annular_fov_axis_tilt_from_up_deg < 0.0f ||
+                 annular_fov_axis_tilt_from_up_deg > 180.0f ||
+                 annular_fov_min_angle_deg < 0.0f ||
+                 annular_fov_max_angle_deg > 180.0f ||
+                 annular_fov_min_angle_deg > annular_fov_max_angle_deg)) {
+                throw std::invalid_argument(
+                        "Invalid annular FOV: tilt and angles must be in [0, 180], and min <= max.");
+            }
 
             effect_range = cover_dis / sin(0.5 * polar_resolution * M_PI / 180.0);
             width = is_360lidar ? ceil(360.0 / polar_resolution) : ceil(yaw_fov / polar_resolution);
@@ -78,6 +93,11 @@ namespace marsim {
         bool is_360lidar = false;
         bool inf_point_en = false;
         bool print_time_consumption = false;
+        bool annular_fov_en = false;
+        // Body frame: +X forward, +Y left, +Z up. Tilt is measured from +Z toward +X.
+        decimal_t annular_fov_axis_tilt_from_up_deg = 30.0;
+        decimal_t annular_fov_min_angle_deg = 38.0;
+        decimal_t annular_fov_max_angle_deg = 97.0;
         decimal_t polar_resolution;
         decimal_t fx = 250, fy = 250;
         decimal_t downsample_res = 0.01;

@@ -332,6 +332,17 @@ namespace marsim {
         glm::vec2 res = glm::vec2(cfg_.downsample_res, cfg_.polar_resolution);
         ourShader.setVec2("res", res);
 
+        const decimal_t annular_axis_tilt =
+                cfg_.annular_fov_axis_tilt_from_up_deg * M_PI / 180.0f;
+        const glm::vec3 annular_fov_axis(
+                std::sin(annular_axis_tilt), 0.0f, std::cos(annular_axis_tilt));
+        const glm::vec2 annular_fov_cos_bounds(
+                std::cos(cfg_.annular_fov_max_angle_deg * M_PI / 180.0f),
+                std::cos(cfg_.annular_fov_min_angle_deg * M_PI / 180.0f));
+        ourShader.setBool("annular_fov_en", cfg_.annular_fov_en);
+        ourShader.setVec3("annular_fov_axis", annular_fov_axis);
+        ourShader.setVec2("annular_fov_cos_bounds", annular_fov_cos_bounds);
+
         glm::mat3 rotation_mat;
         Eigen::Matrix3f world2body = body2world_matrix.transpose(); //
 
@@ -408,6 +419,14 @@ namespace marsim {
     void MarsimRender::render_dynclouds_on_depthimage(cv::Mat& depth_image) {
         //count running time
         system_clock::time_point t1 = system_clock::now();
+        const decimal_t annular_axis_tilt =
+                cfg_.annular_fov_axis_tilt_from_up_deg * M_PI / 180.0f;
+        const Eigen::Vector3f annular_fov_axis(
+                std::sin(annular_axis_tilt), 0.0f, std::cos(annular_axis_tilt));
+        const decimal_t annular_fov_min_cos =
+                std::cos(cfg_.annular_fov_max_angle_deg * M_PI / 180.0f);
+        const decimal_t annular_fov_max_cos =
+                std::cos(cfg_.annular_fov_min_angle_deg * M_PI / 180.0f);
 
         /*#pragma omp parallel default (none) \
                             shared (dyn_clouds, cfg_.effect_range,\
@@ -433,6 +452,12 @@ namespace marsim {
                 continue;
 
             Eigen::Vector3f temp_point_cam_norm = temp_point_cam.normalized();
+            if (cfg_.annular_fov_en) {
+                const decimal_t axis_cos = temp_point_cam_norm.dot(annular_fov_axis);
+                if (axis_cos < annular_fov_min_cos || axis_cos > annular_fov_max_cos) {
+                    continue;
+                }
+            }
             int cen_theta_index =
                 atan2(temp_point_cam_norm(1), temp_point_cam_norm(0)) / M_PI * 180.0 / cfg_.polar_resolution +
                 round(0.5 * cfg_.width);

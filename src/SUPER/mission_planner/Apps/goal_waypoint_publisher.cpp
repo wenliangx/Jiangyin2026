@@ -13,6 +13,8 @@
 
 namespace {
 
+constexpr std::size_t kFirstBatchSize = 3;
+
 struct Waypoint {
     int id{0};
     int mode{0};
@@ -73,9 +75,11 @@ private:
     std::string frame_id_{"world"};
     double start_delay_{1.0};
     double publish_interval_{0.05};
+    double wait_time_{0.0};
     ros::Time start_time_;
     ros::Time last_publish_time_;
     std::size_t next_waypoint_{0};
+    bool wait_logged_{false};
 
     void loadConfig(const std::string &config_path) {
         const YAML::Node root = YAML::LoadFile(config_path);
@@ -92,8 +96,14 @@ private:
         if (root["publish_interval"]) {
             publish_interval_ = root["publish_interval"].as<double>();
         }
+        if (root["wait_time"]) {
+            wait_time_ = root["wait_time"].as<double>();
+        }
         if (!std::isfinite(publish_interval_) || publish_interval_ <= 0.0) {
             throw std::runtime_error("publish_interval must be a finite positive number");
+        }
+        if (!std::isfinite(wait_time_) || wait_time_ < 0.0) {
+            throw std::runtime_error("wait_time must be a finite non-negative number");
         }
 
         const YAML::Node waypoint_nodes = root["waypoints"];
@@ -140,7 +150,9 @@ private:
                      "set it to 0 if the vehicle must stop at the end of the mission.");
         }
         ROS_INFO_STREAM("[goal_waypoint_publisher] Loaded " << waypoints_.size()
-                        << " waypoints for " << waypoint_topic_);
+                        << " waypoints for " << waypoint_topic_
+                        << "; wait " << wait_time_
+                        << " s after the first " << kFirstBatchSize << " waypoints");
     }
 
     void publishWaypoint(const Waypoint &waypoint) {
@@ -183,6 +195,22 @@ private:
         }
         if (waypoint_pub_.getNumSubscribers() == 0) {
             return;
+        }
+        if (next_waypoint_ == kFirstBatchSize && next_waypoint_ < waypoints_.size() &&
+            !last_publish_time_.isZero()) {
+            const double waited_time = (now - last_publish_time_).toSec();
+            if (waited_time < wait_time_) {
+                if (!wait_logged_) {
+                    ROS_INFO("[goal_waypoint_publisher] First %zu waypoints sent; "
+                             "waiting %.3f s before sending the remaining waypoints.",
+                             kFirstBatchSize, wait_time_);
+                    wait_logged_ = true;
+                }
+                return;
+            }
+            if (wait_logged_) {
+                ROS_INFO("[goal_waypoint_publisher] Wait finished; sending remaining waypoints.");
+            }
         }
         if (!last_publish_time_.isZero() &&
             (now - last_publish_time_).toSec() < publish_interval_) {

@@ -727,17 +727,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -3.5232958793640137
-        Y: 8.13528060913086
-        Z: -8.129967682179995e-06
+        X: -5.0
+        Y: 1.0
+        Z: 8.0
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.03479600325226784
+      Pitch: 0.87
       Target Frame: drone
-      Yaw: 4.925541877746582
+      Yaw: 3.14
     Saved: ~
 Window Geometry:
   Depth:

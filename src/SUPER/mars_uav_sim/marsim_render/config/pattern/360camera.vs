@@ -14,6 +14,10 @@ uniform vec3 pos;
 // uniform vec3 ()
 uniform vec2 fov;
 uniform vec2 res;
+uniform bool annular_fov_en;
+uniform vec3 annular_fov_axis;
+// x = cos(max angle), y = cos(min angle)
+uniform vec2 annular_fov_cos_bounds;
 // uniform float downsample_res;
 // uniform float polar_res;
 
@@ -64,11 +68,15 @@ void main()
 	float y_x;// 
 	float z_yx;//
 	float depth = sqrt(bodypos.x*bodypos.x + bodypos.y*bodypos.y + (bodypos.z)*(bodypos.z));///range.y
+	float annular_axis_cos = depth > 0.0 ? dot(bodypos / depth, annular_fov_axis) : 1.0;
+	bool outside_annular_fov = annular_fov_en &&
+		(annular_axis_cos < annular_fov_cos_bounds.x ||
+		 annular_axis_cos > annular_fov_cos_bounds.y);
 	// depth = -depth* (zFar + zNear) / (zFar - zNear); 
 
-	if(depth > range.y || depth < range.x)
+	if(depth > range.y || depth < range.x || outside_annular_fov)
 	{
-		gl_Position = vec4(0.0f,0.0f,0.0f,0.0f);
+		gl_Position = vec4(2.0f,2.0f,2.0f,1.0f);
 		ourColor = aColor;
 	}else{
 		y_x = -(atan(bodypos.y,bodypos.x))/(PI)* (360.0/fov.x);// 

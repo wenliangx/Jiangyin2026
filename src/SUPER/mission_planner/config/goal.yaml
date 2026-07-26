@@ -2,6 +2,7 @@
 # 再由 mission 状态机按到达距离逐个发布到 /super/flag_goal。
 # yaw 单位为 rad；省略 yaw、设为 null/.nan/free/auto 时不固定终端 yaw。
 # desired_speed <= 0 时终端速度为 0。
+wait_time: 30.0  # 前三个航点发送完成后，等待该时长（秒）再发送其余航点
 waypoint_topic: "/super/flag_waypoint"
 frame_id: "world"
 start_delay: 1.0
@@ -13,8 +14,9 @@ publish_interval: 0.05
 waypoints:
   - {id: 0, x: 1.0,  y: 1.0,   z: 1.0, mode: 1, is_map: 1, yaw: 0, desired_speed: 0.0}
   - {id: 1, x: 11.4, y: 2.6,   z: 1.0, mode: 1, is_map: 1, yaw: 1.57, desired_speed: 0.0}
-  - {id: 2, x: 11.4, y: 4.9,   z: 1.0, mode: 1, is_map: 1, yaw: 4.71, desired_speed: 0.0}
-  - {id: 3, x: 7.0,  y: 11.25, z: 1.0, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 0.0}
+  - {id: 2, x: 11.4, y: 4.9,   z: 1.0, mode: 1, is_map: 1, yaw: 4.71, desired_speed: .0}
+  # - {id: 3, x: 11.4, y: 7.0,   z: 1.0, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 0.0}
+  - {id: 3, x: 7.0,  y: 11.25, z: 1.0, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 2.0}
   - {id: 4, x: 3.7,  y: 13.6,  z: 1.5, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 0.0}
   - {id: 5, x: 2.7,  y: 13.0,  z: 1.5, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 0.0}
   - {id: 6, x: 2.7,  y: 13.0,  z: 0.5, mode: 1, is_map: 1, yaw: 3.14, desired_speed: 0.0}

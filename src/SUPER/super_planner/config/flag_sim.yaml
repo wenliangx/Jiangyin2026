@@ -18,14 +18,14 @@ super_planner:
   print_log: false
   visual_process: false
   frontend_in_known_free: false
-  goal_yaw_en: false
+  goal_yaw_en: true
   goal_vel_en: false
   corridor_bound_dis: 1.0
   corridor_line_max_length: 2.0
   safe_corridor_line_max_length: 6.0
   iris_iter_num: 3
   obs_skip_num: 2
-  replan_forward_dt: 1.0
+  replan_forward_dt: 0.2
   planning_horizon: 7.0
   sensing_horizon: -1
   receding_dis: 1.0
@@ -37,7 +37,7 @@ super_planner:
   nmpc_horizon: 9
   nmpc_step: 0.05
   max_vel0: 1.0
-  max_vel1: 2.0
+  max_vel1: 3.0
   max_vel2: 4.0
 
 
