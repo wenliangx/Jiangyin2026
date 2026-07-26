@@ -350,6 +350,7 @@ namespace traj_opt {
                       Trajectory &out_traj);
 
         void set_max_vel(const double &max_vel){
+            cfg_.max_vel = max_vel;
             opt_vars.magnitudeBounds[0] = max_vel;
         }
 

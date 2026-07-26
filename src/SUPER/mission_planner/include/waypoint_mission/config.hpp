@@ -8,8 +8,10 @@
 #include "vector"
 #include "string"
 #include "iostream"
+#include <cmath>
 #include <iomanip>
 #include <fstream>
+#include <limits>
 #include <utils/eigen_alias.hpp>
 #include <utils/yaml_loader.hpp>
 #include <utils/color_text.hpp>
@@ -40,6 +42,8 @@ namespace mission_planner {
         vec_E<Vec3f> waypoints;
         vector<double> switch_dis_vec;
         vector<double> max_velocity_vec;
+        vector<double> goal_yaw_vec;
+        vector<double> desired_speed_vec;
         vector<int> is_map_vec;
         vector<int> mode_vec;
 
@@ -72,6 +76,10 @@ namespace mission_planner {
                 }
                 switch_dis_vec.push_back(str2double(result[result.size() - 1]));
                 waypoints.push_back(log);
+                goal_yaw_vec.push_back(std::numeric_limits<double>::quiet_NaN());
+                desired_speed_vec.push_back(0.0);
+                is_map_vec.push_back(1);
+                mode_vec.push_back(0);
             }
 
 

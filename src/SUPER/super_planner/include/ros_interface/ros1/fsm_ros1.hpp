@@ -336,8 +336,6 @@ namespace fsm {
         // }
         void goalCallback(const super_msgs::FlagConstPtr &msg) {
             super_utils::Vec3f goal_p = Vec3f{msg->position.x, msg->position.y, msg->position.z};
-            super_utils::Quatf goal_q = super_utils::Quatf{1,0,0,0};
-            setGoalPosiAndYaw(goal_p, goal_q);
 
             //开关避障is_map：在rog_map中的prob_map中，有raycast环节，虽然实际上可能未开启raycast，但是仍然提供了过滤点云的接口。此处将参数通过配置文件传入。
             //
@@ -352,22 +350,20 @@ namespace fsm {
             //最大速度vel_max：在super_planner中，planner会根据此参数来设置规划的速度限制，同样利用cfg文件中的参数传入。
             //mode == 0时，采用提供的默认参数，mode == 1时，采用航路点信息提供的最大速度。
             if(msg->mode == 1) {
-                // planner_ptr_->exp_traj_opt_->cfg_.max_vel = planner_ptr_->cfg_.max_vel1;
-                // planner_ptr_->cfg_.exp_traj_cfg.max_vel = planner_ptr_->cfg_.max_vel1;
-                planner_ptr_->exp_traj_opt_->set_max_vel(planner_ptr_->cfg_.max_vel1);
+                planner_ptr_->setMaxVelocity(planner_ptr_->cfg_.max_vel1);
             }else if(msg->mode == 2) {
-                // planner_ptr_->exp_traj_opt_->cfg_.max_vel = planner_ptr_->cfg_.max_vel2;
-                // planner_ptr_->cfg_.exp_traj_cfg.max_vel = planner_ptr_->cfg_.max_vel2;
-                planner_ptr_->exp_traj_opt_->set_max_vel(planner_ptr_->cfg_.max_vel2);
+                planner_ptr_->setMaxVelocity(planner_ptr_->cfg_.max_vel2);
             }else if(msg->mode == 0) {
-                // planner_ptr_->exp_traj_opt_->cfg_.max_vel = planner_ptr_->cfg_.max_vel0;
-                // planner_ptr_->cfg_.exp_traj_cfg.max_vel = planner_ptr_->cfg_.max_vel0;
-                planner_ptr_->exp_traj_opt_->set_max_vel(planner_ptr_->cfg_.max_vel0);
+                planner_ptr_->setMaxVelocity(planner_ptr_->cfg_.max_vel0);
             }else {
-                planner_ptr_->exp_traj_opt_->set_max_vel(1.0); // 默认速度
+                planner_ptr_->setMaxVelocity(1.0); // 默认速度
                 cout << YELLOW << " -- [Fsm] Invalid mode, use default max_vel: " << 1.0
                      << RESET << endl;
             }
+
+            // 有限 yaw 表示固定终端航向；NaN 表示由 yaw 优化器自由决定。
+            // desired_speed 非有限、为零或为负时，统一按终端速度 0 处理。
+            setGoalPositionYawAndSpeed(goal_p, msg->yaw, msg->desired_speed);
         }
 
         void init(const ros::NodeHandle &nh, const std::string &cfg_path) {

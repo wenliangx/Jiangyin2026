@@ -1,9 +1,9 @@
 #############| For UAV simulation |#################################
-pcd_name: "door_wall.pcd"
+pcd_name: "b.pcd"
 mesh_resource: "package://perfect_drone_sim/meshes/yunque-M.dae"
 init_position:
-  x: 0.0
-  y: 0.0
+  x: 0.5
+  y: 0.5
   z: 0.5
 init_yaw: 0.0
 

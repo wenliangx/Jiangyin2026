@@ -6,6 +6,7 @@ Usage:
   rosrun mission_planner super_flag_pub.py _waypoints:="[0,0,1, 5,0,1, -5,0,1]"
 """
 import rospy
+import math
 from super_msgs.msg import Flag
 from geometry_msgs.msg import Point
 
@@ -27,6 +28,8 @@ for i in range(n):
     f.id = i
     f.mode = 1        # normal speed
     f.is_map = 1      # enable obstacle mapping
+    f.yaw = math.nan  # free terminal yaw
+    f.desired_speed = 0.0
     f.position = Point(vals[3*i], vals[3*i+1], vals[3*i+2])
     pub.publish(f)
     rospy.loginfo("Flag %d -> (%.1f, %.1f, %.1f)", i, f.position.x, f.position.y, f.position.z)

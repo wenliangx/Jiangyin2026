@@ -85,7 +85,8 @@ namespace mission_planner {
         }
 
         void FlagCallback(const super_msgs::FlagConstPtr &msg){
-            if (!had_odom) {
+            if (msg->id < 0) {
+                ROS_WARN("[MISSION] Ignore waypoint with negative id: %d", msg->id);
                 return;
             }
             if(msg->id >= cfg_.waypoints.size()){
@@ -94,6 +95,8 @@ namespace mission_planner {
                 // cfg_.max_velocity_vec.resize(msg->id+1);
                 cfg_.is_map_vec.resize(msg->id+1);
                 cfg_.mode_vec.resize(msg->id+1);
+                cfg_.goal_yaw_vec.resize(msg->id+1, std::numeric_limits<double>::quiet_NaN());
+                cfg_.desired_speed_vec.resize(msg->id+1, 0.0);
             }
             cfg_.waypoints[msg->id]= Eigen::Vector3d(msg->position.x,
                                                 msg->position.y,
@@ -102,6 +105,10 @@ namespace mission_planner {
             // cfg_.max_velocity_vec[msg->id] = msg->max_vel;
             cfg_.is_map_vec[msg->id] = msg->is_map;
             cfg_.mode_vec[msg->id] = msg->mode;
+            cfg_.goal_yaw_vec[msg->id] = msg->yaw;
+            cfg_.desired_speed_vec[msg->id] =
+                    std::isfinite(msg->desired_speed) && msg->desired_speed > 0.0
+                    ? msg->desired_speed : 0.0;
 
             triggered = true;
             new_goal = true;
@@ -179,6 +186,8 @@ namespace mission_planner {
                 // flag_goal.position.pose.orientation.w = 1;
                 flag_goal.is_map = cfg_.is_map_vec[waypoint_counter];
                 flag_goal.mode = cfg_.mode_vec[waypoint_counter];
+                flag_goal.yaw = cfg_.goal_yaw_vec[waypoint_counter];
+                flag_goal.desired_speed = cfg_.desired_speed_vec[waypoint_counter];
                 flag_goal.header.frame_id = "world";
                 flag_goal.header.stamp = ros::Time::now();
                 flag_goal_pub_.publish(flag_goal);

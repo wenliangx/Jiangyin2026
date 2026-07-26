@@ -66,6 +66,7 @@ add_message_files(
         PolynomialTrajectory.msg
         TrakingPerformance.msg
         QuadrotorState.msg
+        Flag.msg
 )
 
 generate_messages(
@@ -81,5 +82,4 @@ catkin_package(
         #DEPENDS system_lib
         CATKIN_DEPENDS message_runtime
 )
-
 

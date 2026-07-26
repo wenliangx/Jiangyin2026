@@ -67,6 +67,7 @@ namespace fsm {
             bool new_goal;
             Vec3f goal_p;
             double goal_yaw;
+            double desired_speed{0.0};
         } gi_;
 
         Eigen::Vector3d auto_pilot_vel_w_;
@@ -159,6 +160,10 @@ namespace fsm {
         bool closeToGoal(const double &thresh_dis);
 
         void setGoalPosiAndYaw(const Vec3f &p, const Quatf &q);
+
+        void setGoalPositionYawAndSpeed(const Vec3f &p,
+                                        const double &goal_yaw,
+                                        const double &desired_speed);
 
         void ChangeState(const string &call_func, const MACHINE_STATE &new_state);
 

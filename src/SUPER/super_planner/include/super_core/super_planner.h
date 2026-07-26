@@ -86,6 +86,7 @@ namespace super_planner {
         struct GoalInfo {
             Vec3f goal_p{0, 0, 0};
             double goal_yaw{0};
+            double desired_speed{0};
             bool new_goal{true};
             bool goal_valid{true};
         } gi_;
@@ -149,11 +150,13 @@ namespace super_planner {
         /* Tow type of replan strategy */
         RET_CODE PlanFromRest(const Vec3f &goal_p,
                               const double &goal_yaw,
+                              const double &desired_speed,
                               const bool &new_goal);
 
         RET_CODE
         ReplanOnce(const Vec3f &goal_p,
                    const double &goal_yaw,
+                   const double &desired_speed,
                    const bool &new_goal);
 
     private:
@@ -178,6 +181,8 @@ namespace super_planner {
         bool isCmdTrajEmpty(){
             return cmd_traj_info_.empty();
         }
+
+        void setMaxVelocity(const double max_vel);
 
         rog_map::ROGMapROS::Ptr &getMap() {
             return map_ptr_;

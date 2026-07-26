@@ -84,14 +84,29 @@ namespace mission_planner {
         }
 
         void FlagCallback(const super_msgs::FlagPtr &msg){
-            if (!had_odom) {
+            if (msg->id < 0) {
+                ROS_WARN("[MISSION] Ignore waypoint with negative id: %d", msg->id);
                 return;
+            }
+            if (msg->id >= cfg_.waypoints.size()) {
+                cfg_.waypoints.resize(msg->id + 1);
+                cfg_.switch_dis_vec.resize(msg->id + 1, cfg_.switch_dis);
+                cfg_.is_map_vec.resize(msg->id + 1, 1);
+                cfg_.mode_vec.resize(msg->id + 1, 0);
+                cfg_.goal_yaw_vec.resize(msg->id + 1, std::numeric_limits<double>::quiet_NaN());
+                cfg_.desired_speed_vec.resize(msg->id + 1, 0.0);
             }
             triggered = true;
             new_goal = true;
             cfg_.waypoints[msg->id] = Eigen::Vector3d(msg->position.x,
                                                       msg->position.y,
                                                       msg->position.z);
+            cfg_.is_map_vec[msg->id] = msg->is_map;
+            cfg_.mode_vec[msg->id] = msg->mode;
+            cfg_.goal_yaw_vec[msg->id] = msg->yaw;
+            cfg_.desired_speed_vec[msg->id] =
+                    std::isfinite(msg->desired_speed) && msg->desired_speed > 0.0
+                    ? msg->desired_speed : 0.0;
             
             cout << YELLOW <<" -- [MISSION] flag triggered." << RESET << endl;
         }
@@ -158,6 +173,8 @@ namespace mission_planner {
                 goal.position.z = cfg_.waypoints[waypoint_counter].z();
                 goal.is_map = cfg_.is_map_vec[waypoint_counter];
                 goal.mode = cfg_.mode_vec[waypoint_counter];
+                goal.yaw = cfg_.goal_yaw_vec[waypoint_counter];
+                goal.desired_speed = cfg_.desired_speed_vec[waypoint_counter];
                 // goal.max_vel = cfg_.max_velocity_vec[waypoint_counter];
                 goal.header.frame_id = "world";
                 goal.header.stamp = ros::Time::now();
