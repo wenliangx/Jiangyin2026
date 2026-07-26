@@ -38,6 +38,7 @@ namespace mission_planner {
         ros::Timer goal_pub_timer_;
         double system_start_time{0};
         bool trigger_once{false};
+        vector<super_msgs::Flag> waypoint_flags_;
 
 
         void OdomCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -84,14 +85,27 @@ namespace mission_planner {
         }
 
         void FlagCallback(const super_msgs::FlagPtr &msg){
-            if (!had_odom) {
+            if (msg->id < 0) {
+                ROS_WARN_STREAM("Ignore waypoint with invalid negative id: " << msg->id);
                 return;
             }
+            if (msg->id >= cfg_.waypoints.size()) {
+                cfg_.waypoints.resize(msg->id + 1);
+                cfg_.switch_dis_vec.resize(msg->id + 1);
+                cfg_.is_map_vec.resize(msg->id + 1);
+                cfg_.mode_vec.resize(msg->id + 1);
+            }
+            waypoint_flags_.resize(cfg_.waypoints.size());
+            waypoint_flags_[msg->id] = *msg;
+
             triggered = true;
             new_goal = true;
             cfg_.waypoints[msg->id] = Eigen::Vector3d(msg->position.x,
                                                       msg->position.y,
                                                       msg->position.z);
+            cfg_.switch_dis_vec[msg->id] = cfg_.switch_dis;
+            cfg_.is_map_vec[msg->id] = msg->is_map;
+            cfg_.mode_vec[msg->id] = msg->mode;
             
             cout << YELLOW <<" -- [MISSION] flag triggered." << RESET << endl;
         }
@@ -152,13 +166,12 @@ namespace mission_planner {
                 // goal.pose.orientation.w = 1;
                 // goal.header.frame_id = "world";
                 // goal.header.stamp = ros::Time::now();
-                super_msgs::Flag goal;
-                goal.position.x = cfg_.waypoints[waypoint_counter].x();
-                goal.position.y = cfg_.waypoints[waypoint_counter].y();
-                goal.position.z = cfg_.waypoints[waypoint_counter].z();
-                goal.is_map = cfg_.is_map_vec[waypoint_counter];
-                goal.mode = cfg_.mode_vec[waypoint_counter];
-                // goal.max_vel = cfg_.max_velocity_vec[waypoint_counter];
+                if (waypoint_counter >= waypoint_flags_.size()) {
+                    ROS_WARN_STREAM("Waypoint " << waypoint_counter
+                                    << " has no Flag data; waiting for /flag/waypoint.");
+                    return;
+                }
+                super_msgs::Flag goal = waypoint_flags_[waypoint_counter];
                 goal.header.frame_id = "world";
                 goal.header.stamp = ros::Time::now();
                 last_pub_time = cur_t;
@@ -218,7 +231,7 @@ namespace mission_planner {
             } else {
                 mavros_sub_ = nh_.subscribe("/mavros/rc/in", 10, &WaypointPlanner::MavrosRcCallback, this);
             }
-            flag_sub_ = nh_.subscribe("/flag_waypoint", 100, &WaypointPlanner::FlagCallback, this);
+            flag_sub_ = nh_.subscribe("/flag/waypoint", 100, &WaypointPlanner::FlagCallback, this);
             mavros_sub_ = nh_.subscribe("/mavros/rc/in", 10, &WaypointPlanner::MavrosRcCallback, this);
             mkr_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("mkr", 1);
             system_start_time = ros::Time::now().toSec();
