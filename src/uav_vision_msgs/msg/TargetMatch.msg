@@ -1,0 +1,9 @@
+string label
+float32 score
+float32 gray_score
+float32 hog_score
+float32 color_score
+float32 margin
+float32 sharpness
+uint16 target_side_px
+float32[8] corners

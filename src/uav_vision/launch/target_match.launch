@@ -1,0 +1,19 @@
+<launch>
+  <arg name="image_topic" default="/vision/front/image_raw"/>
+  <arg name="result_topic" default="/vision/target/result"/>
+  <arg name="debug_topic" default="/vision/target/debug_image"/>
+  <arg name="templates_dir" default="$(find uav_vision)/templates"/>
+  <arg name="publish_debug_image" default="true"/>
+
+  <node pkg="uav_vision"
+        type="target_match_node.py"
+        name="target_match_node"
+        output="screen">
+    <param name="image_topic" value="$(arg image_topic)"/>
+    <param name="result_topic" value="$(arg result_topic)"/>
+    <param name="debug_topic" value="$(arg debug_topic)"/>
+    <param name="templates_dir" value="$(arg templates_dir)"/>
+    <param name="publish_debug_image" value="$(arg publish_debug_image)"/>
+    <rosparam command="load" file="$(find uav_vision)/config/target_match.yaml"/>
+  </node>
+</launch>

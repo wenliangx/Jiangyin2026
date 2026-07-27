@@ -112,8 +112,10 @@ class SetpointPort {
   virtual void publishPosition(const PositionSetpoint& setpoint) = 0;
   virtual void publishBodyRateThrust(const BodyRateThrust& setpoint) = 0;
   virtual void publishAttitude(const AttitudeSetpoint& setpoint) = 0;
-  virtual void publishReferencePosition(const Vec3& position) {}
-  virtual void publishFeedbackPosition(const Vec3& position) {}
+  virtual void publishReferencePosition(const Vec3& position,
+                                         const Quaternion& attitude) {}
+  virtual void publishFeedbackPosition(const Vec3& position,
+                                        const Quaternion& attitude) {}
   virtual void publishNmpcMonitor(const NmpcMonitor& monitor) {}
 };
 
@@ -376,8 +378,10 @@ struct TickSuperTrack {
         context.mission.prepareSuper(context.clock.now(), context.telemetry,
                                      horizon);
     if (prepared && !horizon.empty()) {
-      context.setpoint.publishFeedbackPosition(context.telemetry.position);
-      context.setpoint.publishReferencePosition(horizon.front().position);
+      context.setpoint.publishFeedbackPosition(context.telemetry.position,
+                                               context.telemetry.attitude);
+      context.setpoint.publishReferencePosition(horizon.front().position,
+                                                horizon.front().attitude);
     }
     if (prepared && !horizon.empty() &&
         context.nmpc.solveTrack(context.telemetry, horizon, command) &&
@@ -408,8 +412,10 @@ struct TickLegacyMissionTrack {
     request.telemetry = context.telemetry;
     request.horizon = horizon;
     if (prepared && !request.horizon.empty()) {
-      context.setpoint.publishFeedbackPosition(context.telemetry.position);
-      context.setpoint.publishReferencePosition(request.horizon.front().position);
+      context.setpoint.publishFeedbackPosition(context.telemetry.position,
+                                               context.telemetry.attitude);
+      context.setpoint.publishReferencePosition(request.horizon.front().position,
+                                                request.horizon.front().attitude);
     }
     if (prepared && !request.horizon.empty() &&
         context.nmpc.solveLegacy(request, command) &&

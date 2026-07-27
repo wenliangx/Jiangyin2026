@@ -45,10 +45,12 @@ class FakeSetpoint final : public SetpointPort {
   void publishAttitude(const AttitudeSetpoint& value) override {
     attitudes.push_back(value);
   }
-  void publishReferencePosition(const Vec3& value) override {
+  void publishReferencePosition(const Vec3& value,
+                                 const Quaternion& /*attitude*/) override {
     reference_positions.push_back(value);
   }
-  void publishFeedbackPosition(const Vec3& value) override {
+  void publishFeedbackPosition(const Vec3& value,
+                                const Quaternion& /*attitude*/) override {
     feedback_positions.push_back(value);
   }
   void publishNmpcMonitor(const NmpcMonitor& value) override {

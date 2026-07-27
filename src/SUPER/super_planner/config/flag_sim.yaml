@@ -25,7 +25,7 @@ super_planner:
   safe_corridor_line_max_length: 6.0
   iris_iter_num: 3
   obs_skip_num: 2
-  replan_forward_dt: 0.2
+  replan_forward_dt: 0.25
   planning_horizon: 7.0
   sensing_horizon: -1
   receding_dis: 1.0

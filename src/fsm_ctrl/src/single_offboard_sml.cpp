@@ -87,10 +87,10 @@ std::vector<MissionPoint> createLegacyEgoTrajectory() {
       {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0},
       {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0},
       {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0},
-      {4, 2, 1, {3.6, 0.2, 0.5}, 0.0, 0},
-      {5, 2, 1, {2.6, 0.7, 0.45}, 0.0, 0},
-      {6, 2, 1, {1.6, 1.2, 0.5}, 0.0, 0},
-      {7, 2, 1, {0.0, 0.0, 0.5}, 0.0, 0},
+      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0},
+      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0},
+      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0},
+      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0},
   };
 }
 
@@ -196,12 +196,14 @@ class RosSetpointPort final : public smlfsm::SetpointPort {
     attitude_pub_.publish(message);
   }
 
-  void publishReferencePosition(const smlfsm::Vec3& position) override {
-    nmpc_posref_pub_.publish(toPose(position));
+  void publishReferencePosition(const smlfsm::Vec3& position,
+                                const smlfsm::Quaternion& attitude) override {
+    nmpc_posref_pub_.publish(toPose(position, attitude));
   }
 
-  void publishFeedbackPosition(const smlfsm::Vec3& position) override {
-    nmpc_posfdb_pub_.publish(toPose(position));
+  void publishFeedbackPosition(const smlfsm::Vec3& position,
+                                const smlfsm::Quaternion& attitude) override {
+    nmpc_posfdb_pub_.publish(toPose(position, attitude));
   }
 
   void publishNmpcMonitor(const smlfsm::NmpcMonitor& monitor) override {
@@ -238,14 +240,19 @@ class RosSetpointPort final : public smlfsm::SetpointPort {
 
  private:
   // 将纯 C++ 位置向量转换为 ROS PoseStamped，供监视/参考 topic 复用。
-  static geometry_msgs::PoseStamped toPose(const smlfsm::Vec3& position) {
+  static geometry_msgs::PoseStamped toPose(const smlfsm::Vec3& position,
+                                           const smlfsm::Quaternion& attitude =
+                                               {1.0, 0.0, 0.0, 0.0}) {
     geometry_msgs::PoseStamped message;
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
     message.pose.position.x = position.x;
     message.pose.position.y = position.y;
     message.pose.position.z = position.z;
-    message.pose.orientation.w = 1.0;
+    message.pose.orientation.w = attitude.w;
+    message.pose.orientation.x = attitude.x;
+    message.pose.orientation.y = attitude.y;
+    message.pose.orientation.z = attitude.z;
     return message;
   }
 
@@ -648,7 +655,17 @@ class RosMissionPort final : public smlfsm::MissionPort {
       point.velocity = {message.cmd[index].velocity.x,
                         message.cmd[index].velocity.y,
                         message.cmd[index].velocity.z};
+      // 将 yaw 归一化到 [-π, π]，避免 super planner 输出的越界 yaw
+      // （如 230°）导致四元数表示歧义和 NMPC 优化跳变。
+      double yaw = message.cmd[index].yaw;
+      yaw = std::fmod(yaw + M_PI, 2.0 * M_PI);
+      if (yaw < 0.0) {
+        yaw += 2.0 * M_PI;
+      }
+      yaw -= M_PI;
+      point.attitude = {std::cos(yaw * 0.5), 0.0, 0.0, std::sin(yaw * 0.5)};
       super_planner_.push_back(point);
+      
     }
     super_planner_valid_ = true;
   }
@@ -745,7 +762,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   // 发布 super planner 使用的 waypoint 消息。
   void publishSuperWaypoint(const MissionPoint& point) {
     super_msgs::Flag message;
-    fillCommonFlag(point, message);
+    fillCommonFlag1(point, message);
     super_waypoint_pub_.publish(message);
   }
 
@@ -764,6 +781,19 @@ class RosMissionPort final : public smlfsm::MissionPort {
     message.id = point.id;
     message.mode = point.mode;
     message.is_map = point.is_map;
+    message.position.x = point.position.x;
+    message.position.y = point.position.y;
+    message.position.z = point.position.z;
+  }
+
+    void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
+    message.header.stamp = ros::Time::now();
+    message.header.frame_id = "world";
+    message.id = point.id;
+    message.mode = point.mode;
+    message.is_map = point.is_map;
+    message.yaw = point.yaw;
+    message.desired_speed = 0.0;
     message.position.x = point.position.x;
     message.position.y = point.position.y;
     message.position.z = point.position.z;

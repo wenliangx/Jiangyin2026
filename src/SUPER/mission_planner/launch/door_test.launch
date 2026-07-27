@@ -7,9 +7,9 @@
     </node>
 
     <!-- YAML waypoint sequence publisher -->
-    <node pkg="mission_planner" name="goal_waypoint_publisher" type="goal_waypoint_publisher" output="screen">
+    <!-- <node pkg="mission_planner" name="goal_waypoint_publisher" type="goal_waypoint_publisher" output="screen">
         <param name="config_name" value="goal.yaml" type="string"/>
-    </node>
+    </node> -->
 
     <!-- Perfect Drone Sim: door_wall.pcd environment -->
     <node pkg="perfect_drone_sim" type="perfect_drone" name="perfect_drone" output="screen">
