@@ -1,0 +1,24 @@
+<launch>
+  <arg name="config"
+       default="$(find uav_vision)/config/camera_common.yaml"/>
+
+  <node pkg="uav_vision"
+        type="v4l2_camera_node.py"
+        name="front_camera_node"
+        output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="device" value="/dev/uav_front_camera"/>
+    <param name="image_topic" value="/vision/front/image_raw"/>
+    <param name="frame_id" value="uav_front_camera"/>
+  </node>
+
+  <node pkg="uav_vision"
+        type="v4l2_camera_node.py"
+        name="down_camera_node"
+        output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+    <param name="device" value="/dev/uav_down_camera"/>
+    <param name="image_topic" value="/vision/down/image_raw"/>
+    <param name="frame_id" value="uav_down_camera"/>
+  </node>
+</launch>

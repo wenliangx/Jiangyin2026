@@ -1,0 +1,6 @@
+width: 1280
+height: 720
+fps: 30.0
+pixel_format: MJPG
+exposure: 150
+gain: 5
