@@ -159,6 +159,29 @@ class MissionPort {
                               std::vector<ReferencePoint>& horizon) = 0;
   virtual bool prepareEgo(double now, const TelemetrySnapshot& telemetry,
                           std::vector<ReferencePoint>& horizon) = 0;
+  virtual bool wantsPrecisionLanding() const { return false; }
+};
+
+// 下视视觉降落观测。dx/dy 是图像像素偏差，不是机体系或世界系距离。
+struct LandingObservation {
+  bool valid{false};
+  double dx{0.0};
+  double dy{0.0};
+  int tag_count{0};
+  double stamp{0.0};
+  double age{0.0};
+};
+
+// 精准降落接口：ROS adapter 负责把视觉消息写入该端口，SML 核心只请求
+// 当前 Tick 可执行的 NMPC horizon。
+class PrecisionLandingPort {
+ public:
+  virtual ~PrecisionLandingPort() = default;
+  virtual void reset() = 0;
+  virtual void updateObservation(const LandingObservation& observation) = 0;
+  virtual bool prepareLanding(double now, const TelemetrySnapshot& telemetry,
+                              std::vector<ReferencePoint>& horizon) = 0;
+  virtual bool isComplete() const = 0;
 };
 
 struct Config {
@@ -182,6 +205,7 @@ struct Context {
   Context(Clock& clock_in, AutopilotPort& autopilot_in,
           SetpointPort& setpoint_in, NmpcPort& nmpc_in,
           ReferenceProvider& reference_in, MissionPort& mission_in,
+          PrecisionLandingPort& landing_in,
           const Config& config_in = Config{})
       : clock(clock_in),
         autopilot(autopilot_in),
@@ -189,6 +213,7 @@ struct Context {
         nmpc(nmpc_in),
         reference(reference_in),
         mission(mission_in),
+        landing(landing_in),
         config(config_in),
         last_service_request(clock_in.now()) {}
 
@@ -223,6 +248,7 @@ struct Context {
   NmpcPort& nmpc;
   ReferenceProvider& reference;
   MissionPort& mission;
+  PrecisionLandingPort& landing;
   // 状态机配置参数。
   Config config;
   // ROS adapter 每次回调更新的最新遥测快照。
@@ -297,18 +323,30 @@ struct TickNmpcHover {
   }
 };
 
-// cmd4 周期动作：先持续发布下降位置点；到达近地阈值后进入 latch，
-// 之后只在“已离开 OFFBOARD 且仍 armed”时请求上锁。
+// cmd4 周期动作：精准降落优先生成 NMPC horizon；完成后复用旧版近地 latch
+// 和“已离开 OFFBOARD 且仍 armed”时请求上锁的收尾语义。
 struct TickLanding {
   void operator()(Context& context) const {
     if (!context.landing_reached) {
-      context.setpoint.publishPosition(PositionSetpoint{
-          Vec3{context.telemetry.position.x, context.telemetry.position.y,
-               context.config.landing_target_z},
-          0.0});
-      if (std::abs(context.telemetry.position.z -
+      context.ensureOffboardArm();
+      std::vector<ReferencePoint> horizon;
+      BodyRateThrust command;
+      if (context.landing.prepareLanding(context.clock.now(),
+                                         context.telemetry, horizon) &&
+          !horizon.empty() &&
+          context.nmpc.solveTrack(context.telemetry, horizon, command) &&
+          Context::finite(command)) {
+        context.setpoint.publishBodyRateThrust(command);
+        NmpcMonitor monitor;
+        monitor.references = horizon;
+        monitor.feedback = context.telemetry;
+        monitor.target = command;
+        context.setpoint.publishNmpcMonitor(monitor);
+      }
+      if (context.landing.isComplete() ||
+          std::abs(context.telemetry.position.z -
                    context.config.landing_reference_z) <
-          context.config.landing_tolerance_z) {
+              context.config.landing_tolerance_z) {
         context.landing_reached = true;
       }
       return;
@@ -343,6 +381,13 @@ struct ResetMissionTrack {
 struct ResetEgoTrack {
   void operator()(Context& context) const {
     context.mission.reset(MissionTrackMode::Ego);
+  }
+};
+
+struct ResetLanding {
+  void operator()(Context& context) const {
+    context.landing_reached = false;
+    context.landing.reset();
   }
 };
 
@@ -417,6 +462,28 @@ struct TickLegacyMissionTrack {
       context.setpoint.publishReferencePosition(request.horizon.front().position,
                                                 request.horizon.front().attitude);
     }
+    if (prepared && context.mission.wantsPrecisionLanding()) {
+      std::vector<ReferencePoint> landing_horizon;
+      BodyRateThrust landing_command;
+      if (context.landing.prepareLanding(context.clock.now(),
+                                         context.telemetry, landing_horizon) &&
+          !landing_horizon.empty() &&
+          context.nmpc.solveTrack(context.telemetry, landing_horizon,
+                                  landing_command) &&
+          Context::finite(landing_command)) {
+        context.setpoint.publishBodyRateThrust(landing_command);
+        NmpcMonitor monitor;
+        monitor.references = landing_horizon;
+        monitor.feedback = context.telemetry;
+        monitor.target = landing_command;
+        context.setpoint.publishNmpcMonitor(monitor);
+        if (context.landing.isComplete()) {
+          context.landing_reached = true;
+        }
+        return true;
+      }
+      return false;
+    }
     if (prepared && !request.horizon.empty() &&
         context.nmpc.solveLegacy(request, command) &&
         Context::finite(command)) {
@@ -458,7 +525,8 @@ struct TickEmergency {
       boost::sml::state<PositionHold>,                                         \
   boost::sml::state<source_state> + boost::sml::event<SelectNmpcHover> =       \
       boost::sml::state<NmpcHover>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<SelectLanding> =         \
+  boost::sml::state<source_state> + boost::sml::event<SelectLanding> /         \
+      ResetLanding{} =                                                         \
       boost::sml::state<Landing>,                                              \
   boost::sml::state<source_state> + boost::sml::event<SelectNmpcTrack> /       \
       ResetNmpcTrack{} =                                                       \

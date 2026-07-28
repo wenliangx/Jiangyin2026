@@ -21,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
   quadrotor_msgs
   super_msgs
   traj_utils
+  uav_vision_msgs
 )
 find_package(Eigen3 REQUIRED)
 
@@ -53,7 +54,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES fsm
 #LIBRARIES motordriver
-   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs
+   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs uav_vision_msgs
 #  DEPENDS system_lib
 )
 

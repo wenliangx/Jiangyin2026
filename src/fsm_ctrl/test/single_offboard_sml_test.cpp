@@ -152,6 +152,7 @@ class FakeMission final : public MissionPort {
     output = ego_points;
     return ego_result;
   }
+  bool wantsPrecisionLanding() const override { return precision_landing; }
 
   int resets{0};
   MissionTrackMode last_reset_mode{MissionTrackMode::Super};
@@ -167,11 +168,38 @@ class FakeMission final : public MissionPort {
   std::vector<ReferencePoint> mission_points{ReferencePoint{}};
   std::vector<ReferencePoint> ego_points{ReferencePoint{}};
   std::vector<int> selected_commands;
+  bool precision_landing{false};
+};
+
+class FakeLanding final : public PrecisionLandingPort {
+ public:
+  void reset() override { ++resets; }
+  void updateObservation(const LandingObservation& value) override {
+    last_observation = value;
+  }
+  bool prepareLanding(double value, const TelemetrySnapshot& telemetry,
+                      std::vector<ReferencePoint>& output) override {
+    ++prepare_calls;
+    last_time = value;
+    last_telemetry = telemetry;
+    output = points;
+    return result;
+  }
+  bool isComplete() const override { return complete; }
+
+  int resets{0};
+  int prepare_calls{0};
+  double last_time{0.0};
+  bool result{true};
+  bool complete{false};
+  std::vector<ReferencePoint> points{ReferencePoint{}};
+  TelemetrySnapshot last_telemetry;
+  LandingObservation last_observation;
 };
 
 struct Fixture : testing::Test {
   Fixture()
-      : context(clock, autopilot, setpoint, nmpc, reference, mission),
+      : context(clock, autopilot, setpoint, nmpc, reference, mission, landing),
         sm(context) {}
 
   static const char* StateName(int index) {
@@ -242,6 +270,7 @@ struct Fixture : testing::Test {
     mission.super_calls = 0;
     mission.mission_calls = 0;
     mission.ego_calls = 0;
+    landing.prepare_calls = 0;
   }
 
   void SetOffboardAndArmed() {
@@ -255,6 +284,7 @@ struct Fixture : testing::Test {
   FakeNmpc nmpc;
   FakeReference reference;
   FakeMission mission;
+  FakeLanding landing;
   Context context;
   StateMachine sm;
 };
@@ -308,6 +338,18 @@ TEST_F(Fixture, DirectSelectNmpcTrackResetsOnceFromEverySourceState) {
     SelectStateByIndex(machine, 5);
     EXPECT_EQ(resets_after_source_selection + 1, reference.resets);
     ExpectStateByIndex(machine, 5);
+  }
+}
+
+TEST_F(Fixture, DirectSelectLandingResetsOnceFromEverySourceState) {
+  for (int source = 0; source < 11; ++source) {
+    SCOPED_TRACE(StateName(source));
+    StateMachine machine(context);
+    SelectStateByIndex(machine, source);
+    const int resets_after_source_selection = landing.resets;
+    SelectStateByIndex(machine, 4);
+    EXPECT_EQ(resets_after_source_selection + 1, landing.resets);
+    ExpectStateByIndex(machine, 4);
   }
 }
 
@@ -431,7 +473,7 @@ TEST_F(Fixture, PositionHoldTickPublishesLegacyTarget) {
 }
 
 TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
-  for (const int state : {1, 2, 3, 5, 6}) {
+  for (const int state : {1, 2, 3, 4, 5, 6}) {
     SCOPED_TRACE(StateName(state));
     ClearOutputs();
     context.telemetry.mode = "MANUAL";
@@ -444,7 +486,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
     EXPECT_EQ("offboard", autopilot.calls[0]);
   }
 
-  for (const int state : {0, 4, 7, 8, 9, 10}) {
+  for (const int state : {0, 7, 8, 9, 10}) {
     SCOPED_TRACE(StateName(state));
     ClearOutputs();
     context.telemetry.mode = "MANUAL";
@@ -459,7 +501,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
 }
 
 TEST_F(Fixture, ActiveOffboardStatesDoNotRequestServicesWhenAlreadyReady) {
-  for (const int state : {1, 2, 3, 5, 6}) {
+  for (const int state : {1, 2, 3, 4, 5, 6}) {
     SCOPED_TRACE(StateName(state));
     ClearOutputs();
     SetOffboardAndArmed();
@@ -690,6 +732,37 @@ TEST_F(Fixture, Cmd7And8UseLegacyMissionNmpcPipeline) {
   }
 }
 
+TEST_F(Fixture, Cmd7And8CanHandOffToPrecisionLandingPipeline) {
+  SetOffboardAndArmed();
+  for (const int state : {7, 8}) {
+    SCOPED_TRACE(StateName(state));
+    ClearOutputs();
+    mission.precision_landing = true;
+    auto& points = state == 7 ? mission.mission_points : mission.ego_points;
+    points = {ReferencePoint{}};
+    points[0].position = {10.0 + state, 20.0 + state, 30.0 + state};
+    landing.points = {ReferencePoint{}};
+    landing.points[0].position = {1.0 * state, 2.0 * state, 0.9};
+    nmpc.track_output = BodyRateThrust{{0.2 * state, 0.3 * state,
+                                        0.4 * state},
+                                       0.55};
+
+    SelectStateByIndex(sm, state);
+    sm.process_event(Tick{});
+
+    EXPECT_EQ(1, landing.prepare_calls);
+    EXPECT_EQ(1, nmpc.track_calls);
+    EXPECT_EQ(0, nmpc.legacy_calls);
+    ASSERT_EQ(1u, nmpc.last_horizon.size());
+    EXPECT_DOUBLE_EQ(1.0 * state, nmpc.last_horizon[0].position.x);
+    ASSERT_EQ(1u, setpoint.body_rates.size());
+    EXPECT_DOUBLE_EQ(0.55, setpoint.body_rates[0].thrust);
+    ASSERT_EQ(1u, setpoint.monitors.size());
+    EXPECT_DOUBLE_EQ(1.0 * state,
+                     setpoint.monitors[0].references[0].position.x);
+  }
+}
+
 TEST_F(Fixture, Cmd6RejectsMissingReferenceSolveFailureAndBadOutput) {
   SetOffboardAndArmed();
   sm.process_event(SelectSuperTrack{});
@@ -842,17 +915,70 @@ TEST_F(Fixture, TrackRejectsAnyNonFiniteOutputField) {
   }
 }
 
-TEST_F(Fixture, LandingKeepsLegacyLatchAndDisarmSemantics) {
+TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
+  SetOffboardAndArmed();
   context.telemetry.position = {2.0, 3.0, 0.11};
-  context.telemetry.mode = "OFFBOARD";
-  context.telemetry.armed = true;
+  landing.points[0].position = {2.1, 2.9, 0.10};
+  nmpc.track_output = BodyRateThrust{{0.2, 0.3, 0.4}, 0.5};
+  clock.value = 12.0;
+
   sm.process_event(SelectLanding{});
+  EXPECT_EQ(1, landing.resets);
   sm.process_event(Tick{});
-  ASSERT_EQ(1u, setpoint.positions.size());
-  EXPECT_DOUBLE_EQ(2.0, setpoint.positions[0].position.x);
-  EXPECT_DOUBLE_EQ(3.0, setpoint.positions[0].position.y);
+
+  EXPECT_EQ(1, landing.prepare_calls);
+  EXPECT_DOUBLE_EQ(12.0, landing.last_time);
+  EXPECT_DOUBLE_EQ(2.0, landing.last_telemetry.position.x);
+  EXPECT_EQ(1, nmpc.track_calls);
+  ASSERT_EQ(1u, nmpc.last_horizon.size());
+  EXPECT_DOUBLE_EQ(2.1, nmpc.last_horizon[0].position.x);
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_DOUBLE_EQ(0.2, setpoint.body_rates[0].body_rate.x);
+  EXPECT_DOUBLE_EQ(0.5, setpoint.body_rates[0].thrust);
+  ASSERT_EQ(1u, setpoint.monitors.size());
+  EXPECT_DOUBLE_EQ(2.1, setpoint.monitors[0].references[0].position.x);
   EXPECT_FALSE(context.landing_reached);
-  context.telemetry.position.z = 0.06;
+}
+
+TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
+  SetOffboardAndArmed();
+  sm.process_event(SelectLanding{});
+
+  landing.result = false;
+  sm.process_event(Tick{});
+  EXPECT_EQ(1, landing.prepare_calls);
+  EXPECT_EQ(0, nmpc.track_calls);
+  EXPECT_TRUE(setpoint.body_rates.empty());
+  EXPECT_TRUE(setpoint.monitors.empty());
+
+  ClearOutputs();
+  landing.result = true;
+  landing.points.clear();
+  sm.process_event(Tick{});
+  EXPECT_EQ(1, landing.prepare_calls);
+  EXPECT_EQ(0, nmpc.track_calls);
+
+  ClearOutputs();
+  landing.points = {ReferencePoint{}};
+  nmpc.track_result = false;
+  sm.process_event(Tick{});
+  EXPECT_EQ(1, nmpc.track_calls);
+  EXPECT_TRUE(setpoint.body_rates.empty());
+
+  ClearOutputs();
+  nmpc.track_result = true;
+  nmpc.track_output.thrust = std::numeric_limits<double>::quiet_NaN();
+  sm.process_event(Tick{});
+  EXPECT_EQ(1, nmpc.track_calls);
+  EXPECT_TRUE(setpoint.body_rates.empty());
+  EXPECT_TRUE(setpoint.monitors.empty());
+}
+
+TEST_F(Fixture, LandingCompletionKeepsLegacyLatchAndDisarmSemantics) {
+  SetOffboardAndArmed();
+  context.telemetry.position = {2.0, 3.0, 0.11};
+  sm.process_event(SelectLanding{});
+  landing.complete = true;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
   sm.process_event(Tick{});
@@ -863,29 +989,17 @@ TEST_F(Fixture, LandingKeepsLegacyLatchAndDisarmSemantics) {
   EXPECT_EQ("disarm", autopilot.calls[0]);
 }
 
-TEST_F(Fixture, LandingUsesStrictToleranceAndStopsPublishingAfterLatch) {
+TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
+  SetOffboardAndArmed();
   context.config.landing_reference_z = 0.05;
   context.config.landing_tolerance_z = 0.05;
-  context.config.landing_target_z = 0.005;
   context.telemetry.position = {4.0, 5.0, 0.10};
-  context.telemetry.mode = "OFFBOARD";
-  context.telemetry.armed = true;
   sm.process_event(SelectLanding{});
 
   sm.process_event(Tick{});
-  ASSERT_EQ(1u, setpoint.positions.size());
-  EXPECT_DOUBLE_EQ(4.0, setpoint.positions[0].position.x);
-  EXPECT_DOUBLE_EQ(5.0, setpoint.positions[0].position.y);
-  EXPECT_DOUBLE_EQ(0.005, setpoint.positions[0].position.z);
-  EXPECT_DOUBLE_EQ(0.0, setpoint.positions[0].yaw);
-  EXPECT_FALSE(context.landing_reached);
-
-  context.telemetry.position.z = 0.099;
+  context.telemetry.position.z = 0.06;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
-  const std::size_t published_before_latched_tick = setpoint.positions.size();
-  sm.process_event(Tick{});
-  EXPECT_EQ(published_before_latched_tick, setpoint.positions.size());
 }
 
 TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
