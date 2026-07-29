@@ -64,7 +64,7 @@ struct TickLowThrust {
 };
 
 struct TickArmOnly {
-  void operator()(Context& context) const { context.ensureArm(); }
+  void operator()(Context& context) const { context.ensureOffboardArm(); }
 };
 
 struct TickCoreHoverToOneMeter {
