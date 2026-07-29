@@ -200,7 +200,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
                          if timestamp >= start)
         self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
 
-    def test_segmented_mission_cmd3_cmd4_cmd6_contracts(self):
+    def test_active_mission_cmd3_cmd4_contracts(self):
         self._clear_observations()
         self._wait_for_node()
 
@@ -224,36 +224,25 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._send_udp_command(0)
         time.sleep(0.3)
         with self._lock:
-            super_before_cmd4 = len(self._super_flags)
+            ref_before_cmd4 = len(self._reference_positions)
             state_before_cmd4 = len(self._nmpc_states)
-        self._send_udp_command(4)
-        self.assertTrue(self._wait_for(
-            lambda: len(self._super_flags) > super_before_cmd4))
-        self.assertTrue(self._wait_for(
-            lambda: len(self._nmpc_states) > state_before_cmd4))
-
-        self._send_udp_command(0)
-        time.sleep(0.3)
-        with self._lock:
-            ref_before_cmd6 = len(self._reference_positions)
-            state_before_cmd6 = len(self._nmpc_states)
-            att_before_cmd6 = len(self._attitudes)
+            att_before_cmd4 = len(self._attitudes)
         self._publish_pose(self._local_pose_pub, 0.2, -0.1, 0.8)
         self._publish_landing_offset()
-        self._send_udp_command(6)
+        self._send_udp_command(4)
         deadline = time.monotonic() + 6.0
         saw_landing_output = False
         while time.monotonic() < deadline and not saw_landing_output:
             self._publish_landing_offset()
             with self._lock:
                 saw_landing_output = (
-                    len(self._reference_positions) > ref_before_cmd6 and
-                    len(self._nmpc_states) > state_before_cmd6)
+                    len(self._reference_positions) > ref_before_cmd4 and
+                    len(self._nmpc_states) > state_before_cmd4)
         self.assertTrue(saw_landing_output)
         self.assertTrue(self._wait_for(
-            lambda: len(self._attitudes) > att_before_cmd6 and
+            lambda: len(self._attitudes) > att_before_cmd4 and
             any(thrust > 0.0 for _, _, _, _, thrust in
-                self._attitudes[att_before_cmd6:])))
+                self._attitudes[att_before_cmd4:])))
 
 
 if __name__ == "__main__":

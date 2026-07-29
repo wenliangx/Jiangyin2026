@@ -875,7 +875,8 @@ TEST_F(Fixture, CoreFlightMachineRunsCoreStates) {
   clock.value = 5.1;
   machine.process_event(Tick{});
   EXPECT_FALSE(autopilot.calls.empty());
-  EXPECT_TRUE(setpoint.body_rates.empty());
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_DOUBLE_EQ(context.config.low_thrust, setpoint.body_rates[0].thrust);
 
   ClearOutputs();
   SetOffboardAndArmed();

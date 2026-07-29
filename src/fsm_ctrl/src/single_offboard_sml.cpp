@@ -1149,8 +1149,8 @@ class SingleOffboardNode {
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
-  smlfsm::SegmentedMissionStateMachine machine_;  // 当前节点使用的分段任务状态机实例。
-  smlfsm::SegmentedMissionCommandDispatcher dispatcher_;  // 分段任务 cmd 分发器。
+  smlfsm::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。
+  smlfsm::ActiveCommandDispatcher dispatcher_;  // 当前节点 cmd 分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
   ros::Subscriber super_planner_sub_;  // super planner 订阅。

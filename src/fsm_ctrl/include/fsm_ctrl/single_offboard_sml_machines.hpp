@@ -20,6 +20,10 @@ namespace single_sml {
   boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
       ResetLanding{} =                                                        \
       boost::sml::state<CoreLanding>,                                         \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand5> =           \
+      boost::sml::state<SafeNoop>,                                            \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand6> =           \
+      boost::sml::state<SafeNoop>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnCommand9> =           \
       boost::sml::state<Emergency>,                                           \
   boost::sml::state<source_state> + boost::sml::event<OnCommand7> =           \
@@ -207,11 +211,13 @@ struct FullMissionMachine {
 #undef FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS
 #undef FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS
 
-using Machine = MissionMachine;
+using Machine = FullMissionMachine;
 using StateMachine = boost::sml::sm<Machine>;
 using CoreFlightStateMachine = boost::sml::sm<CoreFlightMachine>;
 using MissionStateMachine = boost::sml::sm<MissionMachine>;
 using SegmentedMissionStateMachine = boost::sml::sm<SegmentedMissionMachine>;
+using ActiveMachine = MissionMachine;
+using ActiveStateMachine = boost::sml::sm<ActiveMachine>;
 
 }  // namespace single_sml
 }  // namespace fsm_ctrl

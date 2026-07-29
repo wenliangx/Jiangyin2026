@@ -6,65 +6,10 @@
 namespace fsm_ctrl {
 namespace single_sml {
 
-struct FullCommandPolicy {
-  template <typename MachineT>
-  static void dispatch(MachineT& machine, int command) {
-    switch (command) {
-      case 0: machine.process_event(OnCommand0{}); break;
-      case 1: machine.process_event(OnCommand1{}); break;
-      case 2: machine.process_event(OnCommand2{}); break;
-      case 3: machine.process_event(OnCommand3{}); break;
-      case 4: machine.process_event(OnCommand4{}); break;
-      case 5: machine.process_event(OnCommand5{}); break;
-      case 6: machine.process_event(OnCommand6{}); break;
-      case 7: machine.process_event(OnCommand7{}); break;
-      case 8: machine.process_event(OnCommand8{}); break;
-      case 9: machine.process_event(OnCommand9{}); break;
-      default: machine.process_event(OnUnsupportedCommand{}); break;
-    }
-  }
-};
-
-struct CoreFlightCommandPolicy {
-  template <typename MachineT>
-  static void dispatch(MachineT& machine, int command) {
-    switch (command) {
-      case 0: machine.process_event(OnCommand0{}); break;
-      case 1: machine.process_event(OnCommand1{}); break;
-      case 2: machine.process_event(OnCommand2{}); break;
-      case 3: machine.process_event(OnCommand3{}); break;
-      case 4: machine.process_event(OnCommand4{}); break;
-      case 7: machine.process_event(OnCommand7{}); break;
-      case 8: machine.process_event(OnCommand8{}); break;
-      case 9: machine.process_event(OnCommand9{}); break;
-      default: machine.process_event(OnUnsupportedCommand{}); break;
-    }
-  }
-};
-
-struct MissionCommandPolicy {
-  template <typename MachineT>
-  static void dispatch(MachineT& machine, int command) {
-    switch (command) {
-      case 0: machine.process_event(OnCommand0{}); break;
-      case 1: machine.process_event(OnCommand1{}); break;
-      case 2: machine.process_event(OnCommand2{}); break;
-      case 3: machine.process_event(OnCommand3{}); break;
-      case 4: machine.process_event(OnCommand4{}); break;
-      case 5: machine.process_event(OnCommand5{}); break;
-      case 6: machine.process_event(OnCommand6{}); break;
-      case 7: machine.process_event(OnCommand7{}); break;
-      case 8: machine.process_event(OnCommand8{}); break;
-      case 9: machine.process_event(OnCommand9{}); break;
-      default: machine.process_event(OnUnsupportedCommand{}); break;
-    }
-  }
-};
-
 // 命令分发器：把 UDP/用户输入的整数 cmd 转成 SML 的 command 事件。
 // 连续重复的 cmd 会被忽略，避免重复执行进入状态时的 reset 逻辑；
 // 主循环仍会继续发送 Tick，让当前状态保持周期执行。
-template <typename StateMachineT, typename CommandPolicy = FullCommandPolicy>
+template <typename StateMachineT>
 class CommandDispatcherT {
  public:
   // reference 和 mission 为可选适配器；它们先收到原始 cmd，
@@ -75,10 +20,8 @@ class CommandDispatcherT {
       : machine_(machine), reference_(reference), mission_(mission) {}
 
   // 处理一条 cmd；只有 cmd 变化并触发 command 事件时返回 true。
-  // 映射关系：
-  //   0 Idle，1 LowThrust，2 PositionHold，3 NmpcHover，4 Landing，
-  //   5 NmpcTrack，6 SuperTrack，9 Emergency，
-  //   其它值（包括旧 cmd7/cmd8）进入 SafeNoop。
+  // cmd 的实际含义由当前 Machine 的 transition table 决定。
+  // dispatcher 只负责把整数转成统一事件。
   bool update(int command) {
     if (has_previous_ && command == previous_) {
       return false;
@@ -91,11 +34,27 @@ class CommandDispatcherT {
     if (mission_) {
       mission_->selectCommand(command);
     }
-    CommandPolicy::dispatch(machine_, command);
+    dispatch(command);
     return true;
   }
 
  private:
+  void dispatch(int command) {
+    switch (command) {
+      case 0: machine_.process_event(OnCommand0{}); break;
+      case 1: machine_.process_event(OnCommand1{}); break;
+      case 2: machine_.process_event(OnCommand2{}); break;
+      case 3: machine_.process_event(OnCommand3{}); break;
+      case 4: machine_.process_event(OnCommand4{}); break;
+      case 5: machine_.process_event(OnCommand5{}); break;
+      case 6: machine_.process_event(OnCommand6{}); break;
+      case 7: machine_.process_event(OnCommand7{}); break;
+      case 8: machine_.process_event(OnCommand8{}); break;
+      case 9: machine_.process_event(OnCommand9{}); break;
+      default: machine_.process_event(OnUnsupportedCommand{}); break;
+    }
+  }
+
   // 被驱动的 Boost.SML 状态机实例。
   StateMachineT& machine_;
   // cmd5 参考轨迹适配器；允许为空，便于纯状态机测试。
@@ -109,12 +68,11 @@ class CommandDispatcherT {
 };
 
 using CommandDispatcher = CommandDispatcherT<StateMachine>;
-using CoreFlightCommandDispatcher =
-    CommandDispatcherT<CoreFlightStateMachine, CoreFlightCommandPolicy>;
-using MissionCommandDispatcher =
-    CommandDispatcherT<MissionStateMachine, MissionCommandPolicy>;
+using CoreFlightCommandDispatcher = CommandDispatcherT<CoreFlightStateMachine>;
+using MissionCommandDispatcher = CommandDispatcherT<MissionStateMachine>;
 using SegmentedMissionCommandDispatcher =
-    CommandDispatcherT<SegmentedMissionStateMachine, MissionCommandPolicy>;
+    CommandDispatcherT<SegmentedMissionStateMachine>;
+using ActiveCommandDispatcher = CommandDispatcherT<ActiveStateMachine>;
 
 }  // namespace single_sml
 }  // namespace fsm_ctrl
