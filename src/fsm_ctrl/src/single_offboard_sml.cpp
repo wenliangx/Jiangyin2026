@@ -595,6 +595,9 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     lost_since_ = -1.0;
     target_z_ = 0.0;
     has_target_z_ = false;
+    locked_xy_ = false;
+    lock_x_ = 0.0;
+    lock_y_ = 0.0;
     complete_ = false;
     last_observation_ = smlfsm::LandingObservation{};
   }
@@ -610,62 +613,42 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
       horizon.clear();
       return false;
     }
-    if (!has_target_z_) {
-      target_z_ = telemetry.position.z;
-      has_target_z_ = true;
-    }
 
     const bool observation_fresh =
         last_observation_.valid && now >= last_observation_.stamp &&
         now - last_observation_.stamp <= valid_timeout_;
-    if (!observation_fresh) {
-      stable_count_ = 0;
-      if (lost_since_ < 0.0) {
-        lost_since_ = now;
-      }
-      if (stage_ == Stage::Descend &&
-          now - lost_since_ > loss_hold_seconds_) {
-        stage_ = Stage::Acquire;
-      }
-      buildConstantHorizon(telemetry.position, telemetry.attitude, horizon);
-      return true;
-    }
-    lost_since_ = -1.0;
-
-    const double error =
-        std::hypot(last_observation_.dx, last_observation_.dy);
-    if (error < align_px_threshold_) {
-      ++stable_count_;
-    } else {
-      stable_count_ = 0;
+    if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
+        std::abs(last_observation_.dy) > 50.0) {
+      horizon.clear();
+      return false;
     }
 
-    if (stage_ == Stage::Acquire) {
-      stage_ = Stage::Align;
-    }
-    if (stage_ == Stage::Align && stable_count_ >= stable_frames_) {
-      stage_ = Stage::Descend;
-    }
-    if (stage_ == Stage::Descend) {
-      target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
-      if (target_z_ <= min_z_ ||
-          telemetry.position.z <= min_z_ + 0.02) {
-        stage_ = Stage::Touchdown;
-        complete_ = true;
-      }
+    if (!locked_xy_) {
+      lock_x_ = telemetry.position.x;
+      lock_y_ = telemetry.position.y;
+      target_z_ = telemetry.position.z;
+      has_target_z_ = true;
+      locked_xy_ = true;
     }
 
-    smlfsm::Vec3 target = telemetry.position;
-    target.x += clampSingle(-last_observation_.dy * pixel_gain_x_,
-                            max_xy_step_);
-    target.y += clampSingle(-last_observation_.dx * pixel_gain_y_,
-                            max_xy_step_);
-    target.z = stage_ == Stage::Descend ? target_z_ : telemetry.position.z;
-    if (stage_ == Stage::Touchdown) {
-      target.z = min_z_;
+    target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
+    if (target_z_ <= min_z_ || telemetry.position.z <= min_z_ + 0.02) {
+      complete_ = true;
     }
-    buildConstantHorizon(target, telemetry.attitude, horizon);
+
+    buildConstantHorizon({lock_x_, lock_y_, target_z_}, telemetry.attitude,
+                         horizon);
     return true;
+
+    /*
+    // 原视觉伺服实现暂时保留：先等待有效观测，水平按 dx/dy 修正，
+    // 连续稳定后进入下降。当前比赛调试改为“偏差达标后锁 x/y 下降”。
+    if (!has_target_z_) {
+      target_z_ = telemetry.position.z;
+      has_target_z_ = true;
+    }
+    ...
+    */
   }
 
   bool isComplete() const override { return complete_; }
@@ -688,6 +671,9 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
   double lost_since_{-1.0};
   double target_z_{0.0};
   bool has_target_z_{false};
+  bool locked_xy_{false};
+  double lock_x_{0.0};
+  double lock_y_{0.0};
   bool complete_{false};
   smlfsm::LandingObservation last_observation_;
 
@@ -738,6 +724,29 @@ class RosMissionPort final : public smlfsm::MissionPort {
     horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
     for (auto& point : horizon) {
       point.position.z = 1.0;
+    }
+    return true;
+  }
+
+  bool prepareCoreSuperGoal(double /*now*/,
+                            const smlfsm::TelemetrySnapshot& /*telemetry*/,
+                            const smlfsm::Vec3& goal,
+                            std::vector<smlfsm::ReferencePoint>& horizon)
+      override {
+    MissionPoint point;
+    point.id = 0;
+    point.mode = 2;
+    point.is_map = 1;
+    point.position = goal;
+    point.yaw = 0.0;
+    publishSuperWaypoint(point);
+    if (super_planner_valid_) {
+      horizon = super_planner_;
+      return true;
+    }
+    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
+    for (auto& reference : horizon) {
+      reference.position = goal;
     }
     return true;
   }
@@ -1468,8 +1477,8 @@ class SingleOffboardNode {
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
-  smlfsm::StateMachine machine_;  // Boost.SML 状态机实例。
-  smlfsm::CommandDispatcher dispatcher_;  // cmd 到 Select 事件的分发器。
+  smlfsm::CoreFlightStateMachine machine_;  // 当前节点使用的 core 状态机实例。
+  smlfsm::CoreFlightCommandDispatcher dispatcher_;  // core cmd 到 Select 事件的分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
   ros::Subscriber super_planner_sub_, ego_state_sub_, ring_sub_, apriltag_sub_;  // 任务相关订阅。

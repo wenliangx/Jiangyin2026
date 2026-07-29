@@ -2,7 +2,7 @@ FROM docker.io/osrf/ros:noetic-desktop-full
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-COPY dist/debs/ /tmp/jiangyin-debs/
+COPY deb/ /tmp/jiangyin-debs/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     coinor-libipopt-dev \

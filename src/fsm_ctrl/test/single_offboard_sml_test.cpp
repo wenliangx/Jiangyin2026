@@ -136,6 +136,16 @@ class FakeMission final : public MissionPort {
     output = super_points;
     return super_result;
   }
+  bool prepareCoreSuperGoal(double value, const TelemetrySnapshot& telemetry,
+                            const Vec3& goal,
+                            std::vector<ReferencePoint>& output) override {
+    ++core_super_calls;
+    last_time = value;
+    last_telemetry = telemetry;
+    last_core_super_goal = goal;
+    output = core_super_points;
+    return core_super_result;
+  }
   bool prepareMission(double value, const TelemetrySnapshot& telemetry,
                       std::vector<ReferencePoint>& output) override {
     ++mission_calls;
@@ -157,18 +167,22 @@ class FakeMission final : public MissionPort {
   int resets{0};
   MissionTrackMode last_reset_mode{MissionTrackMode::Super};
   int super_calls{0};
+  int core_super_calls{0};
   int mission_calls{0};
   int ego_calls{0};
   double last_time{0.0};
   TelemetrySnapshot last_telemetry;
   bool super_result{true};
+  bool core_super_result{true};
   bool mission_result{true};
   bool ego_result{true};
   std::vector<ReferencePoint> super_points{ReferencePoint{}};
+  std::vector<ReferencePoint> core_super_points{ReferencePoint{}};
   std::vector<ReferencePoint> mission_points{ReferencePoint{}};
   std::vector<ReferencePoint> ego_points{ReferencePoint{}};
   std::vector<int> selected_commands;
   bool precision_landing{false};
+  Vec3 last_core_super_goal;
 };
 
 class FakeLanding final : public PrecisionLandingPort {
@@ -268,6 +282,7 @@ struct Fixture : testing::Test {
     nmpc.last_legacy = LegacyNmpcRequest{};
     reference.horizon_calls = 0;
     mission.super_calls = 0;
+    mission.core_super_calls = 0;
     mission.mission_calls = 0;
     mission.ego_calls = 0;
     landing.prepare_calls = 0;
@@ -1020,6 +1035,94 @@ TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls[0]);
+}
+
+TEST_F(Fixture, CoreFlightMachineRunsCoreStates) {
+  CoreFlightStateMachine machine(context);
+  EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
+
+  machine.process_event(SelectLowThrust{});
+  EXPECT_TRUE(machine.is(boost::sml::state<ArmOnly>));
+  clock.value = 5.1;
+  machine.process_event(Tick{});
+  EXPECT_FALSE(autopilot.calls.empty());
+  EXPECT_TRUE(setpoint.body_rates.empty());
+
+  ClearOutputs();
+  SetOffboardAndArmed();
+  context.telemetry.position = {2.0, 3.0, 0.2};
+  machine.process_event(SelectPositionHold{});
+  EXPECT_TRUE(machine.is(boost::sml::state<CoreHover>));
+  machine.process_event(Tick{});
+  EXPECT_EQ(1, nmpc.track_calls);
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  ASSERT_FALSE(nmpc.last_horizon.empty());
+  EXPECT_DOUBLE_EQ(2.0, nmpc.last_horizon.front().position.x);
+  EXPECT_DOUBLE_EQ(3.0, nmpc.last_horizon.front().position.y);
+  EXPECT_DOUBLE_EQ(1.0, nmpc.last_horizon.front().position.z);
+
+  ClearOutputs();
+  machine.process_event(SelectEmergency{});
+  machine.process_event(Tick{});
+  ASSERT_EQ(1u, setpoint.attitudes.size());
+  EXPECT_DOUBLE_EQ(context.config.hover_thrust - 0.03,
+                   setpoint.attitudes[0].thrust);
+}
+
+TEST_F(Fixture, CoreFlightCmd3PublishesSuperControlAndLandingDebug) {
+  CoreFlightStateMachine machine(context);
+  SetOffboardAndArmed();
+  mission.core_super_points = {ReferencePoint{}};
+  mission.core_super_points.front().position = {1.0, 0.0, 1.0};
+  landing.points = {ReferencePoint{}};
+  landing.points.front().position = {4.0, 5.0, 0.8};
+  landing.result = true;
+
+  machine.process_event(SelectNmpcHover{});
+  EXPECT_TRUE(machine.is(boost::sml::state<CoreSuperLanding>));
+  machine.process_event(Tick{});
+
+  EXPECT_EQ(1, mission.core_super_calls);
+  EXPECT_DOUBLE_EQ(1.0, mission.last_core_super_goal.x);
+  EXPECT_DOUBLE_EQ(0.0, mission.last_core_super_goal.y);
+  EXPECT_DOUBLE_EQ(1.0, mission.last_core_super_goal.z);
+  EXPECT_EQ(1, landing.prepare_calls);
+  EXPECT_EQ(2, nmpc.track_calls);
+  EXPECT_EQ(2u, setpoint.monitors.size());
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_DOUBLE_EQ(nmpc.track_output.thrust, setpoint.body_rates[0].thrust);
+}
+
+TEST_F(Fixture, CoreFlightCmd4PublishesLandingControl) {
+  CoreFlightStateMachine machine(context);
+  SetOffboardAndArmed();
+  landing.points = {ReferencePoint{}};
+  landing.points.front().position = {2.0, 2.0, 0.5};
+  landing.result = true;
+
+  machine.process_event(SelectLanding{});
+  EXPECT_TRUE(machine.is(boost::sml::state<CoreLanding>));
+  machine.process_event(Tick{});
+
+  EXPECT_EQ(1, landing.prepare_calls);
+  EXPECT_EQ(1, nmpc.track_calls);
+  EXPECT_EQ(1u, setpoint.monitors.size());
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_DOUBLE_EQ(nmpc.track_output.thrust, setpoint.body_rates[0].thrust);
+}
+
+TEST_F(Fixture, CoreFlightDispatcherMapsTrackCommandsToSafeNoop) {
+  CoreFlightStateMachine machine(context);
+  CoreFlightCommandDispatcher dispatcher(machine, &reference, &mission);
+
+  for (const int command : {5, 6, 7, 8}) {
+    SCOPED_TRACE(command);
+    EXPECT_TRUE(dispatcher.update(command));
+    EXPECT_TRUE(machine.is(boost::sml::state<SafeNoop>));
+  }
+  const std::vector<int> expected_commands{5, 6, 7, 8};
+  EXPECT_EQ(expected_commands, reference.selected_commands);
+  EXPECT_EQ(expected_commands, mission.selected_commands);
 }
 
 TEST_F(Fixture, EmergencyPublishesIdentityAttitudeAndLegacyThrust) {

@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     libdw-dev \
     libeigen3-dev \
+    libapriltag-dev \
     libgazebo11-dev \
     libglfw3-dev \
     libgstreamer-plugins-base1.0-dev \
