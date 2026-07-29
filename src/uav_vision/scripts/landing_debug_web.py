@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Serve the ROS landing debug image as a small MJPEG web page."""
 
+import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 import time
@@ -11,27 +12,29 @@ import rospy
 from sensor_msgs.msg import Image
 
 
-INDEX_HTML = b"""<!doctype html>
+def build_index_html(page_title):
+    safe_title = html.escape(str(page_title))
+    return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>UAV Landing Debug</title>
+  <title>{safe_title}</title>
   <style>
-    body { margin: 0; background: #111; color: #eee; font-family: sans-serif; }
-    main { max-width: 1280px; margin: auto; padding: 12px; }
-    h1 { margin: 0 0 10px; font-size: 20px; font-weight: 500; }
-    img { display: block; width: 100%; height: auto; background: #000; }
+    body {{ margin: 0; background: #111; color: #eee; font-family: sans-serif; }}
+    main {{ max-width: 1280px; margin: auto; padding: 12px; }}
+    h1 {{ margin: 0 0 10px; font-size: 20px; font-weight: 500; }}
+    img {{ display: block; width: 100%; height: auto; background: #000; }}
   </style>
 </head>
 <body>
   <main>
-    <h1>UAV Landing Debug</h1>
-    <img src="/stream.mjpg" alt="landing debug stream">
+    <h1>{safe_title}</h1>
+    <img src="/stream.mjpg" alt="ROS debug image stream">
   </main>
 </body>
 </html>
-"""
+""".encode("utf-8")
 
 
 class LatestJpegFrame:
@@ -51,9 +54,10 @@ class LatestJpegFrame:
 class DebugWebServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, frame_buffer):
+    def __init__(self, address, frame_buffer, page_title):
         super().__init__(address, DebugWebHandler)
         self.frame_buffer = frame_buffer
+        self.index_html = build_index_html(page_title)
 
 
 class DebugWebHandler(BaseHTTPRequestHandler):
@@ -64,10 +68,12 @@ class DebugWebHandler(BaseHTTPRequestHandler):
         if self.path == "/":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(INDEX_HTML)))
+            self.send_header(
+                "Content-Length", str(len(self.server.index_html))
+            )
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(INDEX_HTML)
+            self.wfile.write(self.server.index_html)
             return
         if self.path != "/stream.mjpg":
             self.send_error(404)
@@ -107,6 +113,7 @@ def main():
     host = rospy.get_param("~host", "0.0.0.0")
     port = int(rospy.get_param("~port", 8080))
     jpeg_quality = int(rospy.get_param("~jpeg_quality", 85))
+    page_title = rospy.get_param("~page_title", "UAV Landing Debug")
 
     bridge = CvBridge()
     frames = LatestJpegFrame()
@@ -120,7 +127,7 @@ def main():
             frames.update(encoded.tobytes())
 
     rospy.Subscriber(image_topic, Image, image_callback, queue_size=1)
-    server = DebugWebServer((host, port), frames)
+    server = DebugWebServer((host, port), frames, page_title)
     server.timeout = 0.2
     rospy.loginfo(
         "landing debug web ready: http://%s:%d topic=%s",

@@ -194,6 +194,22 @@ rosrun rqt_image_view rqt_image_view
 
 启动后在界面中选择 `/vision/target/debug_image`。
 
+也可以在一个新的终端启动独立的目标分类网页：
+
+```bash
+roslaunch uav_vision target_debug_web.launch
+```
+
+然后打开：
+
+```text
+http://10.1.77.193:8081
+```
+
+端口 `8080` 固定用于降落可视化，端口 `8081` 固定用于目标分类
+可视化。两个网页节点相互独立，关闭任一网页都不会停止对应感知节点
+或结果消息发布。
+
 ## 5. 节点与话题总表
 
 | 节点 | 订阅 | 发布 | 作用 |
@@ -203,6 +219,7 @@ rosrun rqt_image_view rqt_image_view
 | `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 识别五个 AprilTag 并计算像素偏差 |
 | `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | 方形目标板检测和四类别模板匹配 |
 | `/landing_debug_web` | `/vision/landing/debug_image` | HTTP 8080 端口 | 在浏览器中显示降落调试画面 |
+| `/target_debug_web` | `/vision/target/debug_image` | HTTP 8081 端口 | 在浏览器中显示目标分类调试画面 |
 
 所有图像订阅和发布队列均以低延迟为目标，队列长度为 1。
 

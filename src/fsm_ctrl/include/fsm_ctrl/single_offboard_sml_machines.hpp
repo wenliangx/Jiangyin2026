@@ -207,7 +207,7 @@ struct FullMissionMachine {
 #undef FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS
 #undef FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS
 
-using Machine = FullMissionMachine;
+using Machine = MissionMachine;
 using StateMachine = boost::sml::sm<Machine>;
 using CoreFlightStateMachine = boost::sml::sm<CoreFlightMachine>;
 using MissionStateMachine = boost::sml::sm<MissionMachine>;
