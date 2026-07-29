@@ -38,6 +38,15 @@ struct Context {
     }
   }
 
+  void ensureArm() {
+    const double current_time = clock.now();
+    if (!telemetry.armed &&
+        current_time - last_service_request > config.service_retry_seconds) {
+      autopilot.requestArm();
+      last_service_request = current_time;
+    }
+  }
+
   static bool finite(const BodyRateThrust& command) {
     return std::isfinite(command.body_rate.x) &&
            std::isfinite(command.body_rate.y) &&
