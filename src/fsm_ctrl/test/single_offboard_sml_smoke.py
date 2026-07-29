@@ -14,7 +14,7 @@ from mavros_msgs.msg import AttitudeTarget
 from mavros_msgs.msg import RCIn
 from super_msgs.msg import Flag as SuperFlag
 from traj_utils.msg import Flag as EgoFlag
-from traj_utils.msg import FlagState
+from uav_vision_msgs.msg import LandingOffset
 
 
 class SingleOffboardSmlSmoke(unittest.TestCase):
@@ -22,7 +22,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._lock = threading.Lock()
         self._positions = []
         self._super_flags = []
-        self._ego_flags = []
         self._reference_positions = []
         self._feedback_positions = []
         self._nmpc_states = []
@@ -33,9 +32,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._super_flag_sub = rospy.Subscriber(
             "/super/flag_waypoint", SuperFlag,
             self._super_flag_callback, queue_size=100)
-        self._ego_flag_sub = rospy.Subscriber(
-            "/ego_planner/flag_msg", EgoFlag,
-            self._ego_flag_callback, queue_size=100)
         self._reference_sub = rospy.Subscriber(
             "/nmpc_posref", PoseStamped,
             self._reference_callback, queue_size=100)
@@ -51,12 +47,12 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._rc_pub = rospy.Publisher("/mavros/rc/in", RCIn, queue_size=1)
         self._planner_pub = rospy.Publisher(
             "/position_cmd_nmpc", EgoFlag, queue_size=1)
-        self._ego_state_pub = rospy.Publisher(
-            "/ego_planner/flag_state", FlagState, queue_size=1)
         self._local_pose_pub = rospy.Publisher(
             "/mavros/local_position/pose", PoseStamped, queue_size=1)
         self._target_pose_pub = rospy.Publisher(
             "/target_pose", PoseStamped, queue_size=1)
+        self._landing_offset_pub = rospy.Publisher(
+            "/vision/landing/offset", LandingOffset, queue_size=1)
 
     def _position_callback(self, message):
         with self._lock:
@@ -65,10 +61,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
     def _super_flag_callback(self, message):
         with self._lock:
             self._super_flags.append((time.monotonic(), message.id))
-
-    def _ego_flag_callback(self, message):
-        with self._lock:
-            self._ego_flags.append((time.monotonic(), message.id))
 
     def _reference_callback(self, message):
         with self._lock:
@@ -132,19 +124,10 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         with self._lock:
             self._positions.clear()
             self._super_flags.clear()
-            self._ego_flags.clear()
             self._reference_positions.clear()
             self._feedback_positions.clear()
             self._nmpc_states.clear()
             self._attitudes.clear()
-
-    def _publish_ego_state(self, now_id, touch_goal):
-        message = FlagState()
-        message.now_id = now_id
-        message.touch_goal = int(touch_goal)
-        for _ in range(5):
-            self._ego_state_pub.publish(message)
-            time.sleep(0.02)
 
     def _publish_planner_z(self, z):
         message = EgoFlag()
@@ -174,6 +157,18 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
             publisher.publish(message)
             time.sleep(0.01)
 
+    def _publish_landing_offset(self, dx=0.0, dy=0.0):
+        message = LandingOffset()
+        message.header.stamp = rospy.Time.now()
+        message.valid = True
+        message.dx = dx
+        message.dy = dy
+        message.tag_count = 5
+        for _ in range(10):
+            message.header.stamp = rospy.Time.now()
+            self._landing_offset_pub.publish(message)
+            time.sleep(0.02)
+
     def _has_finite_attitude_since(self, start_index):
         return any(math.isfinite(wx) and math.isfinite(wy) and
                    math.isfinite(wz) and math.isfinite(thrust)
@@ -192,68 +187,62 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._send_udp_command(2)
 
         self.assertTrue(self._wait_for(
-            lambda: any(abs(z - 1.0) < 1e-9
-                        for _, z in self._positions)))
-
-        start = time.monotonic()
-        time.sleep(0.6)
-        with self._lock:
-            recent = sum(1 for timestamp, _ in self._positions
-                         if timestamp >= start)
-        self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
-
-    def test_cmd678_runtime_ros_contracts(self):
-        self._clear_observations()
-        self._wait_for_node()
-
-        self._select_udp_command(6)
-        self.assertTrue(self._wait_for(
-            lambda: len(self._super_flags) >= 1))
-        self.assertTrue(self._wait_for(
-            lambda: any(abs(x) < 1e-9 and abs(y) < 1e-9 and
-                        abs(z - 1.0) < 1e-9
-                        for _, x, y, z in self._reference_positions) and
-            len(self._feedback_positions) >= 1))
-        self.assertTrue(self._wait_for(
-            lambda: any(abs(x) < 1e-9 and abs(y) < 1e-9 and
-                        abs(z - 1.0) < 1e-9 and thrust > 0.0
+            lambda: any(abs(z - 1.0) < 1e-9 and thrust > 0.0
                         for _, x, y, z, thrust in self._nmpc_states)))
         self.assertTrue(self._wait_for(
             lambda: any(thrust > 0.0 for _, _, _, _, thrust in
                         self._attitudes)))
 
+        start = time.monotonic()
+        time.sleep(0.6)
         with self._lock:
-            ref_before_cmd7 = len(self._reference_positions)
-            att_before_cmd7 = len(self._attitudes)
-        self._publish_ego_state(now_id=7, touch_goal=True)
-        self._publish_pose(self._local_pose_pub, 0.0, 0.05, 0.8)
-        self._publish_pose(self._target_pose_pub, 2.0, 0.2, 1.0)
-        self._select_udp_command(7)
-        self._publish_ego_state(now_id=7, touch_goal=True)
-        self._publish_pose(self._local_pose_pub, 0.0, 0.05, 0.8)
-        self._publish_pose(self._target_pose_pub, 2.0, 0.2, 1.0)
-        self.assertTrue(self._wait_for(
-            lambda: len(self._reference_positions) > ref_before_cmd7 and
-            any(2.0 <= x <= 3.0 and abs(y - 0.2) < 1e-9 and
-                abs(z - 1.65) < 1e-9
-                for _, x, y, z in self._reference_positions[ref_before_cmd7:])))
-        self.assertTrue(self._wait_for(
-            lambda: len(self._attitudes) > att_before_cmd7 and
-            self._has_finite_attitude_since(att_before_cmd7)))
+            recent = sum(1 for timestamp, _, _, _, _ in self._attitudes
+                         if timestamp >= start)
+        self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
 
+    def test_active_mission_cmd3_cmd4_contracts(self):
+        self._clear_observations()
+        self._wait_for_node()
+
+        self._publish_pose(self._local_pose_pub, 0.0, 0.0, 1.0)
+        self._send_udp_command(0)
+        time.sleep(0.3)
+        self._send_udp_command(3)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._super_flags) >= 1))
+        self.assertTrue(self._wait_for(
+            lambda: any(z > 0.0
+                        for _, _, _, z in self._reference_positions) and
+            len(self._feedback_positions) >= 1))
+        self.assertTrue(self._wait_for(
+            lambda: any(z > 0.0 and thrust > 0.0
+                        for _, _, _, z, thrust in self._nmpc_states)))
+        self.assertTrue(self._wait_for(
+            lambda: any(thrust > 0.0 for _, _, _, _, thrust in
+                        self._attitudes)))
+
+        self._send_udp_command(0)
+        time.sleep(0.3)
         with self._lock:
-            ref_before_cmd8 = len(self._reference_positions)
-            att_before_cmd8 = len(self._attitudes)
-        self._publish_planner_position(0.4, -0.3, 1.23)
-        self._select_udp_command(8)
+            ref_before_cmd4 = len(self._reference_positions)
+            state_before_cmd4 = len(self._nmpc_states)
+            att_before_cmd4 = len(self._attitudes)
+        self._publish_pose(self._local_pose_pub, 0.2, -0.1, 0.8)
+        self._publish_landing_offset()
+        self._send_udp_command(4)
+        deadline = time.monotonic() + 6.0
+        saw_landing_output = False
+        while time.monotonic() < deadline and not saw_landing_output:
+            self._publish_landing_offset()
+            with self._lock:
+                saw_landing_output = (
+                    len(self._reference_positions) > ref_before_cmd4 and
+                    len(self._nmpc_states) > state_before_cmd4)
+        self.assertTrue(saw_landing_output)
         self.assertTrue(self._wait_for(
-            lambda: len(self._reference_positions) > ref_before_cmd8 and
-            any(abs(x - 0.4) < 1e-9 and abs(y + 0.3) < 1e-9 and
-                abs(z - 1.23) < 1e-9
-                for _, x, y, z in self._reference_positions[ref_before_cmd8:])))
-        self.assertTrue(self._wait_for(
-            lambda: len(self._attitudes) > att_before_cmd8 and
-            self._has_finite_attitude_since(att_before_cmd8)))
+            lambda: len(self._attitudes) > att_before_cmd4 and
+            any(thrust > 0.0 for _, _, _, _, thrust in
+                self._attitudes[att_before_cmd4:])))
 
 
 if __name__ == "__main__":

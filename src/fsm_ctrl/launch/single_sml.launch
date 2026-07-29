@@ -81,6 +81,13 @@
 
         <param name = "nmpc_hover_thrust" type = "double"  value = "0.390" />
 
+        <!-- MissionMachine/Super waypoint upload. Generate this file with:
+             rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
+        <param name="mission_super_waypoints_file"
+               value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
+               type="string"/>
+        <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
+
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
         <param name = "nmpc_Qposy" type = "double" value = "40.0" />
@@ -96,19 +103,36 @@
         <param name = "nmpc_Rwz" type = "double" value = "0.1" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
 
-        <param name = "nmpc_Qposx" type = "double" value = "30.0" />
-        <param name = "nmpc_Qposy" type = "double" value = "40.0" />
+        <!-- <param name = "nmpc_Qposx" type = "double" value = "30.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "50.0" />
         <param name = "nmpc_Qposz" type = "double" value = "50.0" />
         <param name = "nmpc_Qvelx" type = "double" value = "1.0" /> 
         <param name = "nmpc_Qvely" type = "double" value = "1.0" />
         <param name = "nmpc_Qvelz" type = "double" value = "1.0" />
         <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
         <param name = "nmpc_Qquaty" type = "double" value = "1.0" />
-        <param name = "nmpc_Qquatz" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
         <param name = "nmpc_Rwx" type = "double" value = "0.3" />
         <param name = "nmpc_Rwy" type = "double" value = "0.3" />
         <param name = "nmpc_Rwz" type = "double" value = "0.3" />
-        <param name = "nmpc_RtotalF" type = "double" value = "0.1" />
+        <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
+
+        <param name = "nmpc_Qposx" type = "double" value = "45.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "55.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "55.0" />
+
+        <param name = "nmpc_Qvelx" type = "double" value = "4.0" />
+        <param name = "nmpc_Qvely" type = "double" value = "4.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "2.0" />
+
+        <param name = "nmpc_Qquatx" type = "double" value = "2.0" />
+        <param name = "nmpc_Qquaty" type = "double" value = "2.0" />
+        <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
+
+        <param name = "nmpc_Rwx" type = "double" value = "0.45" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.45" />
+        <param name = "nmpc_Rwz" type = "double" value = "0.35" />
+        <param name = "nmpc_RtotalF" type = "double" value = "0.15" />
 
         <!-- ========== Trajectory Generator (internal, no ego-planner needed) ========== -->
         <!-- Set use_traj_gen=true to enable.  Works with cmd=5 when ego-planner is not running. -->

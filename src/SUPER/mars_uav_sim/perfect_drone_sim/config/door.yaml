@@ -1,9 +1,9 @@
 #############| For UAV simulation |#################################
-pcd_name: "door_wall.pcd"
+pcd_name: "b.pcd"
 mesh_resource: "package://perfect_drone_sim/meshes/yunque-M.dae"
 init_position:
-  x: 0.0
-  y: 0.0
+  x: 0.5
+  y: 0.5
   z: 0.5
 init_yaw: 0.0
 
@@ -16,6 +16,13 @@ sensing_blind: 0.1
 sensing_horizon: 10
 sensing_rate: 15
 print_time_consumption: false
+
+# 实机雷达环锥视场。机体系：+X 向前、+Y 向左、+Z 向上。
+# 扫描轴从 +Z 朝 +X 偏转 30 度，仅保留与该轴夹角 38~97 度的方向。
+annular_fov_en: true
+annular_fov_axis_tilt_from_up_deg: 30.0
+annular_fov_min_angle_deg: 38.0
+annular_fov_max_angle_deg: 97.0
 #  enum LiDARType{
 #  UNDEFINED = 0,
 #  AVIA = 1,
@@ -24,6 +31,5 @@ print_time_consumption: false
 #  };
 lidar_type: 2
 depth_image_en: false
-
 
 

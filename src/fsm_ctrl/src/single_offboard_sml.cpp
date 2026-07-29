@@ -24,8 +24,9 @@
 #include <ros/ros.h>
 #include <super_msgs/Flag.h>
 #include <traj_utils/Flag.h>
-#include <traj_utils/FlagState.h>
+#include <uav_vision_msgs/LandingOffset.h>
 #include <xmlrpcpp/XmlRpcValue.h>
+#include <yaml-cpp/yaml.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -37,11 +38,14 @@
 #include <atomic>
 #include <cerrno>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -58,51 +62,137 @@ constexpr double kInterval = 1.0 / kRateHz;
 constexpr std::size_t kHorizonPoints = 9;
 // planner topic 中按旧逻辑读取的参考点数。
 constexpr std::size_t kPlannerPoints = 6;
-// legacy younger_ctrl NMPC 使用的参考 horizon 点数。
-constexpr std::size_t kLegacyHorizonPoints = 6;
+// 精降调试 horizon 点数。
+constexpr std::size_t kLandingHorizonPoints = 6;
 
-// 旧任务航点的纯 C++ 表示，用于生成 cmd6/7/8 的 waypoint 消息。
+// Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
-  int id{0};              // 航点编号。
+  int id{0};              // 任务表内局部编号；发布时会替换为全局递增 id。
   int mode{0};            // 下游 planner 使用的任务模式。
   int is_map{0};          // 是否使用 map 坐标。
   smlfsm::Vec3 position;  // 航点位置。
   double yaw{0.0};        // 航点期望 yaw。
+  double desired_speed{0.0};  // SUPER 期望速度，0 表示使用下游默认。
   int perc_mode{0};       // 感知模式字段，保留旧结构含义。
 };
 
-// 带时间戳的位姿缓存，用于把 apriltag 相机局部测量转换到全局坐标。
-struct TimedPose {
-  double stamp{0.0};      // 位姿时间戳。
-  smlfsm::Vec3 position;  // 当时的全局位置。
-  double roll{0.0};       // 当时的 roll。
-  double pitch{0.0};      // 当时的 pitch。
-  double yaw{0.0};        // 当时的 yaw。
-};
-
-// 构造旧版 ego/mission 任务航点表。
-std::vector<MissionPoint> createLegacyEgoTrajectory() {
+// 构造 Super 任务航点表。
+std::vector<MissionPoint> createSuperTrajectory() {
   return std::vector<MissionPoint>{
-      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 3},
-      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0},
-      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0},
-      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0},
-      {4, 2, 1, {3.6, 0.2, 0.5}, 0.0, 0},
-      {5, 2, 1, {2.6, 0.7, 0.45}, 0.0, 0},
-      {6, 2, 1, {1.6, 1.2, 0.5}, 0.0, 0},
-      {7, 2, 1, {0.0, 0.0, 0.5}, 0.0, 0},
+      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 0.0, 3},
+      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0.0, 0},
+      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0.0, 0},
+      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0.0, 0},
+      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0.0, 0},
+      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0.0, 0},
+      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0.0, 0},
+      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0.0, 0},
   };
 }
 
-// 对单个标量做对称限幅，主要用于约束横向修正量。
-double clampSingle(double value, double limit) {
-  if (value > limit) {
-    return limit;
+std::vector<std::vector<MissionPoint>> createSuperTrajectorySegments() {
+  const std::vector<MissionPoint> points = createSuperTrajectory();
+  return std::vector<std::vector<MissionPoint>>{
+      {points[0], points[1]},
+      {points[2], points[3]},
+      {points[4], points[5], points[6], points[7]},
+  };
+}
+
+double optionalWaypointYaw(const YAML::Node& node) {
+  if (!node || node.IsNull()) {
+    return std::numeric_limits<double>::quiet_NaN();
   }
-  if (value < -limit) {
-    return -limit;
+  try {
+    return node.as<double>();
+  } catch (const YAML::Exception&) {
+    std::string value = node.as<std::string>();
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) {
+                     return static_cast<char>(std::tolower(c));
+                   });
+    if (value == "nan" || value == ".nan" || value == "free" ||
+        value == "auto") {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    throw;
   }
-  return value;
+}
+
+MissionPoint parseMissionPoint(const YAML::Node& node,
+                               std::size_t fallback_id) {
+  MissionPoint point;
+  point.id = node["id"] ? node["id"].as<int>() : static_cast<int>(fallback_id);
+  point.mode = node["mode"] ? node["mode"].as<int>() : 2;
+  point.is_map = node["is_map"] ? node["is_map"].as<int>() : 1;
+  point.position.x = node["x"].as<double>();
+  point.position.y = node["y"].as<double>();
+  point.position.z = node["z"].as<double>();
+  point.yaw = optionalWaypointYaw(node["yaw"]);
+  point.desired_speed =
+      node["desired_speed"] ? node["desired_speed"].as<double>() : 0.0;
+
+  if (point.mode < 0 || point.mode > 2) {
+    throw std::runtime_error("waypoint mode must be 0, 1, or 2");
+  }
+  if (point.is_map != 0 && point.is_map != 1) {
+    throw std::runtime_error("waypoint is_map must be 0 or 1");
+  }
+  if (!std::isfinite(point.position.x) ||
+      !std::isfinite(point.position.y) ||
+      !std::isfinite(point.position.z)) {
+    throw std::runtime_error("waypoint x/y/z must be finite");
+  }
+  if (!std::isfinite(point.desired_speed) || point.desired_speed < 0.0) {
+    throw std::runtime_error(
+        "waypoint desired_speed must be finite and non-negative");
+  }
+  return point;
+}
+
+std::vector<MissionPoint> loadSuperTrajectoryFile(const std::string& path) {
+  const YAML::Node root = YAML::LoadFile(path);
+  const YAML::Node waypoint_nodes = root["waypoints"];
+  if (!waypoint_nodes || !waypoint_nodes.IsSequence() ||
+      waypoint_nodes.size() == 0) {
+    throw std::runtime_error("waypoint file must contain non-empty waypoints");
+  }
+
+  std::vector<MissionPoint> waypoints;
+  waypoints.reserve(waypoint_nodes.size());
+  for (std::size_t index = 0; index < waypoint_nodes.size(); ++index) {
+    waypoints.push_back(parseMissionPoint(waypoint_nodes[index], index));
+  }
+  return waypoints;
+}
+
+std::vector<std::vector<MissionPoint>> loadSuperTrajectorySegmentsFile(
+    const std::string& path) {
+  const YAML::Node root = YAML::LoadFile(path);
+  const YAML::Node segment_nodes = root["segments"];
+  if (!segment_nodes || !segment_nodes.IsSequence()) {
+    return std::vector<std::vector<MissionPoint>>{
+        loadSuperTrajectoryFile(path)};
+  }
+
+  std::vector<std::vector<MissionPoint>> segments;
+  segments.reserve(segment_nodes.size());
+  for (std::size_t index = 0; index < segment_nodes.size(); ++index) {
+    const YAML::Node waypoints = segment_nodes[index]["waypoints"];
+    if (!waypoints || !waypoints.IsSequence() || waypoints.size() == 0) {
+      throw std::runtime_error("each segment must contain non-empty waypoints");
+    }
+
+    std::vector<MissionPoint> segment;
+    segment.reserve(waypoints.size());
+    for (std::size_t waypoint_index = 0;
+         waypoint_index < waypoints.size(); ++waypoint_index) {
+      segment.push_back(parseMissionPoint(waypoints[waypoint_index],
+                                          waypoint_index));
+    }
+    segments.push_back(segment);
+  }
+  return segments;
 }
 
 // Clock 的 ROS 实现，给纯 C++ Context 提供当前时间。
@@ -196,12 +286,14 @@ class RosSetpointPort final : public smlfsm::SetpointPort {
     attitude_pub_.publish(message);
   }
 
-  void publishReferencePosition(const smlfsm::Vec3& position) override {
-    nmpc_posref_pub_.publish(toPose(position));
+  void publishReferencePosition(const smlfsm::Vec3& position,
+                                const smlfsm::Quaternion& attitude) override {
+    nmpc_posref_pub_.publish(toPose(position, attitude));
   }
 
-  void publishFeedbackPosition(const smlfsm::Vec3& position) override {
-    nmpc_posfdb_pub_.publish(toPose(position));
+  void publishFeedbackPosition(const smlfsm::Vec3& position,
+                                const smlfsm::Quaternion& attitude) override {
+    nmpc_posfdb_pub_.publish(toPose(position, attitude));
   }
 
   void publishNmpcMonitor(const smlfsm::NmpcMonitor& monitor) override {
@@ -238,14 +330,19 @@ class RosSetpointPort final : public smlfsm::SetpointPort {
 
  private:
   // 将纯 C++ 位置向量转换为 ROS PoseStamped，供监视/参考 topic 复用。
-  static geometry_msgs::PoseStamped toPose(const smlfsm::Vec3& position) {
+  static geometry_msgs::PoseStamped toPose(const smlfsm::Vec3& position,
+                                           const smlfsm::Quaternion& attitude =
+                                               {1.0, 0.0, 0.0, 0.0}) {
     geometry_msgs::PoseStamped message;
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
     message.pose.position.x = position.x;
     message.pose.position.y = position.y;
     message.pose.position.z = position.z;
-    message.pose.orientation.w = 1.0;
+    message.pose.orientation.w = attitude.w;
+    message.pose.orientation.x = attitude.x;
+    message.pose.orientation.y = attitude.y;
+    message.pose.orientation.z = attitude.z;
     return message;
   }
 
@@ -291,30 +388,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
         q_position, q_velocity, q_attitude, r_angular, r_thrust,
         hover_thrust));
 
-    double mq_px = 0.0, mq_py = 0.0, mq_pz = 0.0, mq_vx = 0.0, mq_vy = 0.0;
-    double mq_vz = 0.0, mq_q1 = 0.0, mq_q2 = 0.0, mq_q3 = 0.0, mq_q4 = 0.0;
-    double mr_a_bz = 0.0, mr_roll = 0.0, mr_pitch = 0.0, mr_yaw = 0.0;
-    private_node.param("nmpc_mQ_px", mq_px, mq_px);
-    private_node.param("nmpc_mQ_py", mq_py, mq_py);
-    private_node.param("nmpc_mQ_pz", mq_pz, mq_pz);
-    private_node.param("nmpc_mQ_vx", mq_vx, mq_vx);
-    private_node.param("nmpc_mQ_vy", mq_vy, mq_vy);
-    private_node.param("nmpc_mQ_vz", mq_vz, mq_vz);
-    private_node.param("nmpc_mQ_q1", mq_q1, mq_q1);
-    private_node.param("nmpc_mQ_q2", mq_q2, mq_q2);
-    private_node.param("nmpc_mQ_q3", mq_q3, mq_q3);
-    private_node.param("nmpc_mQ_q4", mq_q4, mq_q4);
-    private_node.param("nmpc_mR_a_BZ", mr_a_bz, mr_a_bz);
-    private_node.param("nmpc_mR_roll", mr_roll, mr_roll);
-    private_node.param("nmpc_mR_pitch", mr_pitch, mr_pitch);
-    private_node.param("nmpc_mR_yaw", mr_yaw, mr_yaw);
-    Eigen::Matrix<float, 10, 1> legacy_q;
-    Eigen::Matrix<float, 4, 1> legacy_r;
-    legacy_q << mq_px, mq_py, mq_pz, mq_vx, mq_vy, mq_vz, mq_q1, mq_q2,
-        mq_q3, mq_q4;
-    legacy_r << mr_a_bz, mr_roll, mr_pitch, mr_yaw;
-    legacy_controller_.reset(
-        new NMPC_Ctrller(5, 0.1, kInterval, hover_thrust, legacy_q, legacy_r));
   }
 
   bool solveHover(const smlfsm::TelemetrySnapshot& telemetry,
@@ -330,55 +403,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
                   const std::vector<smlfsm::ReferencePoint>& horizon,
                   smlfsm::BodyRateThrust& command) override {
     return solve(telemetry, horizon, command);
-  }
-
-  bool solveLegacy(const smlfsm::LegacyNmpcRequest& request,
-                   smlfsm::BodyRateThrust& command) override {
-    if (!legacy_controller_ ||
-        request.horizon.size() < kLegacyHorizonPoints) {
-      return false;
-    }
-    Eigen::Matrix<float, 10, 1> current;
-    current << request.telemetry.position.x, request.telemetry.position.y,
-        request.telemetry.position.z, request.telemetry.velocity.x,
-        request.telemetry.velocity.y, request.telemetry.velocity.z,
-        request.telemetry.attitude.w, request.telemetry.attitude.x,
-        request.telemetry.attitude.y, request.telemetry.attitude.z;
-
-    Eigen::Matrix<float, 60, 1> desired;
-    for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-      const auto& point = request.horizon[index];
-      const std::size_t offset = index * 10;
-      desired(offset + 0) = point.position.x;
-      desired(offset + 1) = point.position.y;
-      desired(offset + 2) = point.position.z;
-      desired(offset + 3) = point.velocity.x;
-      desired(offset + 4) = point.velocity.y;
-      desired(offset + 5) = point.velocity.z;
-      desired(offset + 6) = point.attitude.w;
-      desired(offset + 7) = point.attitude.x;
-      desired(offset + 8) = point.attitude.y;
-      desired(offset + 9) = point.attitude.z;
-    }
-
-    Eigen::Matrix<float, 4, 1> desired_controls;
-    desired_controls << request.desired_controls[0], request.desired_controls[1],
-        request.desired_controls[2], request.desired_controls[3];
-
-    try {
-      legacy_controller_->optimal_solution(current, desired, desired_controls);
-      if (!legacy_controller_->Acc2Trust()) {
-        return false;
-      }
-    } catch (const std::exception& error) {
-      ROS_ERROR_THROTTLE(1.0, "Legacy NMPC solve failed: %s", error.what());
-      return false;
-    }
-    const Eigen::Matrix<float, 4, 1> output =
-        legacy_controller_->get_control_command();
-    command.thrust = output(0);
-    command.body_rate = {output(1), output(2), output(3)};
-    return smlfsm::Context::finite(command);
   }
 
  private:
@@ -420,7 +444,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
-  std::unique_ptr<NMPC_Ctrller> legacy_controller_;  // cmd7/8 使用的旧版 NMPC。
 };
 
 // cmd5 参考轨迹提供器：按 planner、内部轨迹、固定悬停的优先级生成 horizon。
@@ -442,8 +465,6 @@ class RosReferenceProvider final : public smlfsm::ReferenceProvider {
   void selectCommand(int command) override {
     switch (command) {
       case 6: mode_ = Mode::kSuperTrack; break;
-      case 7: mode_ = Mode::kMissionTrack; break;
-      case 8: mode_ = Mode::kEgoTrack; break;
       default: mode_ = Mode::kNmpcTrack; break;
     }
   }
@@ -510,7 +531,7 @@ class RosReferenceProvider final : public smlfsm::ReferenceProvider {
 
  private:
   // 参考提供器内部模式，用于区分 cmd5 和任务态 fallback。
-  enum class Mode { kNmpcTrack, kSuperTrack, kMissionTrack, kEgoTrack };
+  enum class Mode { kNmpcTrack, kSuperTrack };
 
   // 没有 planner/内部轨迹时使用的固定高度。
   double fallbackAltitude() const {
@@ -563,78 +584,210 @@ class RosReferenceProvider final : public smlfsm::ReferenceProvider {
   Mode mode_{Mode::kNmpcTrack};    // 当前参考模式。
 };
 
-// cmd6/7/8 任务轨迹适配器：负责 waypoint 发布、planner 缓存、感知滤波和 legacy horizon。
-class RosMissionPort final : public smlfsm::MissionPort {
+class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
  public:
-  explicit RosMissionPort(ros::NodeHandle& node)
-      : super_waypoint_pub_(node.advertise<super_msgs::Flag>(
-            "/super/flag_waypoint", 10)),
-        ego_waypoint_pub_(node.advertise<traj_utils::Flag>(
-            "/ego_planner/flag_msg", 10)) {
-    reset(smlfsm::MissionTrackMode::Super);
+  explicit RosPrecisionLandingPort(ros::NodeHandle& private_node) {
+    private_node.param("landing_valid_timeout", valid_timeout_,
+                       valid_timeout_);
+    private_node.param("landing_align_px_threshold", align_px_threshold_,
+                       align_px_threshold_);
+    private_node.param("landing_stable_frames", stable_frames_,
+                       stable_frames_);
+    private_node.param("landing_pixel_gain_x", pixel_gain_x_, pixel_gain_x_);
+    private_node.param("landing_pixel_gain_y", pixel_gain_y_, pixel_gain_y_);
+    private_node.param("landing_max_xy_step", max_xy_step_, max_xy_step_);
+    private_node.param("landing_descent_rate", descent_rate_, descent_rate_);
+    private_node.param("landing_min_z", min_z_, min_z_);
+    private_node.param("landing_loss_hold_seconds", loss_hold_seconds_,
+                       loss_hold_seconds_);
   }
 
-  void selectCommand(int command) override { selected_command_ = command; }
+  void reset() override {
+    stage_ = Stage::Acquire;
+    stable_count_ = 0;
+    lost_since_ = -1.0;
+    target_z_ = 0.0;
+    has_target_z_ = false;
+    locked_xy_ = false;
+    lock_x_ = 0.0;
+    lock_y_ = 0.0;
+    complete_ = false;
+    last_observation_ = smlfsm::LandingObservation{};
+  }
 
-  void reset(smlfsm::MissionTrackMode mode) override {
-    (void)mode;
-    // 旧版 cmd6/7/8 的任务进度本来由模块级静态变量保存。
-    // 为了行为兼容，状态切换时不重置 need_generate_traj_、ego_traj_count_
-    // 或 cmd7 阶段计数；感知回调会在需要时标记重新生成轨迹。
+  void updateObservation(
+      const smlfsm::LandingObservation& observation) override {
+    last_observation_ = observation;
+  }
+
+  bool prepareLanding(double now, const smlfsm::TelemetrySnapshot& telemetry,
+                      std::vector<smlfsm::ReferencePoint>& horizon) override {
+    if (complete_) {
+      horizon.clear();
+      return false;
+    }
+
+    const bool observation_fresh =
+        last_observation_.valid && now >= last_observation_.stamp &&
+        now - last_observation_.stamp <= valid_timeout_;
+    if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
+        std::abs(last_observation_.dy) > 50.0) {
+      horizon.clear();
+      return false;
+    }
+
+    if (!locked_xy_) {
+      lock_x_ = telemetry.position.x;
+      lock_y_ = telemetry.position.y;
+      target_z_ = telemetry.position.z;
+      has_target_z_ = true;
+      locked_xy_ = true;
+    }
+
+    target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
+    if (target_z_ <= min_z_ || telemetry.position.z <= min_z_ + 0.02) {
+      complete_ = true;
+    }
+
+    buildConstantHorizon({lock_x_, lock_y_, target_z_}, telemetry.attitude,
+                         horizon);
+    return true;
+
+    /*
+    // 原视觉伺服实现暂时保留：先等待有效观测，水平按 dx/dy 修正，
+    // 连续稳定后进入下降。当前比赛调试改为“偏差达标后锁 x/y 下降”。
+    if (!has_target_z_) {
+      target_z_ = telemetry.position.z;
+      has_target_z_ = true;
+    }
+    ...
+    */
+  }
+
+  bool isComplete() const override { return complete_; }
+
+ private:
+  enum class Stage { Acquire, Align, Descend, Touchdown };
+
+  void buildConstantHorizon(
+      const smlfsm::Vec3& target, const smlfsm::Quaternion& attitude,
+      std::vector<smlfsm::ReferencePoint>& horizon) const {
+    horizon.assign(kLandingHorizonPoints, smlfsm::ReferencePoint{});
+    for (auto& point : horizon) {
+      point.position = target;
+      point.attitude = attitude;
+    }
+  }
+
+  Stage stage_{Stage::Acquire};
+  int stable_count_{0};
+  double lost_since_{-1.0};
+  double target_z_{0.0};
+  bool has_target_z_{false};
+  bool locked_xy_{false};
+  double lock_x_{0.0};
+  double lock_y_{0.0};
+  bool complete_{false};
+  smlfsm::LandingObservation last_observation_;
+
+  double valid_timeout_{0.25};
+  double align_px_threshold_{25.0};
+  int stable_frames_{10};
+  double pixel_gain_x_{0.001};
+  double pixel_gain_y_{0.001};
+  double max_xy_step_{0.08};
+  double descent_rate_{0.15};
+  double min_z_{0.08};
+  double loss_hold_seconds_{0.5};
+};
+
+// Super 任务轨迹适配器：负责 waypoint 发布和 planner 缓存。
+class RosMissionPort final : public smlfsm::MissionPort {
+ public:
+  RosMissionPort(ros::NodeHandle& node, ros::NodeHandle& private_node)
+      : super_waypoint_pub_(node.advertise<super_msgs::Flag>(
+            "/super/flag_waypoint", 10)) {
+    private_node.param("mission_super_waypoints_file", waypoints_file_,
+                       waypoints_file_);
+    private_node.param("mission_super_arrival_tolerance",
+                       arrival_tolerance_, arrival_tolerance_);
+    loadSuperTrajectory();
+    reset();
+  }
+
+  void selectCommand(int command) override {
+    if (command >= 3 && command <= 5) {
+      active_segment_index_ = command - 3;
+    }
+  }
+
+  void reset() override {
+    super_waypoint_upload_active_ = true;
+    super_waypoint_upload_index_ = 0u;
+    segment_arrived_ = false;
+    super_planner_valid_ = false;
   }
 
   // cmd6：发布任务航点，并优先使用 super planner 返回的 horizon。
-  bool prepareSuper(double /*now*/, const smlfsm::TelemetrySnapshot& /*telemetry*/,
+  bool prepareSuper(double now, const smlfsm::TelemetrySnapshot& telemetry,
                     std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Super);
+    return prepareSuperSegment(active_segment_index_, now, telemetry, horizon);
+  }
+
+  bool prepareCoreSuperGoal(double /*now*/,
+                            const smlfsm::TelemetrySnapshot& /*telemetry*/,
+                            const smlfsm::Vec3& goal,
+                            std::vector<smlfsm::ReferencePoint>& horizon)
+      override {
+    MissionPoint point;
+    point.mode = 2;
+    point.is_map = 1;
+    point.position = goal;
+    point.yaw = 0.0;
+    point.desired_speed = 0.0;
+    publishSuperWaypoint(point);
     if (super_planner_valid_) {
       horizon = super_planner_;
       return true;
     }
     horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
-    for (auto& point : horizon) {
-      point.position.z = 1.0;
+    for (auto& reference : horizon) {
+      reference.position = goal;
     }
     return true;
   }
 
-  // cmd7：发布 mission 航点，按旧版穿环/降落流程生成 legacy horizon。
-  bool prepareMission(double /*now*/, const smlfsm::TelemetrySnapshot& telemetry,
-                      std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Mission);
-    buildMissionHorizon(telemetry);
-    horizon = last_mission_horizon_;
-    applyMissionYaw(telemetry.attitude, horizon);
-    return !horizon.empty();
-  }
-
-  // cmd8：发布 ego 航点，并使用 ego planner 返回的 horizon。
-  bool prepareEgo(double /*now*/, const smlfsm::TelemetrySnapshot& telemetry,
-                  std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Ego);
-    if (!ego_planner_valid_) {
+  bool prepareSuperSegment(
+      int segment_index, double /*now*/,
+      const smlfsm::TelemetrySnapshot& telemetry,
+      std::vector<smlfsm::ReferencePoint>& horizon) override {
+    active_segment_index_ = segment_index;
+    if (super_segments_.empty()) {
+      loadSuperTrajectory();
+    }
+    if (segment_index < 0 ||
+        static_cast<std::size_t>(segment_index) >= super_segments_.size() ||
+        super_segments_[segment_index].empty()) {
       horizon.clear();
       return false;
     }
-    horizon = ego_planner_;
-    applyMissionYaw(telemetry.attitude, horizon);
-    return !horizon.empty();
-  }
 
-  // 接收 ego planner 的轨迹输出。
-  void updatePlanner(const traj_utils::Flag& message) {
-    ego_planner_.clear();
-    for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-      smlfsm::ReferencePoint point;
-      point.position = {message.cmd[index].position.x,
-                        message.cmd[index].position.y,
-                        message.cmd[index].position.z};
-      point.velocity = {message.cmd[index].velocity.x,
-                        message.cmd[index].velocity.y,
-                        message.cmd[index].velocity.z};
-      ego_planner_.push_back(point);
+    const MissionPoint& last = super_segments_[segment_index].back();
+    if (!segment_arrived_ && reached(last.position, telemetry.position)) {
+      segment_arrived_ = true;
     }
-    ego_planner_valid_ = true;
+    if (segment_arrived_) {
+      buildHoldHorizon(last, horizon);
+      return true;
+    }
+
+    publishNextWaypoint();
+    if (super_planner_valid_) {
+      horizon = super_planner_;
+      return true;
+    }
+    buildCurrentHoldHorizon(telemetry, horizon);
+    return true;
   }
 
   // 接收 super planner 的轨迹输出。
@@ -648,415 +801,132 @@ class RosMissionPort final : public smlfsm::MissionPort {
       point.velocity = {message.cmd[index].velocity.x,
                         message.cmd[index].velocity.y,
                         message.cmd[index].velocity.z};
+      // 将 yaw 归一化到 [-π, π]，避免 super planner 输出的越界 yaw
+      // （如 230°）导致四元数表示歧义和 NMPC 优化跳变。
+      double yaw = message.cmd[index].yaw;
+      yaw = std::fmod(yaw + M_PI, 2.0 * M_PI);
+      if (yaw < 0.0) {
+        yaw += 2.0 * M_PI;
+      }
+      yaw -= M_PI;
+      point.attitude = {std::cos(yaw * 0.5), 0.0, 0.0, std::sin(yaw * 0.5)};
       super_planner_.push_back(point);
+      
     }
     super_planner_valid_ = true;
   }
 
-  // 接收 ego planner 状态，用于旧任务完成/阶段切换判断。
-  void updateEgoState(const traj_utils::FlagState& message) {
-    ego_now_id_ = message.now_id;
-    ego_touch_goal_ = message.touch_goal;
-    if (ego_now_id_ == static_cast<int>(createLegacyEgoTrajectory().size()) - 1 &&
-        ego_touch_goal_) {
-      task1_ = 6;
-    }
-  }
-
-  // 记录飞行器历史位姿，供 apriltag 测量按时间戳匹配。
-  void recordTelemetryPose(double stamp,
-                           const smlfsm::TelemetrySnapshot& telemetry) {
-    TimedPose pose;
-    pose.stamp = stamp;
-    pose.position = telemetry.position;
-    quaternionToEuler(telemetry.attitude, pose.roll, pose.pitch, pose.yaw);
-    if (pose_history_.size() >= kPoseHistorySize) {
-      pose_history_.erase(pose_history_.begin());
-    }
-    pose_history_.push_back(pose);
-  }
-
-  // 更新圆环位置观测；通过中值均值滤波后触发重新生成任务轨迹。
-  void updateRingPose(const geometry_msgs::PoseStamped& message) {
-    const smlfsm::Vec3 updated{message.pose.position.x,
-                               message.pose.position.y,
-                               message.pose.position.z};
-    if (!near(updated, ring2_pose_, 1.0)) {
-      return;
-    }
-    smlfsm::Vec3 filtered;
-    if (!medianAverageFilter(ring2_filter_, updated, kRing2FilterSize,
-                             filtered)) {
-      return;
-    }
-    if (!near(filtered, ring2_pose_, 0.10)) {
-      need_generate_traj_ = true;
-      ring2_pose_ = filtered;
-    }
-  }
-
-  // 更新 apriltag 观测：把相机局部测量转换到全局坐标并滤波。
-  void updateApriltagPose(const geometry_msgs::PoseStamped& message) {
-    if (ctl_land_count_ >= 230) {
-      return;
-    }
-    const double stamp = message.header.stamp.isZero()
-                             ? ros::Time::now().toSec()
-                             : message.header.stamp.toSec();
-    const TimedPose base = nearestPose(stamp);
-    const smlfsm::Vec3 local_flipped{-message.pose.position.x,
-                                     -message.pose.position.y,
-                                     message.pose.position.z};
-    const smlfsm::Vec3 global = localToGlobal(base, local_flipped);
-    if (!near(global, ap_pose_, 2.0)) {
-      return;
-    }
-    smlfsm::Vec3 filtered;
-    if (!medianFilter(ap_filter_, global, kApriltagFilterSize, filtered)) {
-      return;
-    }
-    ap_pose_ = filtered;
-    is_found_ap_ = true;
-  }
-
  private:
-  // 如果任务轨迹需要刷新，就向 super/ego planner 发布下一个 waypoint。
-  void publishNextWaypoint(smlfsm::MissionTrackMode mode) {
-    if (!need_generate_traj_) {
+  // 每个 tick 最多上传一个 waypoint，避免一次性打满下游订阅缓存。
+  void publishNextWaypoint() {
+    if (!super_waypoint_upload_active_) {
       return;
     }
-    ego_traj_ = createLegacyEgoTrajectory();
-    if (ego_traj_count_ < ego_traj_.size()) {
-      if (mode == smlfsm::MissionTrackMode::Super) {
-        publishSuperWaypoint(ego_traj_[ego_traj_count_]);
-      } else {
-        publishEgoWaypoint(ego_traj_[ego_traj_count_]);
-      }
+    if (super_segments_.empty()) {
+      loadSuperTrajectory();
     }
-    ++ego_traj_count_;
-    if (ego_traj_count_ >= ego_traj_.size()) {
-      need_generate_traj_ = false;
-      ego_traj_count_ = mode == smlfsm::MissionTrackMode::Mission
-                            ? static_cast<std::size_t>(std::max(0, ego_now_id_))
-                            : 0u;
+    if (active_segment_index_ < 0 ||
+        static_cast<std::size_t>(active_segment_index_) >=
+            super_segments_.size()) {
+      return;
+    }
+    const std::vector<MissionPoint>& segment =
+        super_segments_[active_segment_index_];
+    if (super_waypoint_upload_index_ < segment.size()) {
+      publishSuperWaypoint(segment[super_waypoint_upload_index_]);
+      ++super_waypoint_upload_index_;
+    }
+    if (super_waypoint_upload_index_ >= segment.size()) {
+      super_waypoint_upload_active_ = false;
+      super_waypoint_upload_index_ = 0u;
     }
   }
 
   // 发布 super planner 使用的 waypoint 消息。
   void publishSuperWaypoint(const MissionPoint& point) {
     super_msgs::Flag message;
-    fillCommonFlag(point, message);
+    fillCommonFlag1(point, message);
     super_waypoint_pub_.publish(message);
+    ROS_INFO("Published mission super waypoint id=%d segment=%d index=%zu "
+             "position=(%.3f, %.3f, %.3f) yaw=%.3f source=%s",
+             message.id, active_segment_index_, super_waypoint_upload_index_,
+             point.position.x, point.position.y, point.position.z, point.yaw,
+             waypoints_file_.empty() ? "built-in" : waypoints_file_.c_str());
   }
 
-  // 发布 ego planner 使用的 waypoint 消息。
-  void publishEgoWaypoint(const MissionPoint& point) {
-    traj_utils::Flag message;
-    fillCommonFlag(point, message);
-    ego_waypoint_pub_.publish(message);
+  void loadSuperTrajectory() {
+    if (waypoints_file_.empty()) {
+      super_segments_ = createSuperTrajectorySegments();
+      return;
+    }
+    try {
+      super_segments_ = loadSuperTrajectorySegmentsFile(waypoints_file_);
+      std::size_t waypoint_count = 0u;
+      for (const auto& segment : super_segments_) {
+        waypoint_count += segment.size();
+      }
+      ROS_INFO("Loaded %zu mission super waypoints in %zu segments from %s",
+               waypoint_count, super_segments_.size(), waypoints_file_.c_str());
+    } catch (const std::exception& error) {
+      ROS_ERROR("Failed to load mission super waypoints from %s: %s; "
+                "falling back to built-in waypoints",
+                waypoints_file_.c_str(), error.what());
+      super_segments_ = createSuperTrajectorySegments();
+    }
   }
 
-  // 填充 super_msgs::Flag 和 traj_utils::Flag 共有字段。
-  template <typename Message>
-  void fillCommonFlag(const MissionPoint& point, Message& message) {
+  bool reached(const smlfsm::Vec3& target, const smlfsm::Vec3& position) const {
+    const double dx = target.x - position.x;
+    const double dy = target.y - position.y;
+    const double dz = target.z - position.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz) <= arrival_tolerance_;
+  }
+
+  void buildHoldHorizon(const MissionPoint& point,
+                        std::vector<smlfsm::ReferencePoint>& horizon) const {
+    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
+    const smlfsm::Quaternion attitude{
+        std::cos(point.yaw * 0.5), 0.0, 0.0, std::sin(point.yaw * 0.5)};
+    for (auto& reference : horizon) {
+      reference.position = point.position;
+      reference.attitude = attitude;
+    }
+  }
+
+  void buildCurrentHoldHorizon(
+      const smlfsm::TelemetrySnapshot& telemetry,
+      std::vector<smlfsm::ReferencePoint>& horizon) const {
+    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
+    for (auto& reference : horizon) {
+      reference.position = telemetry.position;
+      reference.attitude = telemetry.attitude;
+    }
+  }
+
+  void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
-    message.id = point.id;
+    message.id = next_super_waypoint_id_++;
     message.mode = point.mode;
     message.is_map = point.is_map;
+    message.yaw = point.yaw;
+    message.desired_speed = point.desired_speed;
     message.position.x = point.position.x;
     message.position.y = point.position.y;
     message.position.z = point.position.z;
   }
 
-  // 将 legacy horizon 设置成同一个固定位置。
-  void setConstantHorizon(const smlfsm::Vec3& position) {
-    last_mission_horizon_.assign(kLegacyHorizonPoints, smlfsm::ReferencePoint{});
-    for (auto& point : last_mission_horizon_) {
-      point.position = position;
-    }
-  }
-
-  // 按旧版 cmd7 阶段机生成穿第二个环、飞向 apriltag、下降的参考 horizon。
-  void buildMissionHorizon(const smlfsm::TelemetrySnapshot& telemetry) {
-    if (selected_command_ != 7 || task1_ != 6) {
-      if (last_mission_horizon_.empty()) {
-        setConstantHorizon({0.0, 0.0, 1.0});
-      }
-      return;
-    }
-    const smlfsm::Vec3 dynringpost{ring2_pose_.x - 1.0, ring2_pose_.y,
-                                   ring2_pose_.z};
-    if (!is_arrive_ring2_ && !is_crossed_ring2_) {
-      last_mission_horizon_.clear();
-      const double delta_y =
-          0.4 * clampSingle(ring2_pose_.y - telemetry.position.y, 0.1);
-      for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-        smlfsm::ReferencePoint point;
-        point.position.x = ring2_pose_.x + 1.0 - 0.01 * ring2_approach_count_;
-        point.position.y = ring2_pose_.y + index * delta_y / 3.0;
-        point.position.z = 1.65;
-        last_mission_horizon_.push_back(point);
-      }
-      if (++ring2_approach_count_ == 100) {
-        is_arrive_ring2_ = true;
-      }
-      return;
-    }
-    if (is_arrive_ring2_ && !is_crossed_ring2_) {
-      last_mission_horizon_.clear();
-      for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-        smlfsm::ReferencePoint point;
-        point.position.x = ring2_pose_.x - 0.01 * ring2_cross_count_;
-        point.position.y = ring2_pose_.y;
-        point.position.z = 1.65;
-        last_mission_horizon_.push_back(point);
-      }
-      if (++ring2_cross_count_ == 100) {
-        is_crossed_ring2_ = true;
-      }
-      return;
-    }
-    if (!is_arrive_r2_postpoint_) {
-      if (count1_ < 150) {
-        ++count1_;
-        const double delta_x = (appre_pose_.x - dynringpost.x) / 150.0;
-        const double delta_y = (appre_pose_.y - dynringpost.y) / 150.0;
-        setConstantHorizon({dynringpost.x + delta_x * count1_,
-                            dynringpost.y + delta_y * count1_, 1.65});
-      } else {
-        is_arrive_r2_postpoint_ = true;
-      }
-      return;
-    }
-    if (!is_found_ap_ && !is_arrive_ap_prepoint_) {
-      return;
-    }
-    if (is_found_ap_ && !is_arrive_ap_prepoint_) {
-      if (count2_ < 150) {
-        ++count2_;
-        const double delta_x = (ap_pose_.x - appre_pose_.x) / 150.0;
-        const double delta_y = (ap_pose_.y - appre_pose_.y) / 150.0;
-        setConstantHorizon({appre_pose_.x + delta_x * count2_,
-                            appre_pose_.y + delta_y * count2_, 1.65});
-      } else {
-        is_arrive_ap_prepoint_ = true;
-      }
-      return;
-    }
-    if (is_found_ap_ && is_arrive_ap_prepoint_) {
-      apland_ = true;
-      last_mission_horizon_.clear();
-      const double delta_y =
-          0.4 * clampSingle(ap_pose_.y - telemetry.position.y, 0.1);
-      for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-        smlfsm::ReferencePoint point;
-        point.position.x = ap_pose_.x;
-        point.position.y = ap_pose_.y + index * delta_y / 3.0;
-        point.position.z = 1.65 - 0.005 * ctl_land_count_;
-        last_mission_horizon_.push_back(point);
-      }
-      if (ctl_land_count_ < 330) {
-        ++ctl_land_count_;
-      } else {
-        land_success_ = true;
-      }
-    }
-  }
-
-  // 给 mission/ego horizon 补 yaw 参考，沿用旧版 YawSmooth 行为。
-  void applyMissionYaw(const smlfsm::Quaternion& current_attitude,
-                       std::vector<smlfsm::ReferencePoint>& horizon) {
-    if (horizon.empty()) {
-      return;
-    }
-    if (ego_traj_.empty()) {
-      ego_traj_ = createLegacyEgoTrajectory();
-    }
-    const int clamped_id =
-        std::max(0, std::min<int>(ego_now_id_, ego_traj_.size() - 1));
-    yaw_now_ = yawFromQuaternion(current_attitude);
-    const double yaw = YawSmooth(yaw_now_, ego_traj_[clamped_id].yaw);
-    const Eigen::Quaterniond quat = EulerToQuat(0.0, 0.0, yaw);
-    for (auto& point : horizon) {
-      point.attitude = {quat.w(), quat.x(), quat.y(), quat.z()};
-    }
-  }
-
-  // 从四元数中提取 yaw。
-  static double yawFromQuaternion(const smlfsm::Quaternion& quat) {
-    return std::atan2(2.0 * (quat.w * quat.z + quat.x * quat.y),
-                      1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z));
-  }
-
-  // 判断三维向量是否在给定容差范围内。
-  static bool near(const smlfsm::Vec3& value, const smlfsm::Vec3& reference,
-                   double tolerance) {
-    return std::abs(value.x - reference.x) < tolerance &&
-           std::abs(value.y - reference.y) < tolerance &&
-           std::abs(value.z - reference.z) < tolerance;
-  }
-
-  // 中值滤波：窗口满后输出每个轴的中位数。
-  static bool medianFilter(std::vector<smlfsm::Vec3>& filter,
-                           const smlfsm::Vec3& sample, std::size_t size,
-                           smlfsm::Vec3& result) {
-    pushFilterSample(filter, sample, size);
-    if (filter.size() < size) {
-      return false;
-    }
-    result.x = medianComponent(filter, 0);
-    result.y = medianComponent(filter, 1);
-    result.z = medianComponent(filter, 2);
-    return true;
-  }
-
-  // 去掉最大/最小值后的均值滤波，降低圆环位置跳变影响。
-  static bool medianAverageFilter(std::vector<smlfsm::Vec3>& filter,
-                                  const smlfsm::Vec3& sample,
-                                  std::size_t size, smlfsm::Vec3& result) {
-    pushFilterSample(filter, sample, size);
-    if (filter.size() < size) {
-      return false;
-    }
-    result.x = trimmedAverageComponent(filter, 0);
-    result.y = trimmedAverageComponent(filter, 1);
-    result.z = trimmedAverageComponent(filter, 2);
-    return true;
-  }
-
-  // 维护固定长度滤波窗口。
-  static void pushFilterSample(std::vector<smlfsm::Vec3>& filter,
-                               const smlfsm::Vec3& sample, std::size_t size) {
-    if (filter.size() >= size) {
-      filter.erase(filter.begin());
-    }
-    filter.push_back(sample);
-  }
-
-  // 取向量指定轴的分量，供滤波排序复用。
-  static double component(const smlfsm::Vec3& value, int axis) {
-    if (axis == 0) {
-      return value.x;
-    }
-    if (axis == 1) {
-      return value.y;
-    }
-    return value.z;
-  }
-
-  // 计算某个轴的中位数。
-  static double medianComponent(const std::vector<smlfsm::Vec3>& filter,
-                                int axis) {
-    std::vector<smlfsm::Vec3> sorted = filter;
-    std::sort(sorted.begin(), sorted.end(),
-              [axis](const smlfsm::Vec3& left, const smlfsm::Vec3& right) {
-                return component(left, axis) > component(right, axis);
-              });
-    return component(sorted[sorted.size() / 2], axis);
-  }
-
-  // 计算某个轴去掉首尾极值后的均值。
-  static double trimmedAverageComponent(
-      const std::vector<smlfsm::Vec3>& filter, int axis) {
-    std::vector<smlfsm::Vec3> sorted = filter;
-    std::sort(sorted.begin(), sorted.end(),
-              [axis](const smlfsm::Vec3& left, const smlfsm::Vec3& right) {
-                return component(left, axis) > component(right, axis);
-              });
-    double sum = 0.0;
-    for (std::size_t index = 1; index + 1 < sorted.size(); ++index) {
-      sum += component(sorted[index], axis);
-    }
-    return sum / static_cast<double>(sorted.size() - 2);
-  }
-
-  // 从历史位姿中查找时间戳最近的一帧。
-  TimedPose nearestPose(double stamp) const {
-    if (pose_history_.empty()) {
-      TimedPose fallback;
-      fallback.stamp = stamp;
-      return fallback;
-    }
-    auto best = pose_history_.begin();
-    double best_delta = std::abs(stamp - best->stamp);
-    for (auto it = pose_history_.begin() + 1; it != pose_history_.end(); ++it) {
-      const double delta = std::abs(stamp - it->stamp);
-      if (delta < best_delta) {
-        best = it;
-        best_delta = delta;
-      }
-    }
-    return *best;
-  }
-
-  // 将相机/机体系局部坐标转换为全局坐标。
-  static smlfsm::Vec3 localToGlobal(const TimedPose& base,
-                                    const smlfsm::Vec3& local) {
-    const double cr = std::cos(base.roll);
-    const double sr = std::sin(base.roll);
-    const double cp = std::cos(base.pitch);
-    const double sp = std::sin(base.pitch);
-    const double cy = std::cos(base.yaw);
-    const double sy = std::sin(base.yaw);
-
-    smlfsm::Vec3 global;
-    global.x = cp * cy * local.x + (sr * sp * cy - cr * sy) * local.y +
-               (cr * sp * cy + sr * sy) * local.z + base.position.x;
-    global.y = cp * sy * local.x + (sr * sp * sy + cr * cy) * local.y +
-               (cr * sp * sy - sr * cy) * local.z + base.position.y;
-    global.z = sp * local.x + sr * cp * local.y + cr * cp * local.z +
-               base.position.z;
-    return global;
-  }
-
-  // 四元数转欧拉角，供 apriltag 坐标转换使用。
-  static void quaternionToEuler(const smlfsm::Quaternion& quat, double& roll,
-                                double& pitch, double& yaw) {
-    roll = std::atan2(2.0 * (quat.w * quat.x + quat.y * quat.z),
-                      1.0 - 2.0 * (quat.x * quat.x + quat.y * quat.y));
-    const double sinp = 2.0 * (quat.w * quat.y - quat.z * quat.x);
-    pitch = std::abs(sinp) >= 1.0 ? std::copysign(M_PI / 2.0, sinp)
-                                  : std::asin(sinp);
-    yaw = yawFromQuaternion(quat);
-  }
-
   ros::Publisher super_waypoint_pub_;  // 发给 super planner 的 waypoint topic。
-  ros::Publisher ego_waypoint_pub_;    // 发给 ego planner 的 waypoint topic。
-  static constexpr std::size_t kPoseHistorySize = 200;
-  static constexpr std::size_t kRing2FilterSize = 7;
-  static constexpr std::size_t kApriltagFilterSize = 5;
-  int selected_command_{0};           // 当前选择的任务命令。
-  bool need_generate_traj_{true};     // 是否需要重新向 planner 发布 waypoint。
-  std::size_t ego_traj_count_{0};     // 下一个要发布的任务航点序号。
-  int ego_now_id_{0};                 // ego planner 当前航点 id。
-  bool ego_touch_goal_{false};        // ego planner 是否到达当前目标。
-  int task1_{0};                      // 旧版 cmd7 阶段触发变量。
+  bool super_waypoint_upload_active_{true};  // 是否正在逐 tick 上传 waypoint。
+  std::size_t super_waypoint_upload_index_{0};  // 本组待上传 waypoint 下标。
+  int next_super_waypoint_id_{0};  // 发布给 SUPER 的全局递增 id，不随重传归零。
+  int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
+  bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
+  double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
-  bool ego_planner_valid_{false};     // 是否已有 ego planner 输出。
-  bool is_arrive_ring2_{false};       // 是否到达第二个圆环前。
-  bool is_crossed_ring2_{false};      // 是否已穿过第二个圆环。
-  bool is_arrive_r2_postpoint_{false};  // 是否到达圆环后置点。
-  bool is_arrive_ap_prepoint_{false};   // 是否到达 apriltag 预降落点。
-  bool is_found_ap_{false};           // 是否已发现 apriltag。
-  bool apland_{false};                // 是否进入 apriltag 降落阶段。
-  bool land_success_{false};          // 旧版降落完成标志。
-  int ring2_approach_count_{0};       // 接近第二个圆环的插值计数。
-  int ring2_cross_count_{0};          // 穿过第二个圆环的插值计数。
-  int count1_{0};                     // 飞向圆环后置点的插值计数。
-  int count2_{0};                     // 飞向 apriltag 预降落点的插值计数。
-  int ctl_land_count_{0};             // apriltag 降落下降计数。
-  double yaw_now_{0.0};               // 当前 yaw，用于 yaw 平滑。
-  smlfsm::Vec3 ring2_pose_{2.0, 0.0, 1.0};  // 第二个圆环的估计位置。
-  smlfsm::Vec3 appre_pose_{4.8, 0.8, 1.0};  // apriltag 预降落点。
-  smlfsm::Vec3 ap_pose_{5.0, 1.1, 1.0};     // apriltag 的估计位置。
-  std::vector<TimedPose> pose_history_;     // 飞机历史位姿缓存。
-  std::vector<smlfsm::Vec3> ring2_filter_;  // 圆环位置滤波窗口。
-  std::vector<smlfsm::Vec3> ap_filter_;     // apriltag 位置滤波窗口。
-  std::vector<MissionPoint> ego_traj_;      // 旧版任务航点表。
+  std::string waypoints_file_;     // mission super waypoint YAML 文件。
+  std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
   std::vector<smlfsm::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。
-  std::vector<smlfsm::ReferencePoint> ego_planner_;    // 最近一帧 ego planner 轨迹。
-  std::vector<smlfsm::ReferencePoint> last_mission_horizon_;  // 最近生成的 cmd7 horizon。
 };
 
 // UDP 命令邮箱：网络线程只更新原子 latest_，状态机仍由 ROS 主线程串行驱动。
@@ -1140,10 +1010,11 @@ class SingleOffboardNode {
         setpoint_(node_),
         nmpc_(private_node_),
         reference_(private_node_),
-        mission_(node_),
+        landing_(private_node_),
+        mission_(node_, private_node_),
         config_(loadConfig()),
         context_(clock_, autopilot_, setpoint_, nmpc_, reference_, mission_,
-                 config_),
+                 landing_, config_),
         machine_(context_),
         dispatcher_(machine_, &reference_, &mission_),
         mailbox_(loadUdpPort()) {
@@ -1158,13 +1029,11 @@ class SingleOffboardNode {
                                   &SingleOffboardNode::plannerCallback, this);
     super_planner_sub_ = node_.subscribe(
         "/super/flag_cmd", 10, &SingleOffboardNode::superPlannerCallback, this);
-    ego_state_sub_ = node_.subscribe(
-        "/ego_planner/flag_state", 10, &SingleOffboardNode::egoStateCallback,
-        this);
-    ring_sub_ = node_.subscribe("/target_pose", 10,
-                                &SingleOffboardNode::ringCallback, this);
-    apriltag_sub_ = node_.subscribe("/tf_output", 10,
-                                    &SingleOffboardNode::apriltagCallback, this);
+    std::string landing_topic = "/vision/landing/offset";
+    private_node_.param("precision_landing_topic", landing_topic,
+                        landing_topic);
+    landing_sub_ = node_.subscribe(landing_topic, 10,
+                                   &SingleOffboardNode::landingCallback, this);
     rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
                              &SingleOffboardNode::rcCallback, this);
   }
@@ -1221,7 +1090,7 @@ class SingleOffboardNode {
     context_.telemetry.mode = message->mode;
     context_.telemetry.armed = message->armed;
   }
-  // 本地位姿回调：更新位置/姿态，并把历史位姿交给任务适配器。
+  // 本地位姿回调：更新位置/姿态。
   void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
     context_.telemetry.position = {message->pose.position.x,
                                    message->pose.position.y,
@@ -1229,10 +1098,6 @@ class SingleOffboardNode {
     context_.telemetry.attitude = {
         message->pose.orientation.w, message->pose.orientation.x,
         message->pose.orientation.y, message->pose.orientation.z};
-    const double stamp = message->header.stamp.isZero()
-                             ? ros::Time::now().toSec()
-                             : message->header.stamp.toSec();
-    mission_.recordTelemetryPose(stamp, context_.telemetry);
   }
   // 本地速度回调：更新状态机遥测快照中的速度。
   void velocityCallback(
@@ -1241,10 +1106,9 @@ class SingleOffboardNode {
                                    message->twist.linear.y,
                                    message->twist.linear.z};
   }
-  // planner 回调：同时喂给 cmd5 参考提供器和任务适配器。
+  // planner 回调：喂给 cmd5 参考提供器。
   void plannerCallback(const traj_utils::Flag::ConstPtr& message) {
     reference_.updatePlanner(*message);
-    mission_.updatePlanner(*message);
   }
   // super planner 回调：短数组直接忽略，防止越界。
   void superPlannerCallback(const super_msgs::Flag::ConstPtr& message) {
@@ -1255,17 +1119,21 @@ class SingleOffboardNode {
     }
     mission_.updateSuperPlanner(*message);
   }
-  // ego planner 状态回调：更新任务阶段。
-  void egoStateCallback(const traj_utils::FlagState::ConstPtr& message) {
-    mission_.updateEgoState(*message);
-  }
-  // 圆环观测回调：更新任务适配器中的圆环估计。
-  void ringCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
-    mission_.updateRingPose(*message);
-  }
-  // apriltag 观测回调：更新任务适配器中的降落标记估计。
-  void apriltagCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
-    mission_.updateApriltagPose(*message);
+  // 下视 AprilTag 像素偏差回调：只把可控的有效观测写入精降端口。
+  void landingCallback(
+      const uav_vision_msgs::LandingOffset::ConstPtr& message) {
+    smlfsm::LandingObservation observation;
+    observation.valid =
+        message->valid && message->tag_count == 5 &&
+        std::isfinite(message->dx) && std::isfinite(message->dy);
+    observation.dx = message->dx;
+    observation.dy = message->dy;
+    observation.tag_count = message->tag_count;
+    observation.stamp = message->header.stamp.isZero()
+                            ? ros::Time::now().toSec()
+                            : message->header.stamp.toSec();
+    observation.age = ros::Time::now().toSec() - observation.stamp;
+    landing_.updateObservation(observation);
   }
   // RC 回调当前只做短数组保护，保留旧 topic 契约。
   void rcCallback(const mavros_msgs::RCIn::ConstPtr& message) {
@@ -1282,14 +1150,16 @@ class SingleOffboardNode {
   RosSetpointPort setpoint_;      // 控制输出适配器。
   RosNmpcPort nmpc_;              // NMPC 求解适配器。
   RosReferenceProvider reference_;  // cmd5 参考轨迹适配器。
+  RosPrecisionLandingPort landing_;  // 下视视觉精准降落适配器。
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
-  smlfsm::StateMachine machine_;  // Boost.SML 状态机实例。
-  smlfsm::CommandDispatcher dispatcher_;  // cmd 到 Select 事件的分发器。
+  smlfsm::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。
+  smlfsm::ActiveCommandDispatcher dispatcher_;  // 当前节点 cmd 分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
-  ros::Subscriber super_planner_sub_, ego_state_sub_, ring_sub_, apriltag_sub_;  // 任务相关订阅。
+  ros::Subscriber super_planner_sub_;  // super planner 订阅。
+  ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
 };
 

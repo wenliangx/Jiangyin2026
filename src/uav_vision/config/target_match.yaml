@@ -1,0 +1,42 @@
+matcher:
+  canonical_size: 256
+  border_crop_fraction: 0.04
+  canny_low: 60
+  canny_high: 160
+  min_area_ratio: 0.005
+  max_area_ratio: 0.80
+  polygon_epsilon_ratio: 0.03
+  min_side_ratio: 0.60
+  max_angle_cosine: 0.35
+  max_candidates: 5
+  min_target_side_px: 80.0
+  min_sharpness: 20.0
+  gray_weight: 0.50
+  hog_weight: 0.30
+  color_weight: 0.20
+  min_class_score: 0.60
+  min_class_margin: 0.03
+  min_candidate_margin: 0.02
+  augmentations:
+    - {}
+    - {brightness: -25}
+    - {brightness: 25}
+    - {contrast: 0.85}
+    - {contrast: 1.15}
+    - {gamma: 0.85}
+    - {gamma: 1.15}
+    - {blur: 3}
+    - {blur: 5}
+    - {angle: -3.0}
+    - {angle: 3.0}
+    - {scale: 0.97}
+    - {scale: 1.03}
+    - {color_shift: [-8, 0, 8]}
+    - {color_shift: [8, 0, -8]}
+
+temporal:
+  vote_window: 5
+  min_stable_votes: 3
+  target_lost_frames: 3
+
+publish_debug_image: true

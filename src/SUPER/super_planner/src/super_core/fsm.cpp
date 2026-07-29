@@ -65,7 +65,8 @@ namespace fsm {
 
         TimeConsuming replan_once_time("replan_once_time", false);
 
-        RET_CODE ret_code = planner_ptr_->ReplanOnce(gi_.goal_p, gi_.goal_yaw, gi_.new_goal);
+        RET_CODE ret_code = planner_ptr_->ReplanOnce(gi_.goal_p, gi_.goal_yaw,
+                                                     gi_.desired_speed, gi_.new_goal);
         if (ret_code == FAILED) {
 //            cout << YELLOW << " -- [Fsm] ReplanOnce failed." << RESET << endl;
         } else { cout << GREEN << " -- [Fsm] ReplanOnce succeed." << RESET << endl; }
@@ -137,7 +138,8 @@ namespace fsm {
                     finish_plan = true;
                     return;
                 }
-                int retcode = planner_ptr_->PlanFromRest(gi_.goal_p, gi_.goal_yaw, gi_.new_goal);
+                int retcode = planner_ptr_->PlanFromRest(gi_.goal_p, gi_.goal_yaw,
+                                                        gi_.desired_speed, gi_.new_goal);
                 if (!planner_ptr_->goalValid()) {
                     cout << YELLOW << " -- [Fsm] Goal is invalid, skip this goal." << RESET << endl;
                     ChangeState("MainFsmCallback", WAIT_GOAL);
@@ -184,7 +186,17 @@ namespace fsm {
     }
 
     void Fsm::setGoalPosiAndYaw(const Vec3f &p, const Quatf &q) {
+        double goal_yaw = NAN;
+        if (cfg_.click_yaw_en &&
+            !isnan(q.w()) && !isnan(q.x()) && !isnan(q.y()) && !isnan(q.z())) {
+            goal_yaw = geometry_utils::get_yaw_from_quaternion(q);
+        }
+        setGoalPositionYawAndSpeed(p, goal_yaw, 0.0);
+    }
 
+    void Fsm::setGoalPositionYawAndSpeed(const Vec3f &p,
+                                         const double &goal_yaw,
+                                         const double &desired_speed) {
         auto click_point = p;
         if (cfg_.click_goal_en && cfg_.click_height > -5) {
             click_point.z() = cfg_.click_height;
@@ -204,21 +216,19 @@ namespace fsm {
             return;
         }
 
-        if (cfg_.click_yaw_en) {
-            if (isnan(q.w()) || isnan(q.x()) || isnan(q.y()) || isnan(q.z())) {
-                gi_.goal_yaw = NAN;
-                ros_ptr_->info(" -- [Fsm] Receive click goal at: [{}, {}, {}]; goal yaw disabled",
-                               gi_.goal_p.x(), gi_.goal_p.y(), gi_.goal_p.z());
-            } else {
-                gi_.goal_yaw = geometry_utils::get_yaw_from_quaternion(q);
-                cout << GREEN << " -- [Fsm] Receive click goal at: [" << gi_.goal_p.transpose() << "]; goal yaw: "
-                     << gi_.goal_yaw * 57.3 << " deg" << RESET << endl;
-            }
-
-        } else {
-            gi_.goal_yaw = NAN;
-            cout << GREEN << " -- [Fsm] Receive click goal at: [" << gi_.goal_p.transpose() << "]; goal yaw disabled"
+        gi_.goal_yaw = std::isfinite(goal_yaw) ? goal_yaw : NAN;
+        gi_.desired_speed = std::isfinite(desired_speed) && desired_speed > 0.0
+                                ? desired_speed
+                                : 0.0;
+        if (std::isfinite(gi_.goal_yaw)) {
+            cout << GREEN << " -- [Fsm] Receive goal at: [" << gi_.goal_p.transpose()
+                 << "]; terminal yaw: " << gi_.goal_yaw * 57.3
+                 << " deg; terminal speed: " << gi_.desired_speed << " m/s"
                  << RESET << endl;
+        } else {
+            cout << GREEN << " -- [Fsm] Receive goal at: [" << gi_.goal_p.transpose()
+                 << "]; terminal yaw is free; terminal speed: "
+                 << gi_.desired_speed << " m/s" << RESET << endl;
         }
 
         started_ = true;

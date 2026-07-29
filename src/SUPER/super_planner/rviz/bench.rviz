@@ -58,7 +58,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: LocalCloud
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -727,17 +727,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -3.5232958793640137
-        Y: 8.13528060913086
-        Z: -8.129967682179995e-06
+        X: -5
+        Y: 1
+        Z: 8
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.03479600325226784
+      Pitch: 0.8700000047683716
       Target Frame: drone
-      Yaw: 4.925541877746582
+      Yaw: 3.140000104904175
     Saved: ~
 Window Geometry:
   Depth:
@@ -757,5 +757,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1386
-  X: 319
-  Y: 229
+  X: 89
+  Y: 291

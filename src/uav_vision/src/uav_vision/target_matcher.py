@@ -1,0 +1,456 @@
+"""Square-board localization and multi-template classification."""
+
+from dataclasses import dataclass, field
+import math
+import os
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+import cv2
+import numpy as np
+
+
+LABELS = ("plane", "car", "ship", "house")
+
+
+@dataclass(frozen=True)
+class MatcherConfig:
+    canonical_size: int = 256
+    border_crop_fraction: float = 0.04
+    canny_low: int = 60
+    canny_high: int = 160
+    min_area_ratio: float = 0.005
+    max_area_ratio: float = 0.80
+    polygon_epsilon_ratio: float = 0.03
+    min_side_ratio: float = 0.60
+    max_angle_cosine: float = 0.35
+    max_candidates: int = 5
+    min_target_side_px: float = 80.0
+    min_sharpness: float = 20.0
+    gray_weight: float = 0.50
+    hog_weight: float = 0.30
+    color_weight: float = 0.20
+    min_class_score: float = 0.60
+    min_class_margin: float = 0.03
+    min_candidate_margin: float = 0.02
+    augmentations: Sequence[Mapping[str, Any]] = field(
+        default_factory=lambda: ({},)
+    )
+
+    def __post_init__(self):
+        if self.canonical_size <= 0 or self.canonical_size % 32:
+            raise ValueError("canonical_size must be positive and divisible by 32")
+        if not 0.0 <= self.border_crop_fraction < 0.25:
+            raise ValueError("border_crop_fraction must be in [0, 0.25)")
+        if not 0.0 < self.min_area_ratio < self.max_area_ratio <= 1.0:
+            raise ValueError("area ratios must satisfy 0 < min < max <= 1")
+        if self.max_candidates <= 0:
+            raise ValueError("max_candidates must be positive")
+        weight_sum = self.gray_weight + self.hog_weight + self.color_weight
+        if not math.isclose(weight_sum, 1.0, abs_tol=1e-6):
+            raise ValueError("gray, HOG, and color weights must sum to 1")
+        if not self.augmentations:
+            raise ValueError("at least one augmentation tuple is required")
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]):
+        allowed = {item.name for item in cls.__dataclass_fields__.values()}
+        unknown = set(values) - allowed
+        if unknown:
+            raise ValueError(f"unknown matcher settings: {sorted(unknown)}")
+        copied = dict(values)
+        if "augmentations" in copied:
+            copied["augmentations"] = tuple(copied["augmentations"])
+        return cls(**copied)
+
+
+@dataclass
+class MatchResult:
+    valid: bool = False
+    label: str = "unknown"
+    score: float = 0.0
+    second_score: float = 0.0
+    gray_score: float = 0.0
+    hog_score: float = 0.0
+    color_score: float = 0.0
+    margin: float = 0.0
+    sharpness: float = 0.0
+    target_side_px: float = 0.0
+    corners: np.ndarray = field(
+        default_factory=lambda: np.empty((0, 2), dtype=np.float32)
+    )
+    candidate_margin: float = 0.0
+    reason: str = ""
+
+
+@dataclass
+class _TemplateFeatures:
+    gray: np.ndarray
+    hog: np.ndarray
+    histogram: np.ndarray
+
+
+def order_quad(points: np.ndarray) -> np.ndarray:
+    points = np.asarray(points, dtype=np.float32).reshape(4, 2)
+    ordered = np.zeros((4, 2), dtype=np.float32)
+    sums = points.sum(axis=1)
+    differences = np.diff(points, axis=1).reshape(-1)
+    ordered[0] = points[np.argmin(sums)]
+    ordered[2] = points[np.argmax(sums)]
+    ordered[1] = points[np.argmin(differences)]
+    ordered[3] = points[np.argmax(differences)]
+    return ordered
+
+
+def measure_sharpness(gray: np.ndarray) -> float:
+    return float(cv2.Laplacian(gray, cv2.CV_64F, ksize=3).var())
+
+
+class TargetMatcher:
+    def __init__(self, config: MatcherConfig, templates_dir: str):
+        self.config = config
+        size = config.canonical_size
+        self._hog = cv2.HOGDescriptor(
+            (size, size),
+            (32, 32),
+            (16, 16),
+            (16, 16),
+            9,
+        )
+        self._templates = self._load_templates(templates_dir)
+
+    def _load_templates(self, templates_dir: str):
+        loaded: Dict[str, List[_TemplateFeatures]] = {}
+        for label in LABELS:
+            path = os.path.join(templates_dir, f"{label}.png")
+            base = cv2.imread(path, cv2.IMREAD_COLOR)
+            if base is None:
+                raise FileNotFoundError(f"template not found or unreadable: {path}")
+            variants = []
+            for augmentation in self.config.augmentations:
+                augmented = self._augment(base, augmentation)
+                variants.append(self._extract_features(augmented))
+            loaded[label] = variants
+        return loaded
+
+    def _augment(self, image: np.ndarray, values: Mapping[str, Any]):
+        result = image.astype(np.float32)
+        contrast = float(values.get("contrast", 1.0))
+        brightness = float(values.get("brightness", 0.0))
+        result = np.clip(result * contrast + brightness, 0, 255)
+
+        color_shift = values.get("color_shift", (0.0, 0.0, 0.0))
+        if len(color_shift) != 3:
+            raise ValueError("color_shift must contain B, G, and R offsets")
+        result += np.asarray(color_shift, dtype=np.float32).reshape(1, 1, 3)
+        result = np.clip(result, 0, 255).astype(np.uint8)
+
+        gamma = float(values.get("gamma", 1.0))
+        if gamma <= 0.0:
+            raise ValueError("gamma must be positive")
+        if not math.isclose(gamma, 1.0):
+            lookup = np.array(
+                [((index / 255.0) ** gamma) * 255.0 for index in range(256)],
+                dtype=np.uint8,
+            )
+            result = cv2.LUT(result, lookup)
+
+        angle = float(values.get("angle", 0.0))
+        scale = float(values.get("scale", 1.0))
+        if scale <= 0.0:
+            raise ValueError("scale must be positive")
+        if angle or not math.isclose(scale, 1.0):
+            height, width = result.shape[:2]
+            matrix = cv2.getRotationMatrix2D(
+                (width / 2.0, height / 2.0), angle, scale
+            )
+            result = cv2.warpAffine(
+                result,
+                matrix,
+                (width, height),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REFLECT_101,
+            )
+
+        blur = int(values.get("blur", 0))
+        if blur:
+            if blur < 0 or blur % 2 == 0:
+                raise ValueError("blur must be zero or a positive odd integer")
+            result = cv2.GaussianBlur(result, (blur, blur), 0)
+        return result
+
+    def _preprocess_patch(self, image: np.ndarray) -> np.ndarray:
+        if image is None or image.size == 0:
+            raise ValueError("patch is empty")
+        if image.ndim == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        if image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError("patch must be a BGR or grayscale image")
+
+        height, width = image.shape[:2]
+        crop = int(round(min(height, width) * self.config.border_crop_fraction))
+        if crop:
+            if height <= crop * 2 or width <= crop * 2:
+                raise ValueError("border crop removes the entire patch")
+            image = image[crop : height - crop, crop : width - crop]
+        size = self.config.canonical_size
+        return cv2.resize(image, (size, size), interpolation=cv2.INTER_AREA)
+
+    def _extract_features(self, patch: np.ndarray) -> _TemplateFeatures:
+        prepared = self._preprocess_patch(patch)
+        gray = cv2.cvtColor(prepared, cv2.COLOR_BGR2GRAY)
+        hog = self._hog.compute(gray).reshape(-1).astype(np.float32)
+        hsv = cv2.cvtColor(prepared, cv2.COLOR_BGR2HSV)
+        histogram = cv2.calcHist([hsv], [0, 1], None, [32, 32], [0, 180, 0, 256])
+        histogram = cv2.normalize(
+            histogram, None, alpha=1.0, norm_type=cv2.NORM_L1
+        )
+        return _TemplateFeatures(gray=gray, hog=hog, histogram=histogram)
+
+    @staticmethod
+    def _mapped_correlation(value: float) -> float:
+        if not np.isfinite(value):
+            return 0.0
+        return float(np.clip((value + 1.0) * 0.5, 0.0, 1.0))
+
+    def _score_features(
+        self, candidate: _TemplateFeatures, template: _TemplateFeatures
+    ) -> Tuple[float, float, float, float]:
+        gray_raw = cv2.matchTemplate(
+            candidate.gray, template.gray, cv2.TM_CCOEFF_NORMED
+        )[0, 0]
+        gray_score = self._mapped_correlation(float(gray_raw))
+
+        denominator = float(
+            np.linalg.norm(candidate.hog) * np.linalg.norm(template.hog)
+        )
+        hog_score = (
+            float(np.dot(candidate.hog, template.hog) / denominator)
+            if denominator > 1e-12
+            else 0.0
+        )
+        hog_score = float(np.clip(hog_score, 0.0, 1.0))
+
+        color_raw = cv2.compareHist(
+            candidate.histogram, template.histogram, cv2.HISTCMP_CORREL
+        )
+        color_score = self._mapped_correlation(float(color_raw))
+
+        total = (
+            self.config.gray_weight * gray_score
+            + self.config.hog_weight * hog_score
+            + self.config.color_weight * color_score
+        )
+        return float(total), gray_score, hog_score, color_score
+
+    def classify_patch(self, patch: np.ndarray) -> MatchResult:
+        try:
+            candidate = self._extract_features(patch)
+        except (ValueError, cv2.error) as error:
+            return MatchResult(reason=f"invalid_patch:{error}")
+
+        sharpness = measure_sharpness(candidate.gray)
+        class_scores = []
+        for label in LABELS:
+            best = None
+            for template in self._templates[label]:
+                scored = self._score_features(candidate, template)
+                if best is None or scored[0] > best[0]:
+                    best = scored
+            class_scores.append((best[0], label, best[1], best[2], best[3]))
+
+        class_scores.sort(key=lambda item: item[0], reverse=True)
+        best, second = class_scores[0], class_scores[1]
+        margin = float(best[0] - second[0])
+        result = MatchResult(
+            label=best[1],
+            score=float(best[0]),
+            second_score=float(second[0]),
+            gray_score=float(best[2]),
+            hog_score=float(best[3]),
+            color_score=float(best[4]),
+            margin=margin,
+            sharpness=sharpness,
+        )
+        if sharpness < self.config.min_sharpness:
+            result.label = "unknown"
+            result.reason = "too_blurry"
+            return result
+        if result.score < self.config.min_class_score:
+            result.label = "unknown"
+            result.reason = "class_score_too_low"
+            return result
+        if result.margin < self.config.min_class_margin:
+            result.label = "unknown"
+            result.reason = "class_margin_too_low"
+            return result
+        result.valid = True
+        result.reason = "accepted"
+        return result
+
+    @staticmethod
+    def _angle_cosine(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+        first = a - b
+        second = c - b
+        denominator = float(np.linalg.norm(first) * np.linalg.norm(second))
+        if denominator <= 1e-12:
+            return 1.0
+        return abs(float(np.dot(first, second) / denominator))
+
+    def _quad_quality(
+        self, quad: np.ndarray, frame_area: float
+    ) -> Optional[Tuple[float, float]]:
+        ordered = order_quad(quad)
+        area = abs(float(cv2.contourArea(ordered)))
+        area_ratio = area / frame_area
+        if not self.config.min_area_ratio <= area_ratio <= self.config.max_area_ratio:
+            return None
+        sides = np.linalg.norm(np.roll(ordered, -1, axis=0) - ordered, axis=1)
+        maximum = float(np.max(sides))
+        minimum = float(np.min(sides))
+        if maximum <= 1e-6 or minimum / maximum < self.config.min_side_ratio:
+            return None
+        angle_cosines = [
+            self._angle_cosine(
+                ordered[(index - 1) % 4],
+                ordered[index],
+                ordered[(index + 1) % 4],
+            )
+            for index in range(4)
+        ]
+        max_cosine = max(angle_cosines)
+        if max_cosine > self.config.max_angle_cosine:
+            return None
+        rectangularity = 1.0 - max_cosine
+        side_balance = minimum / maximum
+        quality = area_ratio * rectangularity * side_balance
+        return quality, float(np.mean(sides))
+
+    def find_square_candidates(self, frame: np.ndarray):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(
+            blurred, self.config.canny_low, self.config.canny_high
+        )
+        contours = cv2.findContours(
+            edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+        )[0]
+        frame_area = float(frame.shape[0] * frame.shape[1])
+        ranked = []
+        for contour in contours:
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter <= 0.0:
+                continue
+            polygon = cv2.approxPolyDP(
+                contour,
+                self.config.polygon_epsilon_ratio * perimeter,
+                True,
+            )
+            if len(polygon) != 4 or not cv2.isContourConvex(polygon):
+                continue
+            ordered = order_quad(polygon.reshape(4, 2))
+            quality = self._quad_quality(ordered, frame_area)
+            if quality is None:
+                continue
+            ranked.append((quality[0], quality[1], ordered))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        deduplicated = []
+        for item in ranked:
+            center = item[2].mean(axis=0)
+            duplicate = False
+            for kept in deduplicated:
+                kept_center = kept[2].mean(axis=0)
+                center_distance = float(np.linalg.norm(center - kept_center))
+                if center_distance < 0.08 * max(item[1], kept[1]):
+                    duplicate = True
+                    break
+            if not duplicate:
+                deduplicated.append(item)
+            if len(deduplicated) >= self.config.max_candidates:
+                break
+        return deduplicated
+
+    def _warp_candidate(self, frame: np.ndarray, corners: np.ndarray):
+        size = self.config.canonical_size
+        destination = np.float32(
+            [[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]]
+        )
+        transform = cv2.getPerspectiveTransform(corners, destination)
+        return cv2.warpPerspective(frame, transform, (size, size))
+
+    def match_frame(self, frame: np.ndarray) -> MatchResult:
+        if frame is None or frame.size == 0:
+            return MatchResult(reason="empty_frame")
+        candidates = self.find_square_candidates(frame)
+        if not candidates:
+            return MatchResult(reason="no_square_candidate")
+
+        accepted: List[MatchResult] = []
+        rejected: List[MatchResult] = []
+        for _, side_px, corners in candidates:
+            if side_px < self.config.min_target_side_px:
+                rejected.append(
+                    MatchResult(
+                        target_side_px=side_px,
+                        corners=corners,
+                        reason="target_too_small",
+                    )
+                )
+                continue
+            patch = self._warp_candidate(frame, corners)
+            result = self.classify_patch(patch)
+            result.target_side_px = side_px
+            result.corners = corners
+            if result.valid:
+                accepted.append(result)
+            else:
+                rejected.append(result)
+
+        if not accepted:
+            if rejected:
+                best_rejected = max(rejected, key=lambda item: item.score)
+                best_rejected.label = "unknown"
+                return best_rejected
+            return MatchResult(reason="all_candidates_rejected")
+
+        accepted.sort(key=lambda item: item.score, reverse=True)
+        if len(accepted) > 1:
+            accepted[0].candidate_margin = (
+                accepted[0].score - accepted[1].score
+            )
+            if accepted[0].candidate_margin < self.config.min_candidate_margin:
+                return MatchResult(
+                    score=accepted[0].score,
+                    second_score=accepted[1].score,
+                    candidate_margin=accepted[0].candidate_margin,
+                    reason="candidate_margin_too_low",
+                )
+        else:
+            accepted[0].candidate_margin = 1.0
+        return accepted[0]
+
+    @staticmethod
+    def annotate(
+        frame: np.ndarray, result: MatchResult, stable_label: Optional[str] = None
+    ) -> np.ndarray:
+        output = frame.copy()
+        if result.corners.shape == (4, 2):
+            corners = np.rint(result.corners).astype(np.int32)
+            color = (0, 200, 0) if result.valid else (0, 165, 255)
+            cv2.polylines(output, [corners], True, color, 2, cv2.LINE_AA)
+        text = (
+            f"current={result.label} stable={stable_label or 'none'} "
+            f"score={result.score:.3f} margin={result.margin:.3f} "
+            f"sharp={result.sharpness:.1f} reason={result.reason}"
+        )
+        cv2.putText(
+            output,
+            text,
+            (15, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.62,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        return output

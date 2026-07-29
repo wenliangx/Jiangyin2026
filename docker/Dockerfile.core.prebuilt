@@ -6,6 +6,7 @@ COPY dist/debs/ /tmp/jiangyin-debs/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     coinor-libipopt-dev \
+    libapriltag-dev \
     libeigen3-dev \
     libomp-dev \
     && apt-get install -y /tmp/jiangyin-debs/*.deb \
@@ -13,4 +14,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /ws
 CMD ["bash"]
-

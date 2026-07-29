@@ -66,9 +66,21 @@ namespace super_planner {
         astar_ptr_->setFineInfNeighbors(neighbor_step);
     }
 
+    void SuperPlanner::setMaxVelocity(const double max_vel) {
+        if (!std::isfinite(max_vel) || max_vel <= 0.0) {
+            ros_ptr_->warn(" -- [SUPER] Ignore invalid max velocity: {}.", max_vel);
+            return;
+        }
+        std::lock_guard<std::mutex> guard(replan_lock_);
+        cfg_.exp_traj_cfg.max_vel = max_vel;
+        cfg_.sample_traj_dt = cfg_.resolution / max_vel;
+        exp_traj_opt_->set_max_vel(max_vel);
+    }
+
     RET_CODE
     SuperPlanner::PlanFromRest(const Vec3f &goal_p,
                                const double &goal_yaw,
+                               const double &desired_speed,
                                const bool &new_goal) {
         std::lock_guard<std::mutex> guard(replan_lock_);
         latest_replan.reset();
@@ -80,6 +92,9 @@ namespace super_planner {
         }
         gi_.goal_p = goal_p;
         gi_.goal_yaw = goal_yaw;
+        gi_.desired_speed = std::isfinite(desired_speed) && desired_speed > 0.0
+                                ? std::min(desired_speed, cfg_.exp_traj_cfg.max_vel)
+                                : 0.0;
         gi_.new_goal = new_goal;
         gi_.goal_valid = true;
         vec_Vec3f viz_pts{goal_p, robot_state_.p};
@@ -174,12 +189,16 @@ namespace super_planner {
     RET_CODE
     SuperPlanner::ReplanOnce(const Vec3f &goal_p,
                              const double &goal_yaw,
+                             const double &desired_speed,
                              const bool &new_goal) {
         TimeConsuming replan_total_t("ReplanOnce", false);
         std::lock_guard<std::mutex> guard(replan_lock_);
 
         gi_.goal_p = goal_p;
         gi_.goal_yaw = goal_yaw;
+        gi_.desired_speed = std::isfinite(desired_speed) && desired_speed > 0.0
+                                ? std::min(desired_speed, cfg_.exp_traj_cfg.max_vel)
+                                : 0.0;
         gi_.new_goal = new_goal;
         gi_.goal_valid = true;
         latest_replan.reset();
@@ -768,7 +787,7 @@ namespace super_planner {
             }
         }
 
-        const bool connected_goal = (guide_path.back().head(2) - gi_.goal_p.head(2)).norm() < cfg_.resolution * 2;
+        const bool connected_goal = (guide_path.back() - gi_.goal_p).norm() < cfg_.resolution * 2;
         out_exp_traj_info.setGoalConnectedFlag(connected_goal);
 
         sfc.clear();
@@ -795,12 +814,34 @@ namespace super_planner {
 
         pos_fina_state.setZero();
         pos_fina_state.col(0) = guide_path.back();
-        if (cfg_.goal_vel_en && (gi_.goal_p - robot_state_.p).norm() > cfg_.planning_horizon / 2) {
+        if (!connected_goal && cfg_.goal_vel_en &&
+            (gi_.goal_p - robot_state_.p).norm() > cfg_.planning_horizon / 2) {
             pos_fina_state.col(1) = (gi_.goal_p - robot_state_.p).normalized() * cfg_.exp_traj_cfg.max_vel / 2;
         }
-        if ((pos_fina_state.col(0) - gi_.goal_p).norm() < cfg_.resolution * 2) {
-            pos_fina_state.col(1).setZero();
+        if (connected_goal) {
             pos_fina_state.col(0) = gi_.goal_p;
+            pos_fina_state.col(1).setZero();
+
+            if (gi_.desired_speed > 0.0) {
+                Vec3f terminal_direction = Vec3f::Zero();
+                for (long i = static_cast<long>(guide_path.size()) - 1; i > 0; --i) {
+                    const Vec3f segment = guide_path[i] - guide_path[i - 1];
+                    if (segment.norm() > 1e-3) {
+                        terminal_direction = segment.normalized();
+                        break;
+                    }
+                }
+                if (terminal_direction.norm() < 1e-3) {
+                    const Vec3f segment = gi_.goal_p - pos_init_state.col(0);
+                    if (segment.norm() > 1e-3) {
+                        terminal_direction = segment.normalized();
+                    }
+                }
+                if (terminal_direction.norm() > 1e-3) {
+                    pos_fina_state.col(1) =
+                            terminal_direction * std::min(gi_.desired_speed, cfg_.exp_traj_cfg.max_vel);
+                }
+            }
         }
 
         // optimize and update exp traj
@@ -862,7 +903,7 @@ namespace super_planner {
 
 
         bool free_end{true};
-        if (cfg_.goal_yaw_en && !isnan(gi_.goal_yaw) && connected_goal) {
+        if (std::isfinite(gi_.goal_yaw) && connected_goal) {
             free_end = false;
             fina_yaw[0] = gi_.goal_yaw;
         }
@@ -1114,11 +1155,11 @@ namespace super_planner {
             Vec4f yaw_init_vec = ref_exp_traj.getYawState(opt_ts).row(0);
             Vec4f yaw_goal{0, 0, 0, 0};
             bool free_end{true};
-            if (cfg_.goal_yaw_en) {
-                if (!isnan(gi_.goal_yaw)) {
-                    free_end = false;
-                    yaw_goal[0] = gi_.goal_yaw;
-                }
+            const Vec3f backup_end = temp_pos_traj.getPos(temp_pos_traj.getTotalDuration());
+            if (std::isfinite(gi_.goal_yaw) &&
+                (backup_end - gi_.goal_p).norm() < cfg_.resolution * 2) {
+                free_end = false;
+                yaw_goal[0] = gi_.goal_yaw;
             }
             Trajectory temp_yaw_traj;
             if (!yaw_traj_opt_->optimize(yaw_init_vec, yaw_goal, temp_pos_traj,

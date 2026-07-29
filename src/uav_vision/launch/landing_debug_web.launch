@@ -1,0 +1,18 @@
+<launch>
+  <arg name="image_topic" default="/vision/landing/debug_image"/>
+  <arg name="host" default="0.0.0.0"/>
+  <arg name="port" default="8080"/>
+  <arg name="jpeg_quality" default="85"/>
+  <arg name="page_title" default="UAV Landing Debug"/>
+
+  <node pkg="uav_vision"
+        type="landing_debug_web.py"
+        name="landing_debug_web"
+        output="screen">
+    <param name="image_topic" value="$(arg image_topic)"/>
+    <param name="host" value="$(arg host)"/>
+    <param name="port" value="$(arg port)"/>
+    <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
+    <param name="page_title" value="$(arg page_title)"/>
+  </node>
+</launch>

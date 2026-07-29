@@ -1,0 +1,10 @@
+<launch>
+  <arg name="config" default="$(find uav_vision)/config/landing_tag.yaml"/>
+
+  <node pkg="uav_vision"
+        type="landing_tag_node"
+        name="landing_tag_node"
+        output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

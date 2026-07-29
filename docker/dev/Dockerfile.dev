@@ -5,8 +5,13 @@ ARG CLANGD_VERSION=22
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib
 
-RUN dpkg-query -W -f='${Status}\n' jiangyin-livox-ros-driver2 \
-      | grep -qx 'install ok installed' \
+RUN if ! dpkg-query -W -f='${Status}\n' jiangyin-livox-ros-driver2 \
+        | grep -qx 'install ok installed'; then \
+      echo "ERROR: jiangyin-livox-ros-driver2 is missing from localhost/jiangyin_core:latest."; \
+      echo "Build the core image from docker/Dockerfile.core.prebuilt after generating debs,"; \
+      echo "or install /tmp/jiangyin-debs/jiangyin-livox-ros-driver2_*.deb into the core image."; \
+      exit 1; \
+    fi \
     && test -f /opt/ros/noetic/share/livox_ros_driver2/cmake/livox_ros_driver2Config.cmake
 
 RUN apt-get update \

@@ -1,0 +1,3 @@
+# Stable camera roles for the Jiangyin UAV. Keep both cables on their assigned USB ports.
+SUBSYSTEM=="video4linux", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:3:1.0", ATTR{index}=="0", SYMLINK+="uav_front_camera", GROUP="video", MODE="0660"
+SUBSYSTEM=="video4linux", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:2:1.0", ATTR{index}=="0", SYMLINK+="uav_down_camera", GROUP="video", MODE="0660"

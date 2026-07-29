@@ -21,8 +21,17 @@ find_package(catkin REQUIRED COMPONENTS
   quadrotor_msgs
   super_msgs
   traj_utils
+  uav_vision_msgs
 )
 find_package(Eigen3 REQUIRED)
+find_package(yaml-cpp REQUIRED)
+if(TARGET yaml-cpp::yaml-cpp)
+  set(FSM_CTRL_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+elseif(TARGET yaml-cpp)
+  set(FSM_CTRL_YAML_CPP_TARGET yaml-cpp)
+else()
+  set(FSM_CTRL_YAML_CPP_TARGET ${YAML_CPP_LIBRARIES})
+endif()
 
 ################################################
 ## Declare ROS messages, services and actions ##
@@ -53,7 +62,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES fsm
 #LIBRARIES motordriver
-   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs
+   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs uav_vision_msgs
 #  DEPENDS system_lib
 )
 
@@ -65,6 +74,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/include
   ${EIGEN3_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
 )
 
 #add_executable(single_offboard src/single_offboard.cpp)
@@ -133,6 +143,7 @@ target_link_libraries(single_offboard_sml
   boost_sml
   dfbc att_nmpc FLAG_NMPC traj_gen nmpc_ctrl ctrl_math
   ${catkin_LIBRARIES}
+  ${FSM_CTRL_YAML_CPP_TARGET}
   boost_system boost_filesystem
   Threads::Threads
   /usr/local/lib/libcasadi.so.3.7
@@ -140,6 +151,7 @@ target_link_libraries(single_offboard_sml
 
 catkin_install_python(PROGRAMS
   scripts/pose_monitor.py
+  scripts/record_super_waypoints.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

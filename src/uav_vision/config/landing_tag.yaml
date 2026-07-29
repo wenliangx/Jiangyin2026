@@ -1,0 +1,20 @@
+always_enabled: true
+image_topic: /vision/down/image_raw
+result_topic: /vision/landing/offset
+debug_topic: /vision/landing/debug_image
+publish_debug_image: true
+
+detector:
+  tag_family: tag36h11
+  expected_ids: [0, 1, 2, 3, 4]
+  threads: 2
+  decimate: 1.0
+  blur: 0.0
+  refine_edges: true
+  max_hamming: 1
+  min_decision_margin: 20.0
+
+filter:
+  window: 5
+  max_pixel_jump: 80.0
+  reset_frames: 3
