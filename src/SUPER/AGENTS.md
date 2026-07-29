@@ -30,7 +30,9 @@ Dual ROS1/ROS2 codebase selected at CMake configure time via `select_ros_version
 
 - ROS2 messaging uses lenient QoS (best_effort, durability_volatile) - messages can be silently dropped
 - `corridor_generator.cpp:211` - known clearance bug, TODO in hot path. Do not change without tests.
-- `super_planner.cpp:573` - critical initialization area with TODO. High risk of regressions.
+- `super_planner.cpp:573` - critical initialization area with TODO ("hot init"). High risk of regressions.
+- `super_planner.cpp:589` - TODO: "Why cannot directly replan on cmd traj?"
+- `super_planner.cpp:1018` - TODO: commented-out early-exit optimization for backup trajectory
 - Never edit template CMakeLists.txt or package.xml files under `ros/` manually - always use `select_ros_version.sh`
 - ros2 branch files are CMake copy templates, not standalone ROS2 builds
 
@@ -43,3 +45,7 @@ bash scripts/select_ros_version.sh ROS2
 
 # Build from workspace root (after template swap)
 catkin_make -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DROS_EDITION=ROS1 -j$(nproc)
+
+# Plot command logs (Python)
+python3 log/cmd_logs/plotCmdLog.py
+python3 log/plot_time.py

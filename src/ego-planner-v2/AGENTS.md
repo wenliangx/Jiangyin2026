@@ -40,8 +40,9 @@ All 7 disabled: `so3_quadrotor_simulator`, `so3_control`, `local_sensing`, `map_
 - **Optimization**: `-O3 -Wall -g` Release builds
 - **Math**: Eigen with `EIGEN_MAKE_ALIGNED_OPERATOR_NEW` on every Eigen-heavy class; PCL 1.7+
 - **Naming**: `namespace ego_planner`, files `snake_case`, classes `CamelCase`
-- **Test targets**: commented out in many CMakeLists; not integrated into CI
-- **12 CATKIN_IGNORE pkgs** excluded from catkin_make
+- **Test targets**: commented out in many CMakeLists; not integrated into CI. Only `uav_utils` (7 GTest cases for geometry) has active tests
+- **12 CATKIN_IGNORE pkgs** excluded from catkin_make (6 in uav_simulator, 5 in Utils, drone_detect)
+- **`test_dynamics.cpp`** is a standalone benchmark, not a proper test (no assertions)
 
 ## ANTI-PATTERNS
 

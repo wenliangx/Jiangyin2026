@@ -26,6 +26,7 @@
 #include <traj_utils/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
 #include <xmlrpcpp/XmlRpcValue.h>
+#include <yaml-cpp/yaml.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -37,11 +38,14 @@
 #include <atomic>
 #include <cerrno>
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -63,26 +67,132 @@ constexpr std::size_t kLandingHorizonPoints = 6;
 
 // Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
-  int id{0};              // 航点编号。
+  int id{0};              // 任务表内局部编号；发布时会替换为全局递增 id。
   int mode{0};            // 下游 planner 使用的任务模式。
   int is_map{0};          // 是否使用 map 坐标。
   smlfsm::Vec3 position;  // 航点位置。
   double yaw{0.0};        // 航点期望 yaw。
+  double desired_speed{0.0};  // SUPER 期望速度，0 表示使用下游默认。
   int perc_mode{0};       // 感知模式字段，保留旧结构含义。
 };
 
 // 构造 Super 任务航点表。
 std::vector<MissionPoint> createSuperTrajectory() {
   return std::vector<MissionPoint>{
-      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 3},
-      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0},
-      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0},
-      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0},
-      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0},
-      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0},
-      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0},
-      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0},
+      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 0.0, 3},
+      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0.0, 0},
+      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0.0, 0},
+      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0.0, 0},
+      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0.0, 0},
+      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0.0, 0},
+      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0.0, 0},
+      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0.0, 0},
   };
+}
+
+std::vector<std::vector<MissionPoint>> createSuperTrajectorySegments() {
+  const std::vector<MissionPoint> points = createSuperTrajectory();
+  return std::vector<std::vector<MissionPoint>>{
+      {points[0], points[1]},
+      {points[2], points[3]},
+      {points[4], points[5], points[6], points[7]},
+  };
+}
+
+double optionalWaypointYaw(const YAML::Node& node) {
+  if (!node || node.IsNull()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  try {
+    return node.as<double>();
+  } catch (const YAML::Exception&) {
+    std::string value = node.as<std::string>();
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) {
+                     return static_cast<char>(std::tolower(c));
+                   });
+    if (value == "nan" || value == ".nan" || value == "free" ||
+        value == "auto") {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    throw;
+  }
+}
+
+MissionPoint parseMissionPoint(const YAML::Node& node,
+                               std::size_t fallback_id) {
+  MissionPoint point;
+  point.id = node["id"] ? node["id"].as<int>() : static_cast<int>(fallback_id);
+  point.mode = node["mode"] ? node["mode"].as<int>() : 2;
+  point.is_map = node["is_map"] ? node["is_map"].as<int>() : 1;
+  point.position.x = node["x"].as<double>();
+  point.position.y = node["y"].as<double>();
+  point.position.z = node["z"].as<double>();
+  point.yaw = optionalWaypointYaw(node["yaw"]);
+  point.desired_speed =
+      node["desired_speed"] ? node["desired_speed"].as<double>() : 0.0;
+
+  if (point.mode < 0 || point.mode > 2) {
+    throw std::runtime_error("waypoint mode must be 0, 1, or 2");
+  }
+  if (point.is_map != 0 && point.is_map != 1) {
+    throw std::runtime_error("waypoint is_map must be 0 or 1");
+  }
+  if (!std::isfinite(point.position.x) ||
+      !std::isfinite(point.position.y) ||
+      !std::isfinite(point.position.z)) {
+    throw std::runtime_error("waypoint x/y/z must be finite");
+  }
+  if (!std::isfinite(point.desired_speed) || point.desired_speed < 0.0) {
+    throw std::runtime_error(
+        "waypoint desired_speed must be finite and non-negative");
+  }
+  return point;
+}
+
+std::vector<MissionPoint> loadSuperTrajectoryFile(const std::string& path) {
+  const YAML::Node root = YAML::LoadFile(path);
+  const YAML::Node waypoint_nodes = root["waypoints"];
+  if (!waypoint_nodes || !waypoint_nodes.IsSequence() ||
+      waypoint_nodes.size() == 0) {
+    throw std::runtime_error("waypoint file must contain non-empty waypoints");
+  }
+
+  std::vector<MissionPoint> waypoints;
+  waypoints.reserve(waypoint_nodes.size());
+  for (std::size_t index = 0; index < waypoint_nodes.size(); ++index) {
+    waypoints.push_back(parseMissionPoint(waypoint_nodes[index], index));
+  }
+  return waypoints;
+}
+
+std::vector<std::vector<MissionPoint>> loadSuperTrajectorySegmentsFile(
+    const std::string& path) {
+  const YAML::Node root = YAML::LoadFile(path);
+  const YAML::Node segment_nodes = root["segments"];
+  if (!segment_nodes || !segment_nodes.IsSequence()) {
+    return std::vector<std::vector<MissionPoint>>{
+        loadSuperTrajectoryFile(path)};
+  }
+
+  std::vector<std::vector<MissionPoint>> segments;
+  segments.reserve(segment_nodes.size());
+  for (std::size_t index = 0; index < segment_nodes.size(); ++index) {
+    const YAML::Node waypoints = segment_nodes[index]["waypoints"];
+    if (!waypoints || !waypoints.IsSequence() || waypoints.size() == 0) {
+      throw std::runtime_error("each segment must contain non-empty waypoints");
+    }
+
+    std::vector<MissionPoint> segment;
+    segment.reserve(waypoints.size());
+    for (std::size_t waypoint_index = 0;
+         waypoint_index < waypoints.size(); ++waypoint_index) {
+      segment.push_back(parseMissionPoint(waypoints[waypoint_index],
+                                          waypoint_index));
+    }
+    segments.push_back(segment);
+  }
+  return segments;
 }
 
 // Clock 的 ROS 实现，给纯 C++ Context 提供当前时间。
@@ -594,31 +704,34 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
 // Super 任务轨迹适配器：负责 waypoint 发布和 planner 缓存。
 class RosMissionPort final : public smlfsm::MissionPort {
  public:
-  explicit RosMissionPort(ros::NodeHandle& node)
+  RosMissionPort(ros::NodeHandle& node, ros::NodeHandle& private_node)
       : super_waypoint_pub_(node.advertise<super_msgs::Flag>(
             "/super/flag_waypoint", 10)) {
+    private_node.param("mission_super_waypoints_file", waypoints_file_,
+                       waypoints_file_);
+    private_node.param("mission_super_arrival_tolerance",
+                       arrival_tolerance_, arrival_tolerance_);
+    loadSuperTrajectory();
     reset();
   }
 
-  void selectCommand(int /*command*/) override {}
+  void selectCommand(int command) override {
+    if (command >= 3 && command <= 5) {
+      active_segment_index_ = command - 3;
+    }
+  }
 
   void reset() override {
-    // 旧版 super 航点进度本来由模块级静态变量保存；切换状态时不重置。
+    super_waypoint_upload_active_ = true;
+    super_waypoint_upload_index_ = 0u;
+    segment_arrived_ = false;
+    super_planner_valid_ = false;
   }
 
   // cmd6：发布任务航点，并优先使用 super planner 返回的 horizon。
-  bool prepareSuper(double /*now*/, const smlfsm::TelemetrySnapshot& /*telemetry*/,
+  bool prepareSuper(double now, const smlfsm::TelemetrySnapshot& telemetry,
                     std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint();
-    if (super_planner_valid_) {
-      horizon = super_planner_;
-      return true;
-    }
-    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
-    for (auto& point : horizon) {
-      point.position.z = 1.0;
-    }
-    return true;
+    return prepareSuperSegment(active_segment_index_, now, telemetry, horizon);
   }
 
   bool prepareCoreSuperGoal(double /*now*/,
@@ -627,11 +740,11 @@ class RosMissionPort final : public smlfsm::MissionPort {
                             std::vector<smlfsm::ReferencePoint>& horizon)
       override {
     MissionPoint point;
-    point.id = 0;
     point.mode = 2;
     point.is_map = 1;
     point.position = goal;
     point.yaw = 0.0;
+    point.desired_speed = 0.0;
     publishSuperWaypoint(point);
     if (super_planner_valid_) {
       horizon = super_planner_;
@@ -641,6 +754,39 @@ class RosMissionPort final : public smlfsm::MissionPort {
     for (auto& reference : horizon) {
       reference.position = goal;
     }
+    return true;
+  }
+
+  bool prepareSuperSegment(
+      int segment_index, double /*now*/,
+      const smlfsm::TelemetrySnapshot& telemetry,
+      std::vector<smlfsm::ReferencePoint>& horizon) override {
+    active_segment_index_ = segment_index;
+    if (super_segments_.empty()) {
+      loadSuperTrajectory();
+    }
+    if (segment_index < 0 ||
+        static_cast<std::size_t>(segment_index) >= super_segments_.size() ||
+        super_segments_[segment_index].empty()) {
+      horizon.clear();
+      return false;
+    }
+
+    const MissionPoint& last = super_segments_[segment_index].back();
+    if (!segment_arrived_ && reached(last.position, telemetry.position)) {
+      segment_arrived_ = true;
+    }
+    if (segment_arrived_) {
+      buildHoldHorizon(last, horizon);
+      return true;
+    }
+
+    publishNextWaypoint();
+    if (super_planner_valid_) {
+      horizon = super_planner_;
+      return true;
+    }
+    buildHoldHorizon(last, horizon);
     return true;
   }
 
@@ -671,19 +817,28 @@ class RosMissionPort final : public smlfsm::MissionPort {
   }
 
  private:
-  // 如果任务轨迹需要刷新，就向 super planner 发布下一个 waypoint。
+  // 每个 tick 最多上传一个 waypoint，避免一次性打满下游订阅缓存。
   void publishNextWaypoint() {
-    if (!need_generate_traj_) {
+    if (!super_waypoint_upload_active_) {
       return;
     }
-    super_traj_ = createSuperTrajectory();
-    if (super_traj_count_ < super_traj_.size()) {
-      publishSuperWaypoint(super_traj_[super_traj_count_]);
+    if (super_segments_.empty()) {
+      loadSuperTrajectory();
     }
-    ++super_traj_count_;
-    if (super_traj_count_ >= super_traj_.size()) {
-      need_generate_traj_ = false;
-      super_traj_count_ = 0u;
+    if (active_segment_index_ < 0 ||
+        static_cast<std::size_t>(active_segment_index_) >=
+            super_segments_.size()) {
+      return;
+    }
+    const std::vector<MissionPoint>& segment =
+        super_segments_[active_segment_index_];
+    if (super_waypoint_upload_index_ < segment.size()) {
+      publishSuperWaypoint(segment[super_waypoint_upload_index_]);
+      ++super_waypoint_upload_index_;
+    }
+    if (super_waypoint_upload_index_ >= segment.size()) {
+      super_waypoint_upload_active_ = false;
+      super_waypoint_upload_index_ = 0u;
     }
   }
 
@@ -694,24 +849,68 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_waypoint_pub_.publish(message);
   }
 
+  void loadSuperTrajectory() {
+    if (waypoints_file_.empty()) {
+      super_segments_ = createSuperTrajectorySegments();
+      return;
+    }
+    try {
+      super_segments_ = loadSuperTrajectorySegmentsFile(waypoints_file_);
+      std::size_t waypoint_count = 0u;
+      for (const auto& segment : super_segments_) {
+        waypoint_count += segment.size();
+      }
+      ROS_INFO("Loaded %zu mission super waypoints in %zu segments from %s",
+               waypoint_count, super_segments_.size(), waypoints_file_.c_str());
+    } catch (const std::exception& error) {
+      ROS_ERROR("Failed to load mission super waypoints from %s: %s; "
+                "falling back to built-in waypoints",
+                waypoints_file_.c_str(), error.what());
+      super_segments_ = createSuperTrajectorySegments();
+    }
+  }
+
+  bool reached(const smlfsm::Vec3& target, const smlfsm::Vec3& position) const {
+    const double dx = target.x - position.x;
+    const double dy = target.y - position.y;
+    const double dz = target.z - position.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz) <= arrival_tolerance_;
+  }
+
+  void buildHoldHorizon(const MissionPoint& point,
+                        std::vector<smlfsm::ReferencePoint>& horizon) const {
+    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
+    const smlfsm::Quaternion attitude{
+        std::cos(point.yaw * 0.5), 0.0, 0.0, std::sin(point.yaw * 0.5)};
+    for (auto& reference : horizon) {
+      reference.position = point.position;
+      reference.attitude = attitude;
+    }
+  }
+
   void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
-    message.id = point.id;
+    message.id = next_super_waypoint_id_++;
     message.mode = point.mode;
     message.is_map = point.is_map;
     message.yaw = point.yaw;
-    message.desired_speed = 0.0;
+    message.desired_speed = point.desired_speed;
     message.position.x = point.position.x;
     message.position.y = point.position.y;
     message.position.z = point.position.z;
   }
 
   ros::Publisher super_waypoint_pub_;  // 发给 super planner 的 waypoint topic。
-  bool need_generate_traj_{true};     // 是否需要重新向 planner 发布 waypoint。
-  std::size_t super_traj_count_{0};   // 下一个要发布的任务航点序号。
+  bool super_waypoint_upload_active_{true};  // 是否正在逐 tick 上传 waypoint。
+  std::size_t super_waypoint_upload_index_{0};  // 本组待上传 waypoint 下标。
+  int next_super_waypoint_id_{0};  // 发布给 SUPER 的全局递增 id，不随重传归零。
+  int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
+  bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
+  double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
-  std::vector<MissionPoint> super_traj_;    // Super 任务航点表。
+  std::string waypoints_file_;     // mission super waypoint YAML 文件。
+  std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
   std::vector<smlfsm::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。
 };
 
@@ -797,7 +996,7 @@ class SingleOffboardNode {
         nmpc_(private_node_),
         reference_(private_node_),
         landing_(private_node_),
-        mission_(node_),
+        mission_(node_, private_node_),
         config_(loadConfig()),
         context_(clock_, autopilot_, setpoint_, nmpc_, reference_, mission_,
                  landing_, config_),
@@ -940,8 +1139,8 @@ class SingleOffboardNode {
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
-  smlfsm::CoreFlightStateMachine machine_;  // 当前节点使用的 core 状态机实例。
-  smlfsm::CoreFlightCommandDispatcher dispatcher_;  // core cmd 到 Select 事件的分发器。
+  smlfsm::SegmentedMissionStateMachine machine_;  // 当前节点使用的分段任务状态机实例。
+  smlfsm::SegmentedMissionCommandDispatcher dispatcher_;  // 分段任务 cmd 分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
   ros::Subscriber super_planner_sub_;  // super planner 订阅。

@@ -10,15 +10,17 @@ struct FullCommandPolicy {
   template <typename MachineT>
   static void dispatch(MachineT& machine, int command) {
     switch (command) {
-      case 0: machine.process_event(SelectIdle{}); break;
-      case 1: machine.process_event(SelectLowThrust{}); break;
-      case 2: machine.process_event(SelectPositionHold{}); break;
-      case 3: machine.process_event(SelectNmpcHover{}); break;
-      case 4: machine.process_event(SelectLanding{}); break;
-      case 5: machine.process_event(SelectNmpcTrack{}); break;
-      case 6: machine.process_event(SelectSuperTrack{}); break;
-      case 9: machine.process_event(SelectEmergency{}); break;
-      default: machine.process_event(SelectSafeNoop{}); break;
+      case 0: machine.process_event(OnCommand0{}); break;
+      case 1: machine.process_event(OnCommand1{}); break;
+      case 2: machine.process_event(OnCommand2{}); break;
+      case 3: machine.process_event(OnCommand3{}); break;
+      case 4: machine.process_event(OnCommand4{}); break;
+      case 5: machine.process_event(OnCommand5{}); break;
+      case 6: machine.process_event(OnCommand6{}); break;
+      case 7: machine.process_event(OnCommand7{}); break;
+      case 8: machine.process_event(OnCommand8{}); break;
+      case 9: machine.process_event(OnCommand9{}); break;
+      default: machine.process_event(OnUnsupportedCommand{}); break;
     }
   }
 };
@@ -27,18 +29,39 @@ struct CoreFlightCommandPolicy {
   template <typename MachineT>
   static void dispatch(MachineT& machine, int command) {
     switch (command) {
-      case 0: machine.process_event(SelectIdle{}); break;
-      case 1: machine.process_event(SelectLowThrust{}); break;
-      case 2: machine.process_event(SelectPositionHold{}); break;
-      case 3: machine.process_event(SelectNmpcHover{}); break;
-      case 4: machine.process_event(SelectLanding{}); break;
-      case 9: machine.process_event(SelectEmergency{}); break;
-      default: machine.process_event(SelectSafeNoop{}); break;
+      case 0: machine.process_event(OnCommand0{}); break;
+      case 1: machine.process_event(OnCommand1{}); break;
+      case 2: machine.process_event(OnCommand2{}); break;
+      case 3: machine.process_event(OnCommand3{}); break;
+      case 4: machine.process_event(OnCommand4{}); break;
+      case 7: machine.process_event(OnCommand7{}); break;
+      case 8: machine.process_event(OnCommand8{}); break;
+      case 9: machine.process_event(OnCommand9{}); break;
+      default: machine.process_event(OnUnsupportedCommand{}); break;
     }
   }
 };
 
-// 命令分发器：把 UDP/用户输入的整数 cmd 转成 SML 的 Select 事件。
+struct MissionCommandPolicy {
+  template <typename MachineT>
+  static void dispatch(MachineT& machine, int command) {
+    switch (command) {
+      case 0: machine.process_event(OnCommand0{}); break;
+      case 1: machine.process_event(OnCommand1{}); break;
+      case 2: machine.process_event(OnCommand2{}); break;
+      case 3: machine.process_event(OnCommand3{}); break;
+      case 4: machine.process_event(OnCommand4{}); break;
+      case 5: machine.process_event(OnCommand5{}); break;
+      case 6: machine.process_event(OnCommand6{}); break;
+      case 7: machine.process_event(OnCommand7{}); break;
+      case 8: machine.process_event(OnCommand8{}); break;
+      case 9: machine.process_event(OnCommand9{}); break;
+      default: machine.process_event(OnUnsupportedCommand{}); break;
+    }
+  }
+};
+
+// 命令分发器：把 UDP/用户输入的整数 cmd 转成 SML 的 command 事件。
 // 连续重复的 cmd 会被忽略，避免重复执行进入状态时的 reset 逻辑；
 // 主循环仍会继续发送 Tick，让当前状态保持周期执行。
 template <typename StateMachineT, typename CommandPolicy = FullCommandPolicy>
@@ -51,7 +74,7 @@ class CommandDispatcherT {
                               MissionPort* mission = nullptr)
       : machine_(machine), reference_(reference), mission_(mission) {}
 
-  // 处理一条 cmd；只有 cmd 变化并触发 Select 事件时返回 true。
+  // 处理一条 cmd；只有 cmd 变化并触发 command 事件时返回 true。
   // 映射关系：
   //   0 Idle，1 LowThrust，2 PositionHold，3 NmpcHover，4 Landing，
   //   5 NmpcTrack，6 SuperTrack，9 Emergency，
@@ -88,6 +111,10 @@ class CommandDispatcherT {
 using CommandDispatcher = CommandDispatcherT<StateMachine>;
 using CoreFlightCommandDispatcher =
     CommandDispatcherT<CoreFlightStateMachine, CoreFlightCommandPolicy>;
+using MissionCommandDispatcher =
+    CommandDispatcherT<MissionStateMachine, MissionCommandPolicy>;
+using SegmentedMissionCommandDispatcher =
+    CommandDispatcherT<SegmentedMissionStateMachine, MissionCommandPolicy>;
 
 }  // namespace single_sml
 }  // namespace fsm_ctrl

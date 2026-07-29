@@ -6,9 +6,10 @@
 
 | Binary | Source | Role |
 |--------|--------|------|
-| `single_offboard_fsm` | `src/single_offboard_fsm.cpp` (2829 lines) | Legacy FSM + NMPC controller (UDP cmd dispatcher) |
-| `single_offboard_sml` | `src/single_offboard_sml.cpp` | Modern Boost.SML FSM (10 states: idle → low_thrust → hover → land → track) |
-| `px4_estimator` | `src/px4_estimator.cpp` | MoCap/RA-LIO pose → `/mavros/odometry/out` for PX4 EKF2 fusion |
+| `single_offboard_fsm` | `src/single_offboard_fsm.cpp` (2829L) | Legacy FSM + NMPC controller (UDP cmd dispatcher) |
+| `single_offboard_sml` | `src/single_offboard_sml.cpp` | Modern Boost.SML FSM (10 states: idle→low_thrust→hover→land→track, 50Hz) |
+| `px4_estimator` | `src/px4_estimator.cpp` | MoCap/RA-LIO pose → `/mavros/odometry/out` for PX4 EKF2 fusion (8 subs) |
+| `swarm_user_cmd` | `src/swarm_user_cmd.cpp` | Multi-drone UDP command parser |
 
 ## SOURCE MAP
 
@@ -50,7 +51,8 @@ test/
 - **C++14** (legacy FSM), **C++17** (SML FSM). Links `/usr/local/lib/libcasadi.so.3.7`
 - **SML FSM**: 10 states, 50Hz tick loop, `Select*` events from UDP dispatcher. ROS adapter via ports
 - **Legacy FSM**: `Set_TargetPosition` for cmd1-4, `AttitudeTarget` for cmd5-8
-- **Testing**: GTest (`single_offboard_sml_test.cpp`, 26 TEST_F) + rostest smoke test. Hand-rolled fake classes (no gmock)
+- **Testing**: GTest (`single_offboard_sml_test.cpp`, 26 TEST_F across 9×9=81 state transitions) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 7 interfaces: FakeClock, FakeAutopilot, FakeSetpoint, FakeNmpc, FakeReference, FakeMission, FakeLanding. No gmock.
+- **NMPC_test.cpp** is production controller code (FLAG_NMPC library), NOT a test file despite its name
 - **NMPC weights**: ROS params (`nmpc_Qpos*`, `nmpc_Rwx`). Horizon: 10pt @ 0.05s, 8-step MPC
 - **Thrust estimation**: `ThrEst::LSE()` RLS with `rho=0.998` — DO NOT CHANGE
 - **Boost.SML**: header-only in `third_party/` (not system dep)

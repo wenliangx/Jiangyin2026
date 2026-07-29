@@ -81,6 +81,13 @@
 
         <param name = "nmpc_hover_thrust" type = "double"  value = "0.390" />
 
+        <!-- MissionMachine/Super waypoint upload. Generate this file with:
+             rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
+        <param name="mission_super_waypoints_file"
+               value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
+               type="string"/>
+        <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
+
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
         <param name = "nmpc_Qposy" type = "double" value = "40.0" />

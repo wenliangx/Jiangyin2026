@@ -71,6 +71,15 @@ class MissionPort {
     horizon.clear();
     return false;
   }
+  virtual bool prepareSuperSegment(
+      int segment_index, double now, const TelemetrySnapshot& telemetry,
+      std::vector<ReferencePoint>& horizon) {
+    (void)segment_index;
+    (void)now;
+    (void)telemetry;
+    horizon.clear();
+    return false;
+  }
 };
 
 class PrecisionLandingPort {

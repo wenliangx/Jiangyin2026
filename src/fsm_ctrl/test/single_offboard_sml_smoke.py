@@ -200,7 +200,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
                          if timestamp >= start)
         self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
 
-    def test_core_cmd3_cmd4_debug_contracts(self):
+    def test_segmented_mission_cmd3_cmd4_cmd6_contracts(self):
         self._clear_observations()
         self._wait_for_node()
 
@@ -210,14 +210,12 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self.assertTrue(self._wait_for(
             lambda: len(self._super_flags) >= 1))
         self.assertTrue(self._wait_for(
-            lambda: any(abs(x - 1.0) < 1e-9 and abs(y) < 1e-9 and
-                        abs(z - 1.0) < 1e-9
-                        for _, x, y, z in self._reference_positions) and
+            lambda: any(z > 0.0
+                        for _, _, _, z in self._reference_positions) and
             len(self._feedback_positions) >= 1))
         self.assertTrue(self._wait_for(
-            lambda: any(abs(x - 1.0) < 1e-9 and abs(y) < 1e-9 and
-                        abs(z - 1.0) < 1e-9 and thrust > 0.0
-                        for _, x, y, z, thrust in self._nmpc_states)))
+            lambda: any(z > 0.0 and thrust > 0.0
+                        for _, _, _, z, thrust in self._nmpc_states)))
         self.assertTrue(self._wait_for(
             lambda: any(thrust > 0.0 for _, _, _, _, thrust in
                         self._attitudes)))
@@ -225,20 +223,36 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._send_udp_command(0)
         time.sleep(0.3)
         with self._lock:
-            ref_before_cmd4 = len(self._reference_positions)
+            super_before_cmd4 = len(self._super_flags)
             state_before_cmd4 = len(self._nmpc_states)
-            att_before_cmd4 = len(self._attitudes)
+        self._send_udp_command(4)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._super_flags) > super_before_cmd4))
+        self.assertTrue(self._wait_for(
+            lambda: len(self._nmpc_states) > state_before_cmd4))
+
+        self._send_udp_command(0)
+        time.sleep(0.3)
+        with self._lock:
+            ref_before_cmd6 = len(self._reference_positions)
+            state_before_cmd6 = len(self._nmpc_states)
+            att_before_cmd6 = len(self._attitudes)
         self._publish_pose(self._local_pose_pub, 0.2, -0.1, 0.8)
         self._publish_landing_offset()
-        self._send_udp_command(4)
-        self._publish_landing_offset()
+        self._send_udp_command(6)
+        deadline = time.monotonic() + 6.0
+        saw_landing_output = False
+        while time.monotonic() < deadline and not saw_landing_output:
+            self._publish_landing_offset()
+            with self._lock:
+                saw_landing_output = (
+                    len(self._reference_positions) > ref_before_cmd6 and
+                    len(self._nmpc_states) > state_before_cmd6)
+        self.assertTrue(saw_landing_output)
         self.assertTrue(self._wait_for(
-            lambda: len(self._reference_positions) > ref_before_cmd4 and
-            len(self._nmpc_states) > state_before_cmd4))
-        self.assertTrue(self._wait_for(
-            lambda: len(self._attitudes) > att_before_cmd4 and
+            lambda: len(self._attitudes) > att_before_cmd6 and
             any(thrust > 0.0 for _, _, _, _, thrust in
-                self._attitudes[att_before_cmd4:])))
+                self._attitudes[att_before_cmd6:])))
 
 
 if __name__ == "__main__":

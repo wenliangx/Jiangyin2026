@@ -1,0 +1,18 @@
+# Example SegmentedMissionMachine Super waypoint file.
+# Use scripts/record_super_waypoints.py to record points, then place them under
+# segments[0], segments[1], and segments[2] for cmd3, cmd4, and cmd5.
+# yaw unit: rad. SML uploads one waypoint per tick and assigns global increasing ids.
+frame_id: "world"
+segments:
+  - name: "cmd3_first_segment"
+    waypoints:
+      - {id: 0, x: 1.400000, y: 1.500000, z: 1.000000, mode: 2, is_map: 1, yaw: 0.000000, desired_speed: 0.000000}
+      - {id: 1, x: 1.600000, y: 1.200000, z: 1.650000, mode: 2, is_map: 1, yaw: 0.000000, desired_speed: 0.000000}
+  - name: "cmd4_second_segment"
+    waypoints:
+      - {id: 0, x: 2.600000, y: 0.700000, z: 1.700000, mode: 2, is_map: 1, yaw: 0.000000, desired_speed: 0.000000}
+      - {id: 1, x: 3.600000, y: 0.200000, z: 1.650000, mode: 2, is_map: 1, yaw: 0.000000, desired_speed: 0.000000}
+  - name: "cmd5_third_segment"
+    waypoints:
+      - {id: 0, x: 3.600000, y: 0.200000, z: 0.500000, mode: 2, is_map: 1, yaw: 3.140000, desired_speed: 0.000000}
+      - {id: 1, x: 0.000000, y: 0.000000, z: 0.500000, mode: 2, is_map: 1, yaw: 3.140000, desired_speed: 0.000000}

@@ -193,17 +193,17 @@ struct Fixture : testing::Test {
     }
   }
 
-  void SelectStateByIndex(StateMachine& machine, int index) {
+  void SendCommandEventByStateIndex(StateMachine& machine, int index) {
     switch (index) {
-      case 0: machine.process_event(SelectIdle{}); break;
-      case 1: machine.process_event(SelectLowThrust{}); break;
-      case 2: machine.process_event(SelectPositionHold{}); break;
-      case 3: machine.process_event(SelectNmpcHover{}); break;
-      case 4: machine.process_event(SelectLanding{}); break;
-      case 5: machine.process_event(SelectNmpcTrack{}); break;
-      case 6: machine.process_event(SelectSuperTrack{}); break;
-      case 7: machine.process_event(SelectEmergency{}); break;
-      case 8: machine.process_event(SelectSafeNoop{}); break;
+      case 0: machine.process_event(OnCommand0{}); break;
+      case 1: machine.process_event(OnCommand1{}); break;
+      case 2: machine.process_event(OnCommand2{}); break;
+      case 3: machine.process_event(OnCommand3{}); break;
+      case 4: machine.process_event(OnCommand4{}); break;
+      case 5: machine.process_event(OnCommand5{}); break;
+      case 6: machine.process_event(OnCommand6{}); break;
+      case 7: machine.process_event(OnCommand9{}); break;
+      case 8: machine.process_event(OnCommand7{}); break;
       default: ADD_FAILURE() << "Bad state index " << index; break;
     }
   }
@@ -256,62 +256,64 @@ struct Fixture : testing::Test {
   StateMachine sm;
 };
 
-TEST_F(Fixture, InitialAndEverySelectionReachExpectedState) {
+TEST_F(Fixture, InitialAndEveryCommandEventReachExpectedState) {
   EXPECT_TRUE(sm.is(boost::sml::state<Idle>));
-  sm.process_event(SelectLowThrust{});
+  sm.process_event(OnCommand1{});
   EXPECT_TRUE(sm.is(boost::sml::state<LowThrust>));
-  sm.process_event(SelectPositionHold{});
+  sm.process_event(OnCommand2{});
   EXPECT_TRUE(sm.is(boost::sml::state<PositionHold>));
-  sm.process_event(SelectNmpcHover{});
+  sm.process_event(OnCommand3{});
   EXPECT_TRUE(sm.is(boost::sml::state<NmpcHover>));
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
   EXPECT_TRUE(sm.is(boost::sml::state<Landing>));
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
   EXPECT_TRUE(sm.is(boost::sml::state<NmpcTrack>));
-  sm.process_event(SelectSuperTrack{});
+  sm.process_event(OnCommand6{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperTrack>));
-  sm.process_event(SelectEmergency{});
+  sm.process_event(OnCommand9{});
   EXPECT_TRUE(sm.is(boost::sml::state<Emergency>));
-  sm.process_event(SelectSafeNoop{});
+  sm.process_event(OnCommand7{});
   EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
-  sm.process_event(SelectIdle{});
+  sm.process_event(OnCommand8{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
+  sm.process_event(OnCommand0{});
   EXPECT_TRUE(sm.is(boost::sml::state<Idle>));
 }
 
-TEST_F(Fixture, EverySelectionEventWorksFromEveryState) {
+TEST_F(Fixture, EveryCommandEventWorksFromEveryState) {
   for (int source = 0; source < 9; ++source) {
     for (int target = 0; target < 9; ++target) {
       SCOPED_TRACE(std::string(StateName(source)) + " -> " +
                    StateName(target));
       StateMachine machine(context);
-      SelectStateByIndex(machine, source);
+      SendCommandEventByStateIndex(machine, source);
       ExpectStateByIndex(machine, source);
-      SelectStateByIndex(machine, target);
+      SendCommandEventByStateIndex(machine, target);
       ExpectStateByIndex(machine, target);
     }
   }
 }
 
-TEST_F(Fixture, DirectSelectNmpcTrackResetsOnceFromEverySourceState) {
+TEST_F(Fixture, DirectOnCommand5ResetsOnceFromEverySourceState) {
   for (int source = 0; source < 9; ++source) {
     SCOPED_TRACE(StateName(source));
     StateMachine machine(context);
-    SelectStateByIndex(machine, source);
-    const int resets_after_source_selection = reference.resets;
-    SelectStateByIndex(machine, 5);
-    EXPECT_EQ(resets_after_source_selection + 1, reference.resets);
+    SendCommandEventByStateIndex(machine, source);
+    const int resets_after_source_command = reference.resets;
+    SendCommandEventByStateIndex(machine, 5);
+    EXPECT_EQ(resets_after_source_command + 1, reference.resets);
     ExpectStateByIndex(machine, 5);
   }
 }
 
-TEST_F(Fixture, DirectSelectLandingResetsOnceFromEverySourceState) {
+TEST_F(Fixture, DirectOnCommand4ResetsOnceFromEverySourceState) {
   for (int source = 0; source < 9; ++source) {
     SCOPED_TRACE(StateName(source));
     StateMachine machine(context);
-    SelectStateByIndex(machine, source);
-    const int resets_after_source_selection = landing.resets;
-    SelectStateByIndex(machine, 4);
-    EXPECT_EQ(resets_after_source_selection + 1, landing.resets);
+    SendCommandEventByStateIndex(machine, source);
+    const int resets_after_source_command = landing.resets;
+    SendCommandEventByStateIndex(machine, 4);
+    EXPECT_EQ(resets_after_source_command + 1, landing.resets);
     ExpectStateByIndex(machine, 4);
   }
 }
@@ -399,7 +401,7 @@ TEST_F(Fixture, RepeatedCommandDoesNotReenterTrack) {
 
 TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoOutput) {
   sm.process_event(Tick{});
-  sm.process_event(SelectSafeNoop{});
+  sm.process_event(OnUnsupportedCommand{});
   sm.process_event(Tick{});
   EXPECT_TRUE(autopilot.calls.empty());
   EXPECT_TRUE(setpoint.positions.empty());
@@ -410,7 +412,7 @@ TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoOutput) {
 TEST_F(Fixture, LowThrustTickPublishesLegacyMessage) {
   SetOffboardAndArmed();
   context.config.low_thrust = 0.123;
-  sm.process_event(SelectLowThrust{});
+  sm.process_event(OnCommand1{});
   sm.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(context.config.low_thrust, setpoint.body_rates[0].thrust);
@@ -424,7 +426,7 @@ TEST_F(Fixture, LowThrustTickPublishesLegacyMessage) {
 TEST_F(Fixture, PositionHoldTickPublishesLegacyTarget) {
   SetOffboardAndArmed();
   context.config.position_hold_z = 1.75;
-  sm.process_event(SelectPositionHold{});
+  sm.process_event(OnCommand2{});
   sm.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.positions.size());
   EXPECT_DOUBLE_EQ(0.0, setpoint.positions[0].position.x);
@@ -443,7 +445,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
     context.telemetry.armed = false;
     context.last_service_request = 0.0;
     clock.value = 5.001;
-    SelectStateByIndex(sm, state);
+    SendCommandEventByStateIndex(sm, state);
     sm.process_event(Tick{});
     ASSERT_FALSE(autopilot.calls.empty());
     EXPECT_EQ("offboard", autopilot.calls[0]);
@@ -457,7 +459,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
     context.landing_reached = false;
     context.last_service_request = 0.0;
     clock.value = 5.001;
-    SelectStateByIndex(sm, state);
+    SendCommandEventByStateIndex(sm, state);
     sm.process_event(Tick{});
     EXPECT_TRUE(autopilot.calls.empty());
   }
@@ -469,14 +471,14 @@ TEST_F(Fixture, ActiveOffboardStatesDoNotRequestServicesWhenAlreadyReady) {
     ClearOutputs();
     SetOffboardAndArmed();
     clock.value = 100.0;
-    SelectStateByIndex(sm, state);
+    SendCommandEventByStateIndex(sm, state);
     sm.process_event(Tick{});
     EXPECT_TRUE(autopilot.calls.empty());
   }
 }
 
 TEST_F(Fixture, ServiceCooldownUsesStrictFiveSecondBoundary) {
-  sm.process_event(SelectLowThrust{});
+  sm.process_event(OnCommand1{});
   clock.value = 4.999;
   sm.process_event(Tick{});
   clock.value = 5.000;
@@ -490,7 +492,7 @@ TEST_F(Fixture, ServiceCooldownUsesStrictFiveSecondBoundary) {
 
 TEST_F(Fixture, FailedRequestAlsoRefreshesSharedCooldown) {
   autopilot.result = false;
-  sm.process_event(SelectLowThrust{});
+  sm.process_event(OnCommand1{});
   clock.value = 5.001;
   sm.process_event(Tick{});
   clock.value = 10.001;
@@ -504,7 +506,7 @@ TEST_F(Fixture, FailedRequestAlsoRefreshesSharedCooldown) {
 }
 
 TEST_F(Fixture, OffboardThenArmRequestsAreOrderedAndShareTimestamp) {
-  sm.process_event(SelectPositionHold{});
+  sm.process_event(OnCommand2{});
   clock.value = 5.001;
   sm.process_event(Tick{});
   context.telemetry.mode = "OFFBOARD";
@@ -523,7 +525,7 @@ TEST_F(Fixture, NmpcHoverForwardsTelemetryAndFiniteOutput) {
   context.telemetry.velocity = {4.0, 5.0, 6.0};
   context.telemetry.attitude = {0.7, 0.1, 0.2, 0.3};
   SetOffboardAndArmed();
-  sm.process_event(SelectNmpcHover{});
+  sm.process_event(OnCommand3{});
   sm.process_event(Tick{});
   EXPECT_EQ(1, nmpc.hover_calls);
   EXPECT_DOUBLE_EQ(1.0, nmpc.last_telemetry.position.x);
@@ -539,7 +541,7 @@ TEST_F(Fixture, NmpcHoverForwardsTelemetryAndFiniteOutput) {
 TEST_F(Fixture, NmpcHoverRejectsFailureAndNonFiniteOutput) {
   context.telemetry.mode = "OFFBOARD";
   context.telemetry.armed = true;
-  sm.process_event(SelectNmpcHover{});
+  sm.process_event(OnCommand3{});
   nmpc.hover_result = false;
   sm.process_event(Tick{});
   nmpc.hover_result = true;
@@ -550,7 +552,7 @@ TEST_F(Fixture, NmpcHoverRejectsFailureAndNonFiniteOutput) {
 
 TEST_F(Fixture, NmpcHoverRejectsAnyNonFiniteOutputField) {
   SetOffboardAndArmed();
-  sm.process_event(SelectNmpcHover{});
+  sm.process_event(OnCommand3{});
   for (int field = 0; field < 4; ++field) {
     SCOPED_TRACE(field);
     ClearOutputs();
@@ -579,7 +581,7 @@ TEST_F(Fixture, TrackUsesReferenceAndResetsExactlyOnReentry) {
   reference.points[0].velocity.y = 8.0;
   context.telemetry.position = {1.0, 2.0, 3.0};
   context.telemetry.velocity = {4.0, 5.0, 6.0};
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
   EXPECT_EQ(1, reference.resets);
   clock.value = 3.0;
   sm.process_event(Tick{});
@@ -604,8 +606,8 @@ TEST_F(Fixture, TrackUsesReferenceAndResetsExactlyOnReentry) {
   EXPECT_DOUBLE_EQ(5.0, setpoint.monitors[0].feedback.velocity.y);
   EXPECT_DOUBLE_EQ(0.4, setpoint.monitors[0].target.body_rate.x);
   EXPECT_DOUBLE_EQ(0.7, setpoint.monitors[0].target.thrust);
-  sm.process_event(SelectIdle{});
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand0{});
+  sm.process_event(OnCommand5{});
   EXPECT_EQ(2, reference.resets);
 }
 
@@ -618,7 +620,7 @@ TEST_F(Fixture, Cmd6UsesSuperMissionReferenceAndNmpcMonitor) {
   mission.super_points[0].velocity = {6.0, 12.0, 18.0};
   nmpc.track_output = BodyRateThrust{{0.6, 1.2, 1.8}, 0.46};
 
-  sm.process_event(SelectSuperTrack{});
+  sm.process_event(OnCommand6{});
   EXPECT_EQ(1, mission.resets);
   clock.value = 6.0;
   sm.process_event(Tick{});
@@ -647,7 +649,7 @@ TEST_F(Fixture, Cmd6UsesSuperMissionReferenceAndNmpcMonitor) {
 
 TEST_F(Fixture, Cmd6RejectsMissingReferenceSolveFailureAndBadOutput) {
   SetOffboardAndArmed();
-  sm.process_event(SelectSuperTrack{});
+  sm.process_event(OnCommand6{});
 
   mission.super_result = false;
   sm.process_event(Tick{});
@@ -684,7 +686,7 @@ TEST_F(Fixture, Cmd6RejectsMissingReferenceSolveFailureAndBadOutput) {
 TEST_F(Fixture, TrackRejectsMissingReferenceAndBadNmpcOutput) {
   context.telemetry.mode = "OFFBOARD";
   context.telemetry.armed = true;
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
   reference.result = false;
   sm.process_event(Tick{});
   reference.result = true;
@@ -700,7 +702,7 @@ TEST_F(Fixture, TrackRejectsMissingReferenceAndBadNmpcOutput) {
 
 TEST_F(Fixture, TrackDoesNotCallNmpcWithoutValidReference) {
   SetOffboardAndArmed();
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
 
   reference.result = false;
   sm.process_event(Tick{});
@@ -721,7 +723,7 @@ TEST_F(Fixture, TrackDoesNotCallNmpcWithoutValidReference) {
 
 TEST_F(Fixture, TrackRejectsNmpcSolveFailure) {
   SetOffboardAndArmed();
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
   nmpc.track_result = false;
   sm.process_event(Tick{});
   EXPECT_EQ(1, reference.horizon_calls);
@@ -732,7 +734,7 @@ TEST_F(Fixture, TrackRejectsNmpcSolveFailure) {
 
 TEST_F(Fixture, TrackRejectsAnyNonFiniteOutputField) {
   SetOffboardAndArmed();
-  sm.process_event(SelectNmpcTrack{});
+  sm.process_event(OnCommand5{});
   for (int field = 0; field < 4; ++field) {
     SCOPED_TRACE(field);
     ClearOutputs();
@@ -764,7 +766,7 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
   nmpc.track_output = BodyRateThrust{{0.2, 0.3, 0.4}, 0.5};
   clock.value = 12.0;
 
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
   EXPECT_EQ(1, landing.resets);
   sm.process_event(Tick{});
 
@@ -784,7 +786,7 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
 
 TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   SetOffboardAndArmed();
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
 
   landing.result = false;
   sm.process_event(Tick{});
@@ -819,7 +821,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
 TEST_F(Fixture, LandingCompletionKeepsLegacyLatchAndDisarmSemantics) {
   SetOffboardAndArmed();
   context.telemetry.position = {2.0, 3.0, 0.11};
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
   landing.complete = true;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
@@ -836,7 +838,7 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   context.config.landing_reference_z = 0.05;
   context.config.landing_tolerance_z = 0.05;
   context.telemetry.position = {4.0, 5.0, 0.10};
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
 
   sm.process_event(Tick{});
   context.telemetry.position.z = 0.06;
@@ -845,7 +847,7 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
 }
 
 TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
-  sm.process_event(SelectLanding{});
+  sm.process_event(OnCommand4{});
   context.landing_reached = true;
 
   context.telemetry.mode = "OFFBOARD";
@@ -868,7 +870,7 @@ TEST_F(Fixture, CoreFlightMachineRunsCoreStates) {
   CoreFlightStateMachine machine(context);
   EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
 
-  machine.process_event(SelectLowThrust{});
+  machine.process_event(OnCommand1{});
   EXPECT_TRUE(machine.is(boost::sml::state<ArmOnly>));
   clock.value = 5.1;
   machine.process_event(Tick{});
@@ -878,7 +880,7 @@ TEST_F(Fixture, CoreFlightMachineRunsCoreStates) {
   ClearOutputs();
   SetOffboardAndArmed();
   context.telemetry.position = {2.0, 3.0, 0.2};
-  machine.process_event(SelectPositionHold{});
+  machine.process_event(OnCommand2{});
   EXPECT_TRUE(machine.is(boost::sml::state<CoreHover>));
   machine.process_event(Tick{});
   EXPECT_EQ(1, nmpc.track_calls);
@@ -889,11 +891,62 @@ TEST_F(Fixture, CoreFlightMachineRunsCoreStates) {
   EXPECT_DOUBLE_EQ(1.0, nmpc.last_horizon.front().position.z);
 
   ClearOutputs();
-  machine.process_event(SelectEmergency{});
+  machine.process_event(OnCommand9{});
   machine.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.attitudes.size());
   EXPECT_DOUBLE_EQ(context.config.hover_thrust - 0.03,
                    setpoint.attitudes[0].thrust);
+}
+
+TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {
+  MissionStateMachine machine(context);
+  MissionCommandDispatcher dispatcher(machine, &reference, &mission);
+  EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
+
+  EXPECT_TRUE(dispatcher.update(1));
+  EXPECT_TRUE(machine.is(boost::sml::state<ArmOnly>));
+
+  EXPECT_TRUE(dispatcher.update(2));
+  EXPECT_TRUE(machine.is(boost::sml::state<NmpcHover>));
+
+  EXPECT_TRUE(dispatcher.update(3));
+  EXPECT_TRUE(machine.is(boost::sml::state<SuperTrack>));
+  EXPECT_EQ(1, mission.resets);
+
+  EXPECT_TRUE(dispatcher.update(4));
+  EXPECT_TRUE(machine.is(boost::sml::state<Landing>));
+  EXPECT_EQ(1, landing.resets);
+
+  EXPECT_TRUE(dispatcher.update(5));
+  EXPECT_TRUE(machine.is(boost::sml::state<SafeNoop>));
+}
+
+TEST_F(Fixture, SegmentedMissionMachineMapsCommandsToSegmentsAndLanding) {
+  SegmentedMissionStateMachine machine(context);
+  SegmentedMissionCommandDispatcher dispatcher(machine, &reference, &mission);
+  EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
+
+  EXPECT_TRUE(dispatcher.update(1));
+  EXPECT_TRUE(machine.is(boost::sml::state<ArmOnly>));
+
+  EXPECT_TRUE(dispatcher.update(2));
+  EXPECT_TRUE(machine.is(boost::sml::state<NmpcHover>));
+
+  EXPECT_TRUE(dispatcher.update(3));
+  EXPECT_TRUE(machine.is(boost::sml::state<SuperSegment1>));
+  EXPECT_EQ(1, mission.resets);
+
+  EXPECT_TRUE(dispatcher.update(4));
+  EXPECT_TRUE(machine.is(boost::sml::state<SuperSegment2>));
+  EXPECT_EQ(2, mission.resets);
+
+  EXPECT_TRUE(dispatcher.update(5));
+  EXPECT_TRUE(machine.is(boost::sml::state<SuperSegment3>));
+  EXPECT_EQ(3, mission.resets);
+
+  EXPECT_TRUE(dispatcher.update(6));
+  EXPECT_TRUE(machine.is(boost::sml::state<Landing>));
+  EXPECT_EQ(1, landing.resets);
 }
 
 TEST_F(Fixture, CoreFlightCmd3PublishesSuperControlAndLandingDebug) {
@@ -905,7 +958,7 @@ TEST_F(Fixture, CoreFlightCmd3PublishesSuperControlAndLandingDebug) {
   landing.points.front().position = {4.0, 5.0, 0.8};
   landing.result = true;
 
-  machine.process_event(SelectNmpcHover{});
+  machine.process_event(OnCommand3{});
   EXPECT_TRUE(machine.is(boost::sml::state<CoreSuperLanding>));
   machine.process_event(Tick{});
 
@@ -927,7 +980,7 @@ TEST_F(Fixture, CoreFlightCmd4PublishesLandingControl) {
   landing.points.front().position = {2.0, 2.0, 0.5};
   landing.result = true;
 
-  machine.process_event(SelectLanding{});
+  machine.process_event(OnCommand4{});
   EXPECT_TRUE(machine.is(boost::sml::state<CoreLanding>));
   machine.process_event(Tick{});
 
@@ -954,7 +1007,7 @@ TEST_F(Fixture, CoreFlightDispatcherMapsTrackCommandsToSafeNoop) {
 
 TEST_F(Fixture, EmergencyPublishesIdentityAttitudeAndLegacyThrust) {
   context.config.hover_thrust = 0.4;
-  sm.process_event(SelectEmergency{});
+  sm.process_event(OnCommand9{});
   sm.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.attitudes.size());
   EXPECT_DOUBLE_EQ(1.0, setpoint.attitudes[0].attitude.w);

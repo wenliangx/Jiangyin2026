@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   uav_vision_msgs
 )
 find_package(Eigen3 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 ################################################
 ## Declare ROS messages, services and actions ##
@@ -134,6 +135,7 @@ target_link_libraries(single_offboard_sml
   boost_sml
   dfbc att_nmpc FLAG_NMPC traj_gen nmpc_ctrl ctrl_math
   ${catkin_LIBRARIES}
+  yaml-cpp
   boost_system boost_filesystem
   Threads::Threads
   /usr/local/lib/libcasadi.so.3.7
@@ -141,6 +143,7 @@ target_link_libraries(single_offboard_sml
 
 catkin_install_python(PROGRAMS
   scripts/pose_monitor.py
+  scripts/record_super_waypoints.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
