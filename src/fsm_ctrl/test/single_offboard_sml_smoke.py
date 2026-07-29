@@ -204,6 +204,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._clear_observations()
         self._wait_for_node()
 
+        self._publish_pose(self._local_pose_pub, 0.0, 0.0, 1.0)
         self._send_udp_command(0)
         time.sleep(0.3)
         self._send_udp_command(3)

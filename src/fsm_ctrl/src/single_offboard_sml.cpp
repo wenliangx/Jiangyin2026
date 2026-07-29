@@ -786,7 +786,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
       horizon = super_planner_;
       return true;
     }
-    buildHoldHorizon(last, horizon);
+    buildCurrentHoldHorizon(telemetry, horizon);
     return true;
   }
 
@@ -885,6 +885,16 @@ class RosMissionPort final : public smlfsm::MissionPort {
     for (auto& reference : horizon) {
       reference.position = point.position;
       reference.attitude = attitude;
+    }
+  }
+
+  void buildCurrentHoldHorizon(
+      const smlfsm::TelemetrySnapshot& telemetry,
+      std::vector<smlfsm::ReferencePoint>& horizon) const {
+    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
+    for (auto& reference : horizon) {
+      reference.position = telemetry.position;
+      reference.attitude = telemetry.attitude;
     }
   }
 
