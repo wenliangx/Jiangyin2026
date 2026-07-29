@@ -847,6 +847,11 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_msgs::Flag message;
     fillCommonFlag1(point, message);
     super_waypoint_pub_.publish(message);
+    ROS_INFO("Published mission super waypoint id=%d segment=%d index=%zu "
+             "position=(%.3f, %.3f, %.3f) yaw=%.3f source=%s",
+             message.id, active_segment_index_, super_waypoint_upload_index_,
+             point.position.x, point.position.y, point.position.z, point.yaw,
+             waypoints_file_.empty() ? "built-in" : waypoints_file_.c_str());
   }
 
   void loadSuperTrajectory() {

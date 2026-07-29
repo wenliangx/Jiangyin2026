@@ -15,5 +15,4 @@ segments:
       - {id: 1, x: 13.887842, y: 4.331726, z: 0.750620, mode: 2, is_map: 1, yaw: 0.094252, desired_speed: 0.000000}
       - {id: 2, x: 13.809507, y: 4.354392, z: 0.092614, mode: 2, is_map: 1, yaw: -0.004607, desired_speed: 0.000000}
   - name: "cmd5_segment_3"
-    waypoints: 
-      - {id: 0, x: 13.809507, y: 4.354392, z: 0.092614, mode: 2, is_map: 1, yaw: -0.004607, desired_speed: 0.000000}
+    waypoints: []
