@@ -15,8 +15,6 @@ struct NmpcHover {};
 struct Landing {};
 struct NmpcTrack {};
 struct SuperTrack {};
-struct MissionTrack {};
-struct EgoTrack {};
 struct Emergency {};
 struct SafeNoop {};
 
@@ -27,8 +25,6 @@ struct SelectNmpcHover {};
 struct SelectLanding {};
 struct SelectNmpcTrack {};
 struct SelectSuperTrack {};
-struct SelectMissionTrack {};
-struct SelectEgoTrack {};
 struct SelectEmergency {};
 struct SelectSafeNoop {};
 struct Tick {};

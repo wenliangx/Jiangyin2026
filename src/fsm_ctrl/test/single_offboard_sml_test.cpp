@@ -82,25 +82,14 @@ class FakeNmpc final : public NmpcPort {
     output = track_output;
     return track_result;
   }
-  bool solveLegacy(const LegacyNmpcRequest& request,
-                   BodyRateThrust& output) override {
-    ++legacy_calls;
-    last_legacy = request;
-    output = legacy_output;
-    return legacy_result;
-  }
   int hover_calls{0};
   int track_calls{0};
-  int legacy_calls{0};
   bool hover_result{true};
   bool track_result{true};
-  bool legacy_result{true};
   BodyRateThrust hover_output{{0.1, 0.2, 0.3}, 0.4};
   BodyRateThrust track_output{{0.4, 0.5, 0.6}, 0.7};
-  BodyRateThrust legacy_output{{0.7, 0.8, 0.9}, 1.0};
   TelemetrySnapshot last_telemetry;
   std::vector<ReferencePoint> last_horizon;
-  LegacyNmpcRequest last_legacy;
 };
 
 class FakeReference final : public ReferenceProvider {
@@ -124,9 +113,8 @@ class FakeReference final : public ReferenceProvider {
 class FakeMission final : public MissionPort {
  public:
   void selectCommand(int command) override { selected_commands.push_back(command); }
-  void reset(MissionTrackMode value) override {
+  void reset() override {
     ++resets;
-    last_reset_mode = value;
   }
   bool prepareSuper(double value, const TelemetrySnapshot& telemetry,
                     std::vector<ReferencePoint>& output) override {
@@ -146,42 +134,16 @@ class FakeMission final : public MissionPort {
     output = core_super_points;
     return core_super_result;
   }
-  bool prepareMission(double value, const TelemetrySnapshot& telemetry,
-                      std::vector<ReferencePoint>& output) override {
-    ++mission_calls;
-    last_time = value;
-    last_telemetry = telemetry;
-    output = mission_points;
-    return mission_result;
-  }
-  bool prepareEgo(double value, const TelemetrySnapshot& telemetry,
-                  std::vector<ReferencePoint>& output) override {
-    ++ego_calls;
-    last_time = value;
-    last_telemetry = telemetry;
-    output = ego_points;
-    return ego_result;
-  }
-  bool wantsPrecisionLanding() const override { return precision_landing; }
-
   int resets{0};
-  MissionTrackMode last_reset_mode{MissionTrackMode::Super};
   int super_calls{0};
   int core_super_calls{0};
-  int mission_calls{0};
-  int ego_calls{0};
   double last_time{0.0};
   TelemetrySnapshot last_telemetry;
   bool super_result{true};
   bool core_super_result{true};
-  bool mission_result{true};
-  bool ego_result{true};
   std::vector<ReferencePoint> super_points{ReferencePoint{}};
   std::vector<ReferencePoint> core_super_points{ReferencePoint{}};
-  std::vector<ReferencePoint> mission_points{ReferencePoint{}};
-  std::vector<ReferencePoint> ego_points{ReferencePoint{}};
   std::vector<int> selected_commands;
-  bool precision_landing{false};
   Vec3 last_core_super_goal;
 };
 
@@ -225,10 +187,8 @@ struct Fixture : testing::Test {
       case 4: return "Landing";
       case 5: return "NmpcTrack";
       case 6: return "SuperTrack";
-      case 7: return "MissionTrack";
-      case 8: return "EgoTrack";
-      case 9: return "Emergency";
-      case 10: return "SafeNoop";
+      case 7: return "Emergency";
+      case 8: return "SafeNoop";
       default: return "Unknown";
     }
   }
@@ -242,10 +202,8 @@ struct Fixture : testing::Test {
       case 4: machine.process_event(SelectLanding{}); break;
       case 5: machine.process_event(SelectNmpcTrack{}); break;
       case 6: machine.process_event(SelectSuperTrack{}); break;
-      case 7: machine.process_event(SelectMissionTrack{}); break;
-      case 8: machine.process_event(SelectEgoTrack{}); break;
-      case 9: machine.process_event(SelectEmergency{}); break;
-      case 10: machine.process_event(SelectSafeNoop{}); break;
+      case 7: machine.process_event(SelectEmergency{}); break;
+      case 8: machine.process_event(SelectSafeNoop{}); break;
       default: ADD_FAILURE() << "Bad state index " << index; break;
     }
   }
@@ -259,10 +217,8 @@ struct Fixture : testing::Test {
       case 4: EXPECT_TRUE(machine.is(boost::sml::state<Landing>)); break;
       case 5: EXPECT_TRUE(machine.is(boost::sml::state<NmpcTrack>)); break;
       case 6: EXPECT_TRUE(machine.is(boost::sml::state<SuperTrack>)); break;
-      case 7: EXPECT_TRUE(machine.is(boost::sml::state<MissionTrack>)); break;
-      case 8: EXPECT_TRUE(machine.is(boost::sml::state<EgoTrack>)); break;
-      case 9: EXPECT_TRUE(machine.is(boost::sml::state<Emergency>)); break;
-      case 10: EXPECT_TRUE(machine.is(boost::sml::state<SafeNoop>)); break;
+      case 7: EXPECT_TRUE(machine.is(boost::sml::state<Emergency>)); break;
+      case 8: EXPECT_TRUE(machine.is(boost::sml::state<SafeNoop>)); break;
       default: ADD_FAILURE() << "Bad state index " << index; break;
     }
   }
@@ -277,14 +233,10 @@ struct Fixture : testing::Test {
     setpoint.monitors.clear();
     nmpc.hover_calls = 0;
     nmpc.track_calls = 0;
-    nmpc.legacy_calls = 0;
     nmpc.last_horizon.clear();
-    nmpc.last_legacy = LegacyNmpcRequest{};
     reference.horizon_calls = 0;
     mission.super_calls = 0;
     mission.core_super_calls = 0;
-    mission.mission_calls = 0;
-    mission.ego_calls = 0;
     landing.prepare_calls = 0;
   }
 
@@ -318,10 +270,6 @@ TEST_F(Fixture, InitialAndEverySelectionReachExpectedState) {
   EXPECT_TRUE(sm.is(boost::sml::state<NmpcTrack>));
   sm.process_event(SelectSuperTrack{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperTrack>));
-  sm.process_event(SelectMissionTrack{});
-  EXPECT_TRUE(sm.is(boost::sml::state<MissionTrack>));
-  sm.process_event(SelectEgoTrack{});
-  EXPECT_TRUE(sm.is(boost::sml::state<EgoTrack>));
   sm.process_event(SelectEmergency{});
   EXPECT_TRUE(sm.is(boost::sml::state<Emergency>));
   sm.process_event(SelectSafeNoop{});
@@ -331,8 +279,8 @@ TEST_F(Fixture, InitialAndEverySelectionReachExpectedState) {
 }
 
 TEST_F(Fixture, EverySelectionEventWorksFromEveryState) {
-  for (int source = 0; source < 11; ++source) {
-    for (int target = 0; target < 11; ++target) {
+  for (int source = 0; source < 9; ++source) {
+    for (int target = 0; target < 9; ++target) {
       SCOPED_TRACE(std::string(StateName(source)) + " -> " +
                    StateName(target));
       StateMachine machine(context);
@@ -345,7 +293,7 @@ TEST_F(Fixture, EverySelectionEventWorksFromEveryState) {
 }
 
 TEST_F(Fixture, DirectSelectNmpcTrackResetsOnceFromEverySourceState) {
-  for (int source = 0; source < 11; ++source) {
+  for (int source = 0; source < 9; ++source) {
     SCOPED_TRACE(StateName(source));
     StateMachine machine(context);
     SelectStateByIndex(machine, source);
@@ -357,7 +305,7 @@ TEST_F(Fixture, DirectSelectNmpcTrackResetsOnceFromEverySourceState) {
 }
 
 TEST_F(Fixture, DirectSelectLandingResetsOnceFromEverySourceState) {
-  for (int source = 0; source < 11; ++source) {
+  for (int source = 0; source < 9; ++source) {
     SCOPED_TRACE(StateName(source));
     StateMachine machine(context);
     SelectStateByIndex(machine, source);
@@ -385,9 +333,9 @@ TEST_F(Fixture, CommandDispatcherMapsCoreAndSafeNoopCommands) {
   EXPECT_TRUE(dispatcher.update(6));
   EXPECT_TRUE(sm.is(boost::sml::state<SuperTrack>));
   EXPECT_TRUE(dispatcher.update(7));
-  EXPECT_TRUE(sm.is(boost::sml::state<MissionTrack>));
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_TRUE(dispatcher.update(8));
-  EXPECT_TRUE(sm.is(boost::sml::state<EgoTrack>));
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_TRUE(dispatcher.update(9));
   EXPECT_TRUE(sm.is(boost::sml::state<Emergency>));
   for (const int command : {-1, 42}) {
@@ -407,11 +355,11 @@ TEST_F(Fixture, CommandDispatcherSuppressesRepeatedCoreAndUnknownCommands) {
   EXPECT_TRUE(sm.is(boost::sml::state<SuperTrack>));
 
   EXPECT_TRUE(dispatcher.update(7));
-  EXPECT_TRUE(sm.is(boost::sml::state<MissionTrack>));
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_FALSE(dispatcher.update(7));
 
   EXPECT_TRUE(dispatcher.update(8));
-  EXPECT_TRUE(sm.is(boost::sml::state<EgoTrack>));
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_FALSE(dispatcher.update(8));
 
   EXPECT_TRUE(dispatcher.update(42));
@@ -501,7 +449,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
     EXPECT_EQ("offboard", autopilot.calls[0]);
   }
 
-  for (const int state : {0, 7, 8, 9, 10}) {
+  for (const int state : {0, 7, 8}) {
     SCOPED_TRACE(StateName(state));
     ClearOutputs();
     context.telemetry.mode = "MANUAL";
@@ -672,7 +620,6 @@ TEST_F(Fixture, Cmd6UsesSuperMissionReferenceAndNmpcMonitor) {
 
   sm.process_event(SelectSuperTrack{});
   EXPECT_EQ(1, mission.resets);
-  EXPECT_EQ(MissionTrackMode::Super, mission.last_reset_mode);
   clock.value = 6.0;
   sm.process_event(Tick{});
 
@@ -696,86 +643,6 @@ TEST_F(Fixture, Cmd6UsesSuperMissionReferenceAndNmpcMonitor) {
   EXPECT_DOUBLE_EQ(1.0, setpoint.monitors[0].feedback.position.x);
   EXPECT_DOUBLE_EQ(4.0, setpoint.monitors[0].feedback.velocity.x);
   EXPECT_DOUBLE_EQ(0.46, setpoint.monitors[0].target.thrust);
-}
-
-TEST_F(Fixture, Cmd7And8UseLegacyMissionNmpcPipeline) {
-  for (const int state : {7, 8}) {
-    SCOPED_TRACE(StateName(state));
-    ClearOutputs();
-    context.telemetry.mode = "MANUAL";
-    context.telemetry.armed = false;
-    context.last_service_request = 0.0;
-    clock.value = 5.001;
-    auto& points = state == 7 ? mission.mission_points : mission.ego_points;
-    points = {ReferencePoint{}};
-    points[0].position = {10.0 + state, 20.0 + state, 30.0 + state};
-    points[0].velocity = {1.0 * state, 2.0 * state, 3.0 * state};
-    points[0].attitude = {0.5, 0.1, 0.2, 0.3};
-    nmpc.legacy_output = BodyRateThrust{{0.1 * state, 0.2 * state,
-                                         0.3 * state},
-                                        0.4 + 0.01 * state};
-    SelectStateByIndex(sm, state);
-    sm.process_event(Tick{});
-    EXPECT_TRUE(autopilot.calls.empty());
-    EXPECT_EQ(0, reference.horizon_calls);
-    EXPECT_EQ(0, nmpc.track_calls);
-    EXPECT_EQ(1, nmpc.legacy_calls);
-    if (state == 7) {
-      EXPECT_EQ(1, mission.mission_calls);
-      EXPECT_EQ(MissionTrackMode::Mission, mission.last_reset_mode);
-    } else {
-      EXPECT_EQ(1, mission.ego_calls);
-      EXPECT_EQ(MissionTrackMode::Ego, mission.last_reset_mode);
-    }
-    ASSERT_EQ(1u, nmpc.last_legacy.horizon.size());
-    EXPECT_DOUBLE_EQ(10.0 + state, nmpc.last_legacy.horizon[0].position.x);
-    EXPECT_DOUBLE_EQ(2.0 * state, nmpc.last_legacy.horizon[0].velocity.y);
-    EXPECT_DOUBLE_EQ(0.5, nmpc.last_legacy.horizon[0].attitude.w);
-    EXPECT_DOUBLE_EQ(0.3, nmpc.last_legacy.horizon[0].attitude.z);
-    EXPECT_DOUBLE_EQ(9.8, nmpc.last_legacy.desired_controls[0]);
-    EXPECT_DOUBLE_EQ(0.0, nmpc.last_legacy.desired_controls[1]);
-    EXPECT_DOUBLE_EQ(0.0, nmpc.last_legacy.desired_controls[2]);
-    EXPECT_DOUBLE_EQ(0.0, nmpc.last_legacy.desired_controls[3]);
-    ASSERT_EQ(1u, setpoint.body_rates.size());
-    EXPECT_DOUBLE_EQ(0.1 * state, setpoint.body_rates[0].body_rate.x);
-    EXPECT_DOUBLE_EQ(0.2 * state, setpoint.body_rates[0].body_rate.y);
-    EXPECT_DOUBLE_EQ(0.3 * state, setpoint.body_rates[0].body_rate.z);
-    EXPECT_DOUBLE_EQ(0.4 + 0.01 * state, setpoint.body_rates[0].thrust);
-    ASSERT_EQ(1u, setpoint.feedback_positions.size());
-    ASSERT_EQ(1u, setpoint.reference_positions.size());
-    EXPECT_DOUBLE_EQ(10.0 + state, setpoint.reference_positions[0].x);
-  }
-}
-
-TEST_F(Fixture, Cmd7And8CanHandOffToPrecisionLandingPipeline) {
-  SetOffboardAndArmed();
-  for (const int state : {7, 8}) {
-    SCOPED_TRACE(StateName(state));
-    ClearOutputs();
-    mission.precision_landing = true;
-    auto& points = state == 7 ? mission.mission_points : mission.ego_points;
-    points = {ReferencePoint{}};
-    points[0].position = {10.0 + state, 20.0 + state, 30.0 + state};
-    landing.points = {ReferencePoint{}};
-    landing.points[0].position = {1.0 * state, 2.0 * state, 0.9};
-    nmpc.track_output = BodyRateThrust{{0.2 * state, 0.3 * state,
-                                        0.4 * state},
-                                       0.55};
-
-    SelectStateByIndex(sm, state);
-    sm.process_event(Tick{});
-
-    EXPECT_EQ(1, landing.prepare_calls);
-    EXPECT_EQ(1, nmpc.track_calls);
-    EXPECT_EQ(0, nmpc.legacy_calls);
-    ASSERT_EQ(1u, nmpc.last_horizon.size());
-    EXPECT_DOUBLE_EQ(1.0 * state, nmpc.last_horizon[0].position.x);
-    ASSERT_EQ(1u, setpoint.body_rates.size());
-    EXPECT_DOUBLE_EQ(0.55, setpoint.body_rates[0].thrust);
-    ASSERT_EQ(1u, setpoint.monitors.size());
-    EXPECT_DOUBLE_EQ(1.0 * state,
-                     setpoint.monitors[0].references[0].position.x);
-  }
 }
 
 TEST_F(Fixture, Cmd6RejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -812,46 +679,6 @@ TEST_F(Fixture, Cmd6RejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_TRUE(setpoint.monitors.empty());
   EXPECT_EQ(1u, setpoint.reference_positions.size());
   EXPECT_EQ(1u, setpoint.feedback_positions.size());
-}
-
-TEST_F(Fixture, Cmd7And8RejectMissingReferenceSolveFailureAndBadOutput) {
-  SetOffboardAndArmed();
-  for (const int state : {7, 8}) {
-    SCOPED_TRACE(StateName(state));
-    ClearOutputs();
-    SelectStateByIndex(sm, state);
-    auto& result = state == 7 ? mission.mission_result : mission.ego_result;
-    auto& points = state == 7 ? mission.mission_points : mission.ego_points;
-
-    result = false;
-    sm.process_event(Tick{});
-    EXPECT_EQ(0, nmpc.legacy_calls);
-    EXPECT_TRUE(setpoint.body_rates.empty());
-    EXPECT_TRUE(setpoint.reference_positions.empty());
-    EXPECT_TRUE(setpoint.feedback_positions.empty());
-
-    result = true;
-    points.clear();
-    sm.process_event(Tick{});
-    EXPECT_EQ(0, nmpc.legacy_calls);
-
-    points = {ReferencePoint{}};
-    nmpc.legacy_result = false;
-    sm.process_event(Tick{});
-    EXPECT_EQ(1, nmpc.legacy_calls);
-    EXPECT_TRUE(setpoint.body_rates.empty());
-    EXPECT_EQ(1u, setpoint.reference_positions.size());
-    EXPECT_EQ(1u, setpoint.feedback_positions.size());
-
-    ClearOutputs();
-    points = {ReferencePoint{}};
-    nmpc.legacy_result = true;
-    nmpc.legacy_output.body_rate.z =
-        std::numeric_limits<double>::infinity();
-    sm.process_event(Tick{});
-    EXPECT_EQ(1, nmpc.legacy_calls);
-    EXPECT_TRUE(setpoint.body_rates.empty());
-  }
 }
 
 TEST_F(Fixture, TrackRejectsMissingReferenceAndBadNmpcOutput) {

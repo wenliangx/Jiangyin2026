@@ -46,13 +46,7 @@ namespace single_sml {
       boost::sml::state<NmpcTrack>,                                           \
   boost::sml::state<source_state> + boost::sml::event<SelectSuperTrack> /     \
       ResetSuperTrack{} =                                                     \
-      boost::sml::state<SuperTrack>,                                          \
-  boost::sml::state<source_state> + boost::sml::event<SelectMissionTrack> /   \
-      ResetMissionTrack{} =                                                   \
-      boost::sml::state<MissionTrack>,                                        \
-  boost::sml::state<source_state> + boost::sml::event<SelectEgoTrack> /       \
-      ResetEgoTrack{} =                                                       \
-      boost::sml::state<EgoTrack>
+      boost::sml::state<SuperTrack>
 
 struct CoreFlightMachine {
   auto operator()() const {
@@ -81,15 +75,11 @@ struct MissionMachine {
     return make_transition_table(
         *state<Idle> + event<Tick> / Noop{},
         state<SuperTrack> + event<Tick> / TickSuperTrack{},
-        state<MissionTrack> + event<Tick> / TickMissionTrack{},
-        state<EgoTrack> + event<Tick> / TickEgoTrack{},
         state<Landing> + event<Tick> / TickLanding{},
         state<Emergency> + event<Tick> / TickEmergency{},
         state<SafeNoop> + event<Tick> / Noop{},
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Idle),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(SuperTrack),
-        FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(MissionTrack),
-        FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(EgoTrack),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Landing),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Emergency),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(SafeNoop));
@@ -107,8 +97,6 @@ struct FullMissionMachine {
         state<Landing> + event<Tick> / TickLanding{},
         state<NmpcTrack> + event<Tick> / TickNmpcTrack{},
         state<SuperTrack> + event<Tick> / TickSuperTrack{},
-        state<MissionTrack> + event<Tick> / TickMissionTrack{},
-        state<EgoTrack> + event<Tick> / TickEgoTrack{},
         state<Emergency> + event<Tick> / TickEmergency{},
         state<SafeNoop> + event<Tick> / Noop{},
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Idle),
@@ -118,8 +106,6 @@ struct FullMissionMachine {
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Landing),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(NmpcTrack),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(SuperTrack),
-        FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(MissionTrack),
-        FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(EgoTrack),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(Emergency),
         FSM_CTRL_SML_FULL_SELECT_TRANSITIONS(SafeNoop));
   }

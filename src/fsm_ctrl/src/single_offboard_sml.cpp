@@ -24,7 +24,6 @@
 #include <ros/ros.h>
 #include <super_msgs/Flag.h>
 #include <traj_utils/Flag.h>
-#include <traj_utils/FlagState.h>
 #include <uav_vision_msgs/LandingOffset.h>
 #include <xmlrpcpp/XmlRpcValue.h>
 
@@ -59,10 +58,10 @@ constexpr double kInterval = 1.0 / kRateHz;
 constexpr std::size_t kHorizonPoints = 9;
 // planner topic 中按旧逻辑读取的参考点数。
 constexpr std::size_t kPlannerPoints = 6;
-// legacy younger_ctrl NMPC 使用的参考 horizon 点数。
-constexpr std::size_t kLegacyHorizonPoints = 6;
+// 精降调试 horizon 点数。
+constexpr std::size_t kLandingHorizonPoints = 6;
 
-// 旧任务航点的纯 C++ 表示，用于生成 cmd6/7/8 的 waypoint 消息。
+// Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
   int id{0};              // 航点编号。
   int mode{0};            // 下游 planner 使用的任务模式。
@@ -72,17 +71,8 @@ struct MissionPoint {
   int perc_mode{0};       // 感知模式字段，保留旧结构含义。
 };
 
-// 带时间戳的位姿缓存，用于把 apriltag 相机局部测量转换到全局坐标。
-struct TimedPose {
-  double stamp{0.0};      // 位姿时间戳。
-  smlfsm::Vec3 position;  // 当时的全局位置。
-  double roll{0.0};       // 当时的 roll。
-  double pitch{0.0};      // 当时的 pitch。
-  double yaw{0.0};        // 当时的 yaw。
-};
-
-// 构造旧版 ego/mission 任务航点表。
-std::vector<MissionPoint> createLegacyEgoTrajectory() {
+// 构造 Super 任务航点表。
+std::vector<MissionPoint> createSuperTrajectory() {
   return std::vector<MissionPoint>{
       {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 3},
       {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0},
@@ -93,17 +83,6 @@ std::vector<MissionPoint> createLegacyEgoTrajectory() {
       {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0},
       {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0},
   };
-}
-
-// 对单个标量做对称限幅，主要用于约束横向修正量。
-double clampSingle(double value, double limit) {
-  if (value > limit) {
-    return limit;
-  }
-  if (value < -limit) {
-    return -limit;
-  }
-  return value;
 }
 
 // Clock 的 ROS 实现，给纯 C++ Context 提供当前时间。
@@ -299,30 +278,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
         q_position, q_velocity, q_attitude, r_angular, r_thrust,
         hover_thrust));
 
-    double mq_px = 0.0, mq_py = 0.0, mq_pz = 0.0, mq_vx = 0.0, mq_vy = 0.0;
-    double mq_vz = 0.0, mq_q1 = 0.0, mq_q2 = 0.0, mq_q3 = 0.0, mq_q4 = 0.0;
-    double mr_a_bz = 0.0, mr_roll = 0.0, mr_pitch = 0.0, mr_yaw = 0.0;
-    private_node.param("nmpc_mQ_px", mq_px, mq_px);
-    private_node.param("nmpc_mQ_py", mq_py, mq_py);
-    private_node.param("nmpc_mQ_pz", mq_pz, mq_pz);
-    private_node.param("nmpc_mQ_vx", mq_vx, mq_vx);
-    private_node.param("nmpc_mQ_vy", mq_vy, mq_vy);
-    private_node.param("nmpc_mQ_vz", mq_vz, mq_vz);
-    private_node.param("nmpc_mQ_q1", mq_q1, mq_q1);
-    private_node.param("nmpc_mQ_q2", mq_q2, mq_q2);
-    private_node.param("nmpc_mQ_q3", mq_q3, mq_q3);
-    private_node.param("nmpc_mQ_q4", mq_q4, mq_q4);
-    private_node.param("nmpc_mR_a_BZ", mr_a_bz, mr_a_bz);
-    private_node.param("nmpc_mR_roll", mr_roll, mr_roll);
-    private_node.param("nmpc_mR_pitch", mr_pitch, mr_pitch);
-    private_node.param("nmpc_mR_yaw", mr_yaw, mr_yaw);
-    Eigen::Matrix<float, 10, 1> legacy_q;
-    Eigen::Matrix<float, 4, 1> legacy_r;
-    legacy_q << mq_px, mq_py, mq_pz, mq_vx, mq_vy, mq_vz, mq_q1, mq_q2,
-        mq_q3, mq_q4;
-    legacy_r << mr_a_bz, mr_roll, mr_pitch, mr_yaw;
-    legacy_controller_.reset(
-        new NMPC_Ctrller(5, 0.1, kInterval, hover_thrust, legacy_q, legacy_r));
   }
 
   bool solveHover(const smlfsm::TelemetrySnapshot& telemetry,
@@ -338,55 +293,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
                   const std::vector<smlfsm::ReferencePoint>& horizon,
                   smlfsm::BodyRateThrust& command) override {
     return solve(telemetry, horizon, command);
-  }
-
-  bool solveLegacy(const smlfsm::LegacyNmpcRequest& request,
-                   smlfsm::BodyRateThrust& command) override {
-    if (!legacy_controller_ ||
-        request.horizon.size() < kLegacyHorizonPoints) {
-      return false;
-    }
-    Eigen::Matrix<float, 10, 1> current;
-    current << request.telemetry.position.x, request.telemetry.position.y,
-        request.telemetry.position.z, request.telemetry.velocity.x,
-        request.telemetry.velocity.y, request.telemetry.velocity.z,
-        request.telemetry.attitude.w, request.telemetry.attitude.x,
-        request.telemetry.attitude.y, request.telemetry.attitude.z;
-
-    Eigen::Matrix<float, 60, 1> desired;
-    for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-      const auto& point = request.horizon[index];
-      const std::size_t offset = index * 10;
-      desired(offset + 0) = point.position.x;
-      desired(offset + 1) = point.position.y;
-      desired(offset + 2) = point.position.z;
-      desired(offset + 3) = point.velocity.x;
-      desired(offset + 4) = point.velocity.y;
-      desired(offset + 5) = point.velocity.z;
-      desired(offset + 6) = point.attitude.w;
-      desired(offset + 7) = point.attitude.x;
-      desired(offset + 8) = point.attitude.y;
-      desired(offset + 9) = point.attitude.z;
-    }
-
-    Eigen::Matrix<float, 4, 1> desired_controls;
-    desired_controls << request.desired_controls[0], request.desired_controls[1],
-        request.desired_controls[2], request.desired_controls[3];
-
-    try {
-      legacy_controller_->optimal_solution(current, desired, desired_controls);
-      if (!legacy_controller_->Acc2Trust()) {
-        return false;
-      }
-    } catch (const std::exception& error) {
-      ROS_ERROR_THROTTLE(1.0, "Legacy NMPC solve failed: %s", error.what());
-      return false;
-    }
-    const Eigen::Matrix<float, 4, 1> output =
-        legacy_controller_->get_control_command();
-    command.thrust = output(0);
-    command.body_rate = {output(1), output(2), output(3)};
-    return smlfsm::Context::finite(command);
   }
 
  private:
@@ -428,7 +334,6 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
-  std::unique_ptr<NMPC_Ctrller> legacy_controller_;  // cmd7/8 使用的旧版 NMPC。
 };
 
 // cmd5 参考轨迹提供器：按 planner、内部轨迹、固定悬停的优先级生成 horizon。
@@ -450,8 +355,6 @@ class RosReferenceProvider final : public smlfsm::ReferenceProvider {
   void selectCommand(int command) override {
     switch (command) {
       case 6: mode_ = Mode::kSuperTrack; break;
-      case 7: mode_ = Mode::kMissionTrack; break;
-      case 8: mode_ = Mode::kEgoTrack; break;
       default: mode_ = Mode::kNmpcTrack; break;
     }
   }
@@ -518,7 +421,7 @@ class RosReferenceProvider final : public smlfsm::ReferenceProvider {
 
  private:
   // 参考提供器内部模式，用于区分 cmd5 和任务态 fallback。
-  enum class Mode { kNmpcTrack, kSuperTrack, kMissionTrack, kEgoTrack };
+  enum class Mode { kNmpcTrack, kSuperTrack };
 
   // 没有 planner/内部轨迹时使用的固定高度。
   double fallbackAltitude() const {
@@ -659,7 +562,7 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
   void buildConstantHorizon(
       const smlfsm::Vec3& target, const smlfsm::Quaternion& attitude,
       std::vector<smlfsm::ReferencePoint>& horizon) const {
-    horizon.assign(kLegacyHorizonPoints, smlfsm::ReferencePoint{});
+    horizon.assign(kLandingHorizonPoints, smlfsm::ReferencePoint{});
     for (auto& point : horizon) {
       point.position = target;
       point.attitude = attitude;
@@ -688,35 +591,25 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
   double loss_hold_seconds_{0.5};
 };
 
-// cmd6/7/8 任务轨迹适配器：负责 waypoint 发布、planner 缓存、感知滤波和 legacy horizon。
+// Super 任务轨迹适配器：负责 waypoint 发布和 planner 缓存。
 class RosMissionPort final : public smlfsm::MissionPort {
  public:
   explicit RosMissionPort(ros::NodeHandle& node)
       : super_waypoint_pub_(node.advertise<super_msgs::Flag>(
-            "/super/flag_waypoint", 10)),
-        ego_waypoint_pub_(node.advertise<traj_utils::Flag>(
-            "/ego_planner/flag_msg", 10)) {
-    reset(smlfsm::MissionTrackMode::Super);
+            "/super/flag_waypoint", 10)) {
+    reset();
   }
 
-  void selectCommand(int command) override {
-    selected_command_ = command;
-    if (command != 7 && command != 8) {
-      precision_landing_requested_ = false;
-    }
-  }
+  void selectCommand(int /*command*/) override {}
 
-  void reset(smlfsm::MissionTrackMode mode) override {
-    (void)mode;
-    // 旧版 cmd6/7/8 的任务进度本来由模块级静态变量保存。
-    // 为了行为兼容，状态切换时不重置 need_generate_traj_、ego_traj_count_
-    // 或 cmd7 阶段计数；感知回调会在需要时标记重新生成轨迹。
+  void reset() override {
+    // 旧版 super 航点进度本来由模块级静态变量保存；切换状态时不重置。
   }
 
   // cmd6：发布任务航点，并优先使用 super planner 返回的 horizon。
   bool prepareSuper(double /*now*/, const smlfsm::TelemetrySnapshot& /*telemetry*/,
                     std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Super);
+    publishNextWaypoint();
     if (super_planner_valid_) {
       horizon = super_planner_;
       return true;
@@ -751,49 +644,6 @@ class RosMissionPort final : public smlfsm::MissionPort {
     return true;
   }
 
-  // cmd7：发布 mission 航点，按旧版穿环/降落流程生成 legacy horizon。
-  bool prepareMission(double /*now*/, const smlfsm::TelemetrySnapshot& telemetry,
-                      std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Mission);
-    buildMissionHorizon(telemetry);
-    horizon = last_mission_horizon_;
-    applyMissionYaw(telemetry.attitude, horizon);
-    return !horizon.empty();
-  }
-
-  // cmd8：发布 ego 航点，并使用 ego planner 返回的 horizon。
-  bool prepareEgo(double /*now*/, const smlfsm::TelemetrySnapshot& telemetry,
-                  std::vector<smlfsm::ReferencePoint>& horizon) override {
-    publishNextWaypoint(smlfsm::MissionTrackMode::Ego);
-    if (!ego_planner_valid_) {
-      horizon.clear();
-      return false;
-    }
-    horizon = ego_planner_;
-    applyMissionYaw(telemetry.attitude, horizon);
-    return !horizon.empty();
-  }
-
-  bool wantsPrecisionLanding() const override {
-    return precision_landing_requested_;
-  }
-
-  // 接收 ego planner 的轨迹输出。
-  void updatePlanner(const traj_utils::Flag& message) {
-    ego_planner_.clear();
-    for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-      smlfsm::ReferencePoint point;
-      point.position = {message.cmd[index].position.x,
-                        message.cmd[index].position.y,
-                        message.cmd[index].position.z};
-      point.velocity = {message.cmd[index].velocity.x,
-                        message.cmd[index].velocity.y,
-                        message.cmd[index].velocity.z};
-      ego_planner_.push_back(point);
-    }
-    ego_planner_valid_ = true;
-  }
-
   // 接收 super planner 的轨迹输出。
   void updateSuperPlanner(const super_msgs::Flag& message) {
     super_planner_.clear();
@@ -820,92 +670,20 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_planner_valid_ = true;
   }
 
-  // 接收 ego planner 状态，用于旧任务完成/阶段切换判断。
-  void updateEgoState(const traj_utils::FlagState& message) {
-    ego_now_id_ = message.now_id;
-    ego_touch_goal_ = message.touch_goal;
-    if (ego_now_id_ == static_cast<int>(createLegacyEgoTrajectory().size()) - 1 &&
-        ego_touch_goal_) {
-      task1_ = 6;
-    }
-  }
-
-  // 记录飞行器历史位姿，供 apriltag 测量按时间戳匹配。
-  void recordTelemetryPose(double stamp,
-                           const smlfsm::TelemetrySnapshot& telemetry) {
-    TimedPose pose;
-    pose.stamp = stamp;
-    pose.position = telemetry.position;
-    quaternionToEuler(telemetry.attitude, pose.roll, pose.pitch, pose.yaw);
-    if (pose_history_.size() >= kPoseHistorySize) {
-      pose_history_.erase(pose_history_.begin());
-    }
-    pose_history_.push_back(pose);
-  }
-
-  // 更新圆环位置观测；通过中值均值滤波后触发重新生成任务轨迹。
-  void updateRingPose(const geometry_msgs::PoseStamped& message) {
-    const smlfsm::Vec3 updated{message.pose.position.x,
-                               message.pose.position.y,
-                               message.pose.position.z};
-    if (!near(updated, ring2_pose_, 1.0)) {
-      return;
-    }
-    smlfsm::Vec3 filtered;
-    if (!medianAverageFilter(ring2_filter_, updated, kRing2FilterSize,
-                             filtered)) {
-      return;
-    }
-    if (!near(filtered, ring2_pose_, 0.10)) {
-      need_generate_traj_ = true;
-      ring2_pose_ = filtered;
-    }
-  }
-
-  // 更新 apriltag 观测：把相机局部测量转换到全局坐标并滤波。
-  void updateApriltagPose(const geometry_msgs::PoseStamped& message) {
-    if (ctl_land_count_ >= 230) {
-      return;
-    }
-    const double stamp = message.header.stamp.isZero()
-                             ? ros::Time::now().toSec()
-                             : message.header.stamp.toSec();
-    const TimedPose base = nearestPose(stamp);
-    const smlfsm::Vec3 local_flipped{-message.pose.position.x,
-                                     -message.pose.position.y,
-                                     message.pose.position.z};
-    const smlfsm::Vec3 global = localToGlobal(base, local_flipped);
-    if (!near(global, ap_pose_, 2.0)) {
-      return;
-    }
-    smlfsm::Vec3 filtered;
-    if (!medianFilter(ap_filter_, global, kApriltagFilterSize, filtered)) {
-      return;
-    }
-    ap_pose_ = filtered;
-    is_found_ap_ = true;
-  }
-
  private:
-  // 如果任务轨迹需要刷新，就向 super/ego planner 发布下一个 waypoint。
-  void publishNextWaypoint(smlfsm::MissionTrackMode mode) {
+  // 如果任务轨迹需要刷新，就向 super planner 发布下一个 waypoint。
+  void publishNextWaypoint() {
     if (!need_generate_traj_) {
       return;
     }
-    ego_traj_ = createLegacyEgoTrajectory();
-    if (ego_traj_count_ < ego_traj_.size()) {
-      if (mode == smlfsm::MissionTrackMode::Super) {
-        publishSuperWaypoint(ego_traj_[ego_traj_count_]);
-      } else {
-        publishEgoWaypoint(ego_traj_[ego_traj_count_]);
-      }
+    super_traj_ = createSuperTrajectory();
+    if (super_traj_count_ < super_traj_.size()) {
+      publishSuperWaypoint(super_traj_[super_traj_count_]);
     }
-    ++ego_traj_count_;
-    if (ego_traj_count_ >= ego_traj_.size()) {
+    ++super_traj_count_;
+    if (super_traj_count_ >= super_traj_.size()) {
       need_generate_traj_ = false;
-      ego_traj_count_ = mode == smlfsm::MissionTrackMode::Mission
-                            ? static_cast<std::size_t>(std::max(0, ego_now_id_))
-                            : 0u;
+      super_traj_count_ = 0u;
     }
   }
 
@@ -916,27 +694,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_waypoint_pub_.publish(message);
   }
 
-  // 发布 ego planner 使用的 waypoint 消息。
-  void publishEgoWaypoint(const MissionPoint& point) {
-    traj_utils::Flag message;
-    fillCommonFlag(point, message);
-    ego_waypoint_pub_.publish(message);
-  }
-
-  // 填充 super_msgs::Flag 和 traj_utils::Flag 共有字段。
-  template <typename Message>
-  void fillCommonFlag(const MissionPoint& point, Message& message) {
-    message.header.stamp = ros::Time::now();
-    message.header.frame_id = "world";
-    message.id = point.id;
-    message.mode = point.mode;
-    message.is_map = point.is_map;
-    message.position.x = point.position.x;
-    message.position.y = point.position.y;
-    message.position.z = point.position.z;
-  }
-
-    void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
+  void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
     message.id = point.id;
@@ -949,283 +707,12 @@ class RosMissionPort final : public smlfsm::MissionPort {
     message.position.z = point.position.z;
   }
 
-  // 将 legacy horizon 设置成同一个固定位置。
-  void setConstantHorizon(const smlfsm::Vec3& position) {
-    last_mission_horizon_.assign(kLegacyHorizonPoints, smlfsm::ReferencePoint{});
-    for (auto& point : last_mission_horizon_) {
-      point.position = position;
-    }
-  }
-
-  // 按旧版 cmd7 阶段机生成穿第二个环、飞向 apriltag、下降的参考 horizon。
-  void buildMissionHorizon(const smlfsm::TelemetrySnapshot& telemetry) {
-    if (selected_command_ != 7 || task1_ != 6) {
-      if (last_mission_horizon_.empty()) {
-        setConstantHorizon({0.0, 0.0, 1.0});
-      }
-      return;
-    }
-    const smlfsm::Vec3 dynringpost{ring2_pose_.x - 1.0, ring2_pose_.y,
-                                   ring2_pose_.z};
-    if (!is_arrive_ring2_ && !is_crossed_ring2_) {
-      last_mission_horizon_.clear();
-      const double delta_y =
-          0.4 * clampSingle(ring2_pose_.y - telemetry.position.y, 0.1);
-      for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-        smlfsm::ReferencePoint point;
-        point.position.x = ring2_pose_.x + 1.0 - 0.01 * ring2_approach_count_;
-        point.position.y = ring2_pose_.y + index * delta_y / 3.0;
-        point.position.z = 1.65;
-        last_mission_horizon_.push_back(point);
-      }
-      if (++ring2_approach_count_ == 100) {
-        is_arrive_ring2_ = true;
-      }
-      return;
-    }
-    if (is_arrive_ring2_ && !is_crossed_ring2_) {
-      last_mission_horizon_.clear();
-      for (std::size_t index = 0; index < kLegacyHorizonPoints; ++index) {
-        smlfsm::ReferencePoint point;
-        point.position.x = ring2_pose_.x - 0.01 * ring2_cross_count_;
-        point.position.y = ring2_pose_.y;
-        point.position.z = 1.65;
-        last_mission_horizon_.push_back(point);
-      }
-      if (++ring2_cross_count_ == 100) {
-        is_crossed_ring2_ = true;
-      }
-      return;
-    }
-    if (!is_arrive_r2_postpoint_) {
-      if (count1_ < 150) {
-        ++count1_;
-        const double delta_x = (appre_pose_.x - dynringpost.x) / 150.0;
-        const double delta_y = (appre_pose_.y - dynringpost.y) / 150.0;
-        setConstantHorizon({dynringpost.x + delta_x * count1_,
-                            dynringpost.y + delta_y * count1_, 1.65});
-      } else {
-        is_arrive_r2_postpoint_ = true;
-      }
-      return;
-    }
-    if (!is_found_ap_ && !is_arrive_ap_prepoint_) {
-      return;
-    }
-    if (is_found_ap_ && !is_arrive_ap_prepoint_) {
-      if (count2_ < 150) {
-        ++count2_;
-        const double delta_x = (ap_pose_.x - appre_pose_.x) / 150.0;
-        const double delta_y = (ap_pose_.y - appre_pose_.y) / 150.0;
-        setConstantHorizon({appre_pose_.x + delta_x * count2_,
-                            appre_pose_.y + delta_y * count2_, 1.65});
-      } else {
-        is_arrive_ap_prepoint_ = true;
-      }
-      return;
-    }
-    if (is_found_ap_ && is_arrive_ap_prepoint_) {
-      apland_ = true;
-      precision_landing_requested_ = true;
-      setConstantHorizon({telemetry.position.x, telemetry.position.y,
-                          telemetry.position.z});
-    }
-  }
-
-  // 给 mission/ego horizon 补 yaw 参考，沿用旧版 YawSmooth 行为。
-  void applyMissionYaw(const smlfsm::Quaternion& current_attitude,
-                       std::vector<smlfsm::ReferencePoint>& horizon) {
-    if (horizon.empty()) {
-      return;
-    }
-    if (ego_traj_.empty()) {
-      ego_traj_ = createLegacyEgoTrajectory();
-    }
-    const int clamped_id =
-        std::max(0, std::min<int>(ego_now_id_, ego_traj_.size() - 1));
-    yaw_now_ = yawFromQuaternion(current_attitude);
-    const double yaw = YawSmooth(yaw_now_, ego_traj_[clamped_id].yaw);
-    const Eigen::Quaterniond quat = EulerToQuat(0.0, 0.0, yaw);
-    for (auto& point : horizon) {
-      point.attitude = {quat.w(), quat.x(), quat.y(), quat.z()};
-    }
-  }
-
-  // 从四元数中提取 yaw。
-  static double yawFromQuaternion(const smlfsm::Quaternion& quat) {
-    return std::atan2(2.0 * (quat.w * quat.z + quat.x * quat.y),
-                      1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z));
-  }
-
-  // 判断三维向量是否在给定容差范围内。
-  static bool near(const smlfsm::Vec3& value, const smlfsm::Vec3& reference,
-                   double tolerance) {
-    return std::abs(value.x - reference.x) < tolerance &&
-           std::abs(value.y - reference.y) < tolerance &&
-           std::abs(value.z - reference.z) < tolerance;
-  }
-
-  // 中值滤波：窗口满后输出每个轴的中位数。
-  static bool medianFilter(std::vector<smlfsm::Vec3>& filter,
-                           const smlfsm::Vec3& sample, std::size_t size,
-                           smlfsm::Vec3& result) {
-    pushFilterSample(filter, sample, size);
-    if (filter.size() < size) {
-      return false;
-    }
-    result.x = medianComponent(filter, 0);
-    result.y = medianComponent(filter, 1);
-    result.z = medianComponent(filter, 2);
-    return true;
-  }
-
-  // 去掉最大/最小值后的均值滤波，降低圆环位置跳变影响。
-  static bool medianAverageFilter(std::vector<smlfsm::Vec3>& filter,
-                                  const smlfsm::Vec3& sample,
-                                  std::size_t size, smlfsm::Vec3& result) {
-    pushFilterSample(filter, sample, size);
-    if (filter.size() < size) {
-      return false;
-    }
-    result.x = trimmedAverageComponent(filter, 0);
-    result.y = trimmedAverageComponent(filter, 1);
-    result.z = trimmedAverageComponent(filter, 2);
-    return true;
-  }
-
-  // 维护固定长度滤波窗口。
-  static void pushFilterSample(std::vector<smlfsm::Vec3>& filter,
-                               const smlfsm::Vec3& sample, std::size_t size) {
-    if (filter.size() >= size) {
-      filter.erase(filter.begin());
-    }
-    filter.push_back(sample);
-  }
-
-  // 取向量指定轴的分量，供滤波排序复用。
-  static double component(const smlfsm::Vec3& value, int axis) {
-    if (axis == 0) {
-      return value.x;
-    }
-    if (axis == 1) {
-      return value.y;
-    }
-    return value.z;
-  }
-
-  // 计算某个轴的中位数。
-  static double medianComponent(const std::vector<smlfsm::Vec3>& filter,
-                                int axis) {
-    std::vector<smlfsm::Vec3> sorted = filter;
-    std::sort(sorted.begin(), sorted.end(),
-              [axis](const smlfsm::Vec3& left, const smlfsm::Vec3& right) {
-                return component(left, axis) > component(right, axis);
-              });
-    return component(sorted[sorted.size() / 2], axis);
-  }
-
-  // 计算某个轴去掉首尾极值后的均值。
-  static double trimmedAverageComponent(
-      const std::vector<smlfsm::Vec3>& filter, int axis) {
-    std::vector<smlfsm::Vec3> sorted = filter;
-    std::sort(sorted.begin(), sorted.end(),
-              [axis](const smlfsm::Vec3& left, const smlfsm::Vec3& right) {
-                return component(left, axis) > component(right, axis);
-              });
-    double sum = 0.0;
-    for (std::size_t index = 1; index + 1 < sorted.size(); ++index) {
-      sum += component(sorted[index], axis);
-    }
-    return sum / static_cast<double>(sorted.size() - 2);
-  }
-
-  // 从历史位姿中查找时间戳最近的一帧。
-  TimedPose nearestPose(double stamp) const {
-    if (pose_history_.empty()) {
-      TimedPose fallback;
-      fallback.stamp = stamp;
-      return fallback;
-    }
-    auto best = pose_history_.begin();
-    double best_delta = std::abs(stamp - best->stamp);
-    for (auto it = pose_history_.begin() + 1; it != pose_history_.end(); ++it) {
-      const double delta = std::abs(stamp - it->stamp);
-      if (delta < best_delta) {
-        best = it;
-        best_delta = delta;
-      }
-    }
-    return *best;
-  }
-
-  // 将相机/机体系局部坐标转换为全局坐标。
-  static smlfsm::Vec3 localToGlobal(const TimedPose& base,
-                                    const smlfsm::Vec3& local) {
-    const double cr = std::cos(base.roll);
-    const double sr = std::sin(base.roll);
-    const double cp = std::cos(base.pitch);
-    const double sp = std::sin(base.pitch);
-    const double cy = std::cos(base.yaw);
-    const double sy = std::sin(base.yaw);
-
-    smlfsm::Vec3 global;
-    global.x = cp * cy * local.x + (sr * sp * cy - cr * sy) * local.y +
-               (cr * sp * cy + sr * sy) * local.z + base.position.x;
-    global.y = cp * sy * local.x + (sr * sp * sy + cr * cy) * local.y +
-               (cr * sp * sy - sr * cy) * local.z + base.position.y;
-    global.z = sp * local.x + sr * cp * local.y + cr * cp * local.z +
-               base.position.z;
-    return global;
-  }
-
-  // 四元数转欧拉角，供 apriltag 坐标转换使用。
-  static void quaternionToEuler(const smlfsm::Quaternion& quat, double& roll,
-                                double& pitch, double& yaw) {
-    roll = std::atan2(2.0 * (quat.w * quat.x + quat.y * quat.z),
-                      1.0 - 2.0 * (quat.x * quat.x + quat.y * quat.y));
-    const double sinp = 2.0 * (quat.w * quat.y - quat.z * quat.x);
-    pitch = std::abs(sinp) >= 1.0 ? std::copysign(M_PI / 2.0, sinp)
-                                  : std::asin(sinp);
-    yaw = yawFromQuaternion(quat);
-  }
-
   ros::Publisher super_waypoint_pub_;  // 发给 super planner 的 waypoint topic。
-  ros::Publisher ego_waypoint_pub_;    // 发给 ego planner 的 waypoint topic。
-  static constexpr std::size_t kPoseHistorySize = 200;
-  static constexpr std::size_t kRing2FilterSize = 7;
-  static constexpr std::size_t kApriltagFilterSize = 5;
-  int selected_command_{0};           // 当前选择的任务命令。
   bool need_generate_traj_{true};     // 是否需要重新向 planner 发布 waypoint。
-  std::size_t ego_traj_count_{0};     // 下一个要发布的任务航点序号。
-  int ego_now_id_{0};                 // ego planner 当前航点 id。
-  bool ego_touch_goal_{false};        // ego planner 是否到达当前目标。
-  int task1_{0};                      // 旧版 cmd7 阶段触发变量。
+  std::size_t super_traj_count_{0};   // 下一个要发布的任务航点序号。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
-  bool ego_planner_valid_{false};     // 是否已有 ego planner 输出。
-  bool is_arrive_ring2_{false};       // 是否到达第二个圆环前。
-  bool is_crossed_ring2_{false};      // 是否已穿过第二个圆环。
-  bool is_arrive_r2_postpoint_{false};  // 是否到达圆环后置点。
-  bool is_arrive_ap_prepoint_{false};   // 是否到达 apriltag 预降落点。
-  bool is_found_ap_{false};           // 是否已发现 apriltag。
-  bool apland_{false};                // 是否进入 apriltag 降落阶段。
-  bool land_success_{false};          // 旧版降落完成标志。
-  bool precision_landing_requested_{false};  // cmd7/8 末端交给视觉精降。
-  int ring2_approach_count_{0};       // 接近第二个圆环的插值计数。
-  int ring2_cross_count_{0};          // 穿过第二个圆环的插值计数。
-  int count1_{0};                     // 飞向圆环后置点的插值计数。
-  int count2_{0};                     // 飞向 apriltag 预降落点的插值计数。
-  int ctl_land_count_{0};             // apriltag 降落下降计数。
-  double yaw_now_{0.0};               // 当前 yaw，用于 yaw 平滑。
-  smlfsm::Vec3 ring2_pose_{2.0, 0.0, 1.0};  // 第二个圆环的估计位置。
-  smlfsm::Vec3 appre_pose_{4.8, 0.8, 1.0};  // apriltag 预降落点。
-  smlfsm::Vec3 ap_pose_{5.0, 1.1, 1.0};     // apriltag 的估计位置。
-  std::vector<TimedPose> pose_history_;     // 飞机历史位姿缓存。
-  std::vector<smlfsm::Vec3> ring2_filter_;  // 圆环位置滤波窗口。
-  std::vector<smlfsm::Vec3> ap_filter_;     // apriltag 位置滤波窗口。
-  std::vector<MissionPoint> ego_traj_;      // 旧版任务航点表。
+  std::vector<MissionPoint> super_traj_;    // Super 任务航点表。
   std::vector<smlfsm::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。
-  std::vector<smlfsm::ReferencePoint> ego_planner_;    // 最近一帧 ego planner 轨迹。
-  std::vector<smlfsm::ReferencePoint> last_mission_horizon_;  // 最近生成的 cmd7 horizon。
 };
 
 // UDP 命令邮箱：网络线程只更新原子 latest_，状态机仍由 ROS 主线程串行驱动。
@@ -1328,13 +815,6 @@ class SingleOffboardNode {
                                   &SingleOffboardNode::plannerCallback, this);
     super_planner_sub_ = node_.subscribe(
         "/super/flag_cmd", 10, &SingleOffboardNode::superPlannerCallback, this);
-    ego_state_sub_ = node_.subscribe(
-        "/ego_planner/flag_state", 10, &SingleOffboardNode::egoStateCallback,
-        this);
-    ring_sub_ = node_.subscribe("/target_pose", 10,
-                                &SingleOffboardNode::ringCallback, this);
-    apriltag_sub_ = node_.subscribe("/tf_output", 10,
-                                    &SingleOffboardNode::apriltagCallback, this);
     std::string landing_topic = "/vision/landing/offset";
     private_node_.param("precision_landing_topic", landing_topic,
                         landing_topic);
@@ -1396,7 +876,7 @@ class SingleOffboardNode {
     context_.telemetry.mode = message->mode;
     context_.telemetry.armed = message->armed;
   }
-  // 本地位姿回调：更新位置/姿态，并把历史位姿交给任务适配器。
+  // 本地位姿回调：更新位置/姿态。
   void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
     context_.telemetry.position = {message->pose.position.x,
                                    message->pose.position.y,
@@ -1404,10 +884,6 @@ class SingleOffboardNode {
     context_.telemetry.attitude = {
         message->pose.orientation.w, message->pose.orientation.x,
         message->pose.orientation.y, message->pose.orientation.z};
-    const double stamp = message->header.stamp.isZero()
-                             ? ros::Time::now().toSec()
-                             : message->header.stamp.toSec();
-    mission_.recordTelemetryPose(stamp, context_.telemetry);
   }
   // 本地速度回调：更新状态机遥测快照中的速度。
   void velocityCallback(
@@ -1416,10 +892,9 @@ class SingleOffboardNode {
                                    message->twist.linear.y,
                                    message->twist.linear.z};
   }
-  // planner 回调：同时喂给 cmd5 参考提供器和任务适配器。
+  // planner 回调：喂给 cmd5 参考提供器。
   void plannerCallback(const traj_utils::Flag::ConstPtr& message) {
     reference_.updatePlanner(*message);
-    mission_.updatePlanner(*message);
   }
   // super planner 回调：短数组直接忽略，防止越界。
   void superPlannerCallback(const super_msgs::Flag::ConstPtr& message) {
@@ -1429,18 +904,6 @@ class SingleOffboardNode {
       return;
     }
     mission_.updateSuperPlanner(*message);
-  }
-  // ego planner 状态回调：更新任务阶段。
-  void egoStateCallback(const traj_utils::FlagState::ConstPtr& message) {
-    mission_.updateEgoState(*message);
-  }
-  // 圆环观测回调：更新任务适配器中的圆环估计。
-  void ringCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
-    mission_.updateRingPose(*message);
-  }
-  // apriltag 观测回调：更新任务适配器中的降落标记估计。
-  void apriltagCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
-    mission_.updateApriltagPose(*message);
   }
   // 下视 AprilTag 像素偏差回调：只把可控的有效观测写入精降端口。
   void landingCallback(
@@ -1481,7 +944,7 @@ class SingleOffboardNode {
   smlfsm::CoreFlightCommandDispatcher dispatcher_;  // core cmd 到 Select 事件的分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
-  ros::Subscriber super_planner_sub_, ego_state_sub_, ring_sub_, apriltag_sub_;  // 任务相关订阅。
+  ros::Subscriber super_planner_sub_;  // super planner 订阅。
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
 };

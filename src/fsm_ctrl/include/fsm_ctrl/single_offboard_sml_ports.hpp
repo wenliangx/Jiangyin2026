@@ -43,8 +43,6 @@ class NmpcPort {
   virtual bool solveTrack(const TelemetrySnapshot& telemetry,
                           const std::vector<ReferencePoint>& horizon,
                           BodyRateThrust& command) = 0;
-  virtual bool solveLegacy(const LegacyNmpcRequest& request,
-                           BodyRateThrust& command) = 0;
 };
 
 class ReferenceProvider {
@@ -60,7 +58,7 @@ class MissionPort {
  public:
   virtual ~MissionPort() = default;
   virtual void selectCommand(int command) {}
-  virtual void reset(MissionTrackMode mode) = 0;
+  virtual void reset() = 0;
   virtual bool prepareSuper(double now, const TelemetrySnapshot& telemetry,
                             std::vector<ReferencePoint>& horizon) = 0;
   virtual bool prepareCoreSuperGoal(double now,
@@ -73,11 +71,6 @@ class MissionPort {
     horizon.clear();
     return false;
   }
-  virtual bool prepareMission(double now, const TelemetrySnapshot& telemetry,
-                              std::vector<ReferencePoint>& horizon) = 0;
-  virtual bool prepareEgo(double now, const TelemetrySnapshot& telemetry,
-                          std::vector<ReferencePoint>& horizon) = 0;
-  virtual bool wantsPrecisionLanding() const { return false; }
 };
 
 class PrecisionLandingPort {

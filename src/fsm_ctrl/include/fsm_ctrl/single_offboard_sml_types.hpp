@@ -1,7 +1,6 @@
 #ifndef FSM_CTRL_SINGLE_OFFBOARD_SML_TYPES_HPP_
 #define FSM_CTRL_SINGLE_OFFBOARD_SML_TYPES_HPP_
 
-#include <array>
 #include <string>
 #include <vector>
 
@@ -54,18 +53,6 @@ struct NmpcMonitor {
   std::vector<ReferencePoint> references;
   TelemetrySnapshot feedback;
   BodyRateThrust target;
-};
-
-struct LegacyNmpcRequest {
-  TelemetrySnapshot telemetry;
-  std::vector<ReferencePoint> horizon;
-  std::array<double, 4> desired_controls{{9.8, 0.0, 0.0, 0.0}};
-};
-
-enum class MissionTrackMode {
-  Super,
-  Mission,
-  Ego,
 };
 
 struct LandingObservation {

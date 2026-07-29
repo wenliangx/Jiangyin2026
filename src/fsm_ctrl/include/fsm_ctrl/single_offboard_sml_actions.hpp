@@ -183,19 +183,7 @@ struct ResetNmpcTrack {
 
 struct ResetSuperTrack {
   void operator()(Context& context) const {
-    context.mission.reset(MissionTrackMode::Super);
-  }
-};
-
-struct ResetMissionTrack {
-  void operator()(Context& context) const {
-    context.mission.reset(MissionTrackMode::Mission);
-  }
-};
-
-struct ResetEgoTrack {
-  void operator()(Context& context) const {
-    context.mission.reset(MissionTrackMode::Ego);
+    context.mission.reset();
   }
 };
 
@@ -230,58 +218,6 @@ struct TickSuperTrack {
                                                 horizon.front().attitude);
       publishTrackCommand(context, horizon);
     }
-  }
-};
-
-struct TickLegacyMissionTrack {
-  bool solve(Context& context, MissionTrackMode mode) const {
-    std::vector<ReferencePoint> horizon;
-    const double now = context.clock.now();
-    const bool prepared =
-        mode == MissionTrackMode::Mission
-            ? context.mission.prepareMission(now, context.telemetry, horizon)
-            : context.mission.prepareEgo(now, context.telemetry, horizon);
-    BodyRateThrust command;
-    LegacyNmpcRequest request;
-    request.telemetry = context.telemetry;
-    request.horizon = horizon;
-    if (prepared && !request.horizon.empty()) {
-      context.setpoint.publishFeedbackPosition(context.telemetry.position,
-                                               context.telemetry.attitude);
-      context.setpoint.publishReferencePosition(request.horizon.front().position,
-                                                request.horizon.front().attitude);
-    }
-    if (prepared && context.mission.wantsPrecisionLanding()) {
-      std::vector<ReferencePoint> landing_horizon;
-      if (context.landing.prepareLanding(context.clock.now(),
-                                         context.telemetry, landing_horizon) &&
-          publishTrackCommand(context, landing_horizon)) {
-        if (context.landing.isComplete()) {
-          context.landing_reached = true;
-        }
-        return true;
-      }
-      return false;
-    }
-    if (prepared && !request.horizon.empty() &&
-        context.nmpc.solveLegacy(request, command) &&
-        Context::finite(command)) {
-      context.setpoint.publishBodyRateThrust(command);
-      return true;
-    }
-    return false;
-  }
-};
-
-struct TickMissionTrack : TickLegacyMissionTrack {
-  void operator()(Context& context) const {
-    solve(context, MissionTrackMode::Mission);
-  }
-};
-
-struct TickEgoTrack : TickLegacyMissionTrack {
-  void operator()(Context& context) const {
-    solve(context, MissionTrackMode::Ego);
   }
 };
 

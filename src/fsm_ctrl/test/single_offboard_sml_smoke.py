@@ -14,7 +14,6 @@ from mavros_msgs.msg import AttitudeTarget
 from mavros_msgs.msg import RCIn
 from super_msgs.msg import Flag as SuperFlag
 from traj_utils.msg import Flag as EgoFlag
-from traj_utils.msg import FlagState
 from uav_vision_msgs.msg import LandingOffset
 
 
@@ -23,7 +22,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._lock = threading.Lock()
         self._positions = []
         self._super_flags = []
-        self._ego_flags = []
         self._reference_positions = []
         self._feedback_positions = []
         self._nmpc_states = []
@@ -34,9 +32,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._super_flag_sub = rospy.Subscriber(
             "/super/flag_waypoint", SuperFlag,
             self._super_flag_callback, queue_size=100)
-        self._ego_flag_sub = rospy.Subscriber(
-            "/ego_planner/flag_msg", EgoFlag,
-            self._ego_flag_callback, queue_size=100)
         self._reference_sub = rospy.Subscriber(
             "/nmpc_posref", PoseStamped,
             self._reference_callback, queue_size=100)
@@ -52,8 +47,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._rc_pub = rospy.Publisher("/mavros/rc/in", RCIn, queue_size=1)
         self._planner_pub = rospy.Publisher(
             "/position_cmd_nmpc", EgoFlag, queue_size=1)
-        self._ego_state_pub = rospy.Publisher(
-            "/ego_planner/flag_state", FlagState, queue_size=1)
         self._local_pose_pub = rospy.Publisher(
             "/mavros/local_position/pose", PoseStamped, queue_size=1)
         self._target_pose_pub = rospy.Publisher(
@@ -68,10 +61,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
     def _super_flag_callback(self, message):
         with self._lock:
             self._super_flags.append((time.monotonic(), message.id))
-
-    def _ego_flag_callback(self, message):
-        with self._lock:
-            self._ego_flags.append((time.monotonic(), message.id))
 
     def _reference_callback(self, message):
         with self._lock:
@@ -135,19 +124,10 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         with self._lock:
             self._positions.clear()
             self._super_flags.clear()
-            self._ego_flags.clear()
             self._reference_positions.clear()
             self._feedback_positions.clear()
             self._nmpc_states.clear()
             self._attitudes.clear()
-
-    def _publish_ego_state(self, now_id, touch_goal):
-        message = FlagState()
-        message.now_id = now_id
-        message.touch_goal = int(touch_goal)
-        for _ in range(5):
-            self._ego_state_pub.publish(message)
-            time.sleep(0.02)
 
     def _publish_planner_z(self, z):
         message = EgoFlag()

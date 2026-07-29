@@ -17,8 +17,6 @@ struct FullCommandPolicy {
       case 4: machine.process_event(SelectLanding{}); break;
       case 5: machine.process_event(SelectNmpcTrack{}); break;
       case 6: machine.process_event(SelectSuperTrack{}); break;
-      case 7: machine.process_event(SelectMissionTrack{}); break;
-      case 8: machine.process_event(SelectEgoTrack{}); break;
       case 9: machine.process_event(SelectEmergency{}); break;
       default: machine.process_event(SelectSafeNoop{}); break;
     }
@@ -56,8 +54,8 @@ class CommandDispatcherT {
   // 处理一条 cmd；只有 cmd 变化并触发 Select 事件时返回 true。
   // 映射关系：
   //   0 Idle，1 LowThrust，2 PositionHold，3 NmpcHover，4 Landing，
-  //   5 NmpcTrack，6 SuperTrack，7 MissionTrack，8 EgoTrack，
-  //   9 Emergency，其它值进入 SafeNoop。
+  //   5 NmpcTrack，6 SuperTrack，9 Emergency，
+  //   其它值（包括旧 cmd7/cmd8）进入 SafeNoop。
   bool update(int command) {
     if (has_previous_ && command == previous_) {
       return false;
