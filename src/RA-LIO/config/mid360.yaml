@@ -75,6 +75,13 @@ publish:
     scan_bodyframe_pub_en: true  # 是否额外发布 IMU坐标系(Body系)的点云
                                  # true: 同时发布 /cloud_registered_body 话题
 
+# === PCD 预加载定位 ===
+localization_mode: false         # true: 启动时加载已有PCD作为地图，直接scan-to-map定位
+map_file_path: ""                # localization_mode=true时需要填写PCD文件绝对路径
+allow_map_update: true           # true: 定位时继续把新点加入地图；false: 只定位不扩图
+initial_pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # [x,y,z,roll,pitch,yaw]，角度单位rad
+initial_pose_from_odometry: false # true: initial_pose按/Odometry补偿后坐标填写，启动时自动反变换
+
 # === PCD 文件保存 ===
 pcd_save:
     pcd_save_en: false           # 是否保存点云到PCD文件

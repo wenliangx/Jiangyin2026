@@ -58,6 +58,8 @@
 // === 时间统计变量 ===
 int add_point_size = 0, kdtree_delete_counter = 0;      // 添加点数、被删除点数统计
 bool pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true, speed_vector_en= true;
+bool localization_mode = false, allow_map_update = true, prior_map_loaded = false;
+bool initial_pose_from_odometry = false;
 
 // === 函数声明（部分在文件中定义的外部函数）===
 
@@ -74,6 +76,7 @@ condition_variable sig_buffer;            // 条件变量：用于通知主线�
 
 string root_dir = ROOT_DIR;              // 程序根目录
 string map_file_path, lid_topic, imu_topic; // 地图文件路径、LiDAR和IMU话题名
+vector<double> initial_pose(6, 0.0);        // 初始位姿 [x,y,z,roll,pitch,yaw]，角度单位 rad
 
 // === 时间戳和噪声参数 ===
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -823,6 +826,124 @@ static void visualization_speed(const ros::Publisher &marker_pub) {
   marker_pub.publish(marker);
 }
 
+static bool isFinitePose(const vector<double> &pose)
+{
+    if (pose.size() != 6)
+    {
+        ROS_ERROR("initial_pose must have 6 values: [x, y, z, roll, pitch, yaw]");
+        return false;
+    }
+
+    for (const double value : pose)
+    {
+        if (!std::isfinite(value))
+        {
+            ROS_ERROR("initial_pose contains non-finite value");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static Eigen::Matrix3d outputCompensationMatrix()
+{
+    Eigen::Matrix3d R_0;
+    R_0 << 1, 0, 0,
+           0, -1, 0,
+           0, 0, -1;
+
+    const Eigen::Matrix3d R_compensate_roll =
+        Eigen::AngleAxisd(alpha * PI / 180.0, Eigen::Vector3d(1, 0, 0)).toRotationMatrix();
+    const Eigen::Matrix3d R_compensate_pitch =
+        Eigen::AngleAxisd(theta * PI / 180.0, Eigen::Vector3d(0, 1, 0)).toRotationMatrix();
+
+    return R_0 * R_compensate_roll * R_compensate_pitch;
+}
+
+static bool applyInitialPose()
+{
+    if (!isFinitePose(initial_pose)) return false;
+
+    state_ikfom init_state = kf.get_x();
+    Eigen::Vector3d initial_pos(initial_pose[0], initial_pose[1], initial_pose[2]);
+
+    Eigen::Matrix3d initial_rot =
+        Eigen::AngleAxisd(initial_pose[5], Eigen::Vector3d::UnitZ()).toRotationMatrix() *
+        Eigen::AngleAxisd(initial_pose[4], Eigen::Vector3d::UnitY()).toRotationMatrix() *
+        Eigen::AngleAxisd(initial_pose[3], Eigen::Vector3d::UnitX()).toRotationMatrix();
+
+    if (initial_pose_from_odometry)
+    {
+        const Eigen::Matrix3d C = outputCompensationMatrix();
+        initial_pos = C.inverse() * initial_pos;
+        initial_rot = C.inverse() * initial_rot * C;
+        ROS_INFO("initial_pose is interpreted in /Odometry frame and converted to RA-LIO raw map frame");
+    }
+
+    init_state.pos = initial_pos;
+    init_state.rot = Sophus::SO3d(initial_rot);
+
+    kf.change_x(init_state);
+    ROS_INFO("RA-LIO initial pose input: xyz=(%.3f, %.3f, %.3f), rpy=(%.3f, %.3f, %.3f) rad, from_odometry=%s",
+             initial_pose[0], initial_pose[1], initial_pose[2],
+             initial_pose[3], initial_pose[4], initial_pose[5],
+             initial_pose_from_odometry ? "true" : "false");
+    ROS_INFO("RA-LIO initial pose applied in raw map frame: xyz=(%.3f, %.3f, %.3f)",
+             initial_pos.x(), initial_pos.y(), initial_pos.z());
+    return true;
+}
+
+static bool loadPriorMap()
+{
+    if (!localization_mode) return false;
+    if (map_file_path.empty())
+    {
+        ROS_ERROR("localization_mode is true, but map_file_path is empty");
+        return false;
+    }
+
+    PointCloudXYZI::Ptr raw_map(new PointCloudXYZI());
+    const int load_result = pcl::io::loadPCDFile<PointType>(map_file_path, *raw_map);
+    if (load_result != 0)
+    {
+        ROS_ERROR("Failed to load PCD map '%s', pcl error code: %d", map_file_path.c_str(), load_result);
+        return false;
+    }
+    if (raw_map->empty())
+    {
+        ROS_ERROR("Loaded PCD map '%s' is empty", map_file_path.c_str());
+        return false;
+    }
+
+    PointCloudXYZI::Ptr prior_map(new PointCloudXYZI());
+    if (filter_size_map_min > 0.0)
+    {
+        downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
+        downSizeFilterMap.setInputCloud(raw_map);
+        downSizeFilterMap.filter(*prior_map);
+    }
+    else
+    {
+        ROS_WARN("filter_size_map <= 0, using raw PCD map without voxel filtering");
+        *prior_map = *raw_map;
+    }
+
+    if (prior_map->empty())
+    {
+        ROS_ERROR("PCD map '%s' became empty after downsampling", map_file_path.c_str());
+        return false;
+    }
+
+    ikdtree.set_downsample_param(filter_size_map_min);
+    ikdtree.Build(prior_map->points);
+    prior_map_loaded = true;
+    ROS_INFO("Loaded prior PCD map '%s': raw=%zu, used=%zu, allow_map_update=%s",
+             map_file_path.c_str(), raw_map->size(), prior_map->size(),
+             allow_map_update ? "true" : "false");
+    return true;
+}
+
 // =================================================================
 // === main：主函数 ===
 // =================================================================
@@ -838,7 +959,11 @@ int main(int argc, char **argv)
     nh.param<bool>("publish/dense_publish_en", dense_pub_en, true);
     nh.param<bool>("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
     nh.param<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
+    nh.param<bool>("localization_mode", localization_mode, false);
     nh.param<string>("map_file_path", map_file_path, "");
+    nh.param<bool>("allow_map_update", allow_map_update, true);
+    nh.param<vector<double>>("initial_pose", initial_pose, vector<double>());
+    nh.param<bool>("initial_pose_from_odometry", initial_pose_from_odometry, false);
     nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
     nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
@@ -893,6 +1018,16 @@ int main(int argc, char **argv)
     // 设置IMU处理模块参数：外参、噪声协方差
     p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
                       V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+
+    if (localization_mode)
+    {
+        if (!applyInitialPose() || !loadPriorMap())
+        {
+            ROS_ERROR("RA-LIO localization mode initialization failed");
+            return -1;
+        }
+        ROS_INFO("RA-LIO localization mode enabled; first scan will use the loaded prior map");
+    }
 
     // 注册信号处理器（Ctrl+C安全退出）
     signal(SIGINT, SigHandle);
@@ -960,6 +1095,11 @@ int main(int argc, char **argv)
             // ikd-Tree为空时，直接用第一帧构建（跳过ESKF更新）
             if (ikdtree.Root_Node == nullptr)
             {
+                if (localization_mode)
+                {
+                    ROS_WARN_THROTTLE(1.0, "Localization mode is waiting for a loaded prior map");
+                    continue;
+                }
                 ikdtree.set_downsample_param(filter_size_map_min);
                 feats_down_world->resize(feats_down_size);
                 for (int i = 0; i < feats_down_size; i++)
@@ -1001,8 +1141,15 @@ int main(int argc, char **argv)
 
             // --- 步骤10：地图增量 ---
             // 将当前帧点云加入全局ikd-Tree地图
-            feats_down_world->resize(feats_down_size);
-            map_incremental();
+            if (allow_map_update)
+            {
+                feats_down_world->resize(feats_down_size);
+                map_incremental();
+            }
+            else
+            {
+                add_point_size = 0;
+            }
 
             // --- 步骤11：发布路径 ---
             if (path_en) publish_path(pubPath);
