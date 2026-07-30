@@ -80,6 +80,12 @@ def apply_controls(controls, exposure, gain):
             )
 
 
+def orient_frame(frame, rotate_180):
+    if not rotate_180:
+        return frame
+    return frame[::-1, ::-1].copy()
+
+
 def main():
     import cv2
     from cv_bridge import CvBridge
@@ -93,6 +99,7 @@ def main():
         "~frame_id", rospy.get_name().strip("/")
     )
     pixel_format = str(rospy.get_param("~pixel_format", "MJPG"))
+    rotate_180 = bool(rospy.get_param("~rotate_180", False))
     settings = validate_settings(
         rospy.get_param("~width", 1280),
         rospy.get_param("~height", 720),
@@ -128,13 +135,14 @@ def main():
 
     rospy.loginfo(
         "camera ready: device=%s topic=%s size=%dx%d fps=%.1f "
-        "format=%s controls=%s",
+        "format=%s rotate_180=%s controls=%s",
         device,
         image_topic,
         int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
         int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)),
         capture.get(cv2.CAP_PROP_FPS),
         pixel_format,
+        rotate_180,
         control_state,
     )
 
@@ -150,6 +158,7 @@ def main():
                 )
                 rate.sleep()
                 continue
+            frame = orient_frame(frame, rotate_180)
             message = bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             message.header.stamp = rospy.Time.now()
             message.header.frame_id = frame_id

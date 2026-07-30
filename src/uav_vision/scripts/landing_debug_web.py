@@ -12,6 +12,24 @@ import rospy
 from sensor_msgs.msg import Image
 
 
+def validate_stream_settings(max_width, stream_fps):
+    max_width = int(max_width)
+    stream_fps = float(stream_fps)
+    if max_width < 0:
+        raise ValueError("max_width must be zero or positive")
+    if stream_fps <= 0.0:
+        raise ValueError("stream_fps must be positive")
+    return max_width, stream_fps
+
+
+def resize_to_max_width(image, max_width):
+    if max_width == 0 or image.shape[1] <= max_width:
+        return image
+    scale = float(max_width) / image.shape[1]
+    height = max(1, int(round(image.shape[0] * scale)))
+    return cv2.resize(image, (max_width, height), interpolation=cv2.INTER_AREA)
+
+
 def build_index_html(page_title):
     safe_title = html.escape(str(page_title))
     return f"""<!doctype html>
@@ -54,10 +72,11 @@ class LatestJpegFrame:
 class DebugWebServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, frame_buffer, page_title):
+    def __init__(self, address, frame_buffer, page_title, stream_fps):
         super().__init__(address, DebugWebHandler)
         self.frame_buffer = frame_buffer
         self.index_html = build_index_html(page_title)
+        self.stream_period = 1.0 / stream_fps
 
 
 class DebugWebHandler(BaseHTTPRequestHandler):
@@ -100,7 +119,7 @@ class DebugWebHandler(BaseHTTPRequestHandler):
                 )
                 self.wfile.write(frame)
                 self.wfile.write(b"\r\n")
-                time.sleep(0.03)
+                time.sleep(self.server.stream_period)
         except (BrokenPipeError, ConnectionResetError):
             return
 
@@ -113,6 +132,10 @@ def main():
     host = rospy.get_param("~host", "0.0.0.0")
     port = int(rospy.get_param("~port", 8080))
     jpeg_quality = int(rospy.get_param("~jpeg_quality", 85))
+    max_width, stream_fps = validate_stream_settings(
+        rospy.get_param("~max_width", 0),
+        rospy.get_param("~stream_fps", 30.0),
+    )
     page_title = rospy.get_param("~page_title", "UAV Landing Debug")
 
     bridge = CvBridge()
@@ -120,6 +143,7 @@ def main():
 
     def image_callback(message):
         image = bridge.imgmsg_to_cv2(message, desired_encoding="bgr8")
+        image = resize_to_max_width(image, max_width)
         ok, encoded = cv2.imencode(
             ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
         )
@@ -127,13 +151,19 @@ def main():
             frames.update(encoded.tobytes())
 
     rospy.Subscriber(image_topic, Image, image_callback, queue_size=1)
-    server = DebugWebServer((host, port), frames, page_title)
+    server = DebugWebServer(
+        (host, port), frames, page_title, stream_fps
+    )
     server.timeout = 0.2
     rospy.loginfo(
-        "landing debug web ready: http://%s:%d topic=%s",
+        "landing debug web ready: http://%s:%d topic=%s "
+        "max_width=%d stream_fps=%.1f jpeg_quality=%d",
         host,
         port,
         image_topic,
+        max_width,
+        stream_fps,
+        jpeg_quality,
     )
     try:
         while not rospy.is_shutdown():

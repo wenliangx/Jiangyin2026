@@ -3,6 +3,8 @@
   <arg name="host" default="0.0.0.0"/>
   <arg name="port" default="8080"/>
   <arg name="jpeg_quality" default="85"/>
+  <arg name="max_width" default="0"/>
+  <arg name="stream_fps" default="30.0"/>
   <arg name="page_title" default="UAV Landing Debug"/>
 
   <node pkg="uav_vision"
@@ -13,6 +15,8 @@
     <param name="host" value="$(arg host)"/>
     <param name="port" value="$(arg port)"/>
     <param name="jpeg_quality" value="$(arg jpeg_quality)"/>
+    <param name="max_width" value="$(arg max_width)"/>
+    <param name="stream_fps" value="$(arg stream_fps)"/>
     <param name="page_title" value="$(arg page_title)"/>
   </node>
 </launch>

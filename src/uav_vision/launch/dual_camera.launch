@@ -10,6 +10,7 @@
     <param name="device" value="/dev/uav_front_camera"/>
     <param name="image_topic" value="/vision/front/image_raw"/>
     <param name="frame_id" value="uav_front_camera"/>
+    <param name="rotate_180" value="true"/>
   </node>
 
   <node pkg="uav_vision"
@@ -20,5 +21,6 @@
     <param name="device" value="/dev/uav_down_camera"/>
     <param name="image_topic" value="/vision/down/image_raw"/>
     <param name="frame_id" value="uav_down_camera"/>
+    <param name="rotate_180" value="false"/>
   </node>
 </launch>

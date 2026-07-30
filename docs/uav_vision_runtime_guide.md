@@ -7,7 +7,8 @@
 视觉模块包含两条相互独立的处理链：
 
 1. 前视相机目标分类
-   - 在画面中寻找带方形外沿的目标板。
+   - 优先使用 ORB/AKAZE 特征和 RANSAC 单应性恢复整张目标图四角。
+   - 特征定位失败时，再使用方形外沿检测作为兜底，避免把车身等内部轮廓当成目标板。
    - 使用传统视觉多模板匹配，在 `plane`、`car`、`ship`、`house` 四类中分类。
    - 使用最近 5 帧投票，至少 3 帧一致后才发布有效类别。
 2. 下视相机降落区域识别
@@ -22,7 +23,7 @@
 
 NUC 当前连接信息：
 
-- IP：`10.1.77.193`
+- 当前临时 IP：`10.152.160.55`
 - 用户名：`flag`
 - 密码：`flag`
 - ROS 工作空间：`/home/flag/Jiangyin2026`
@@ -31,7 +32,7 @@ NUC 当前连接信息：
 在本机终端连接：
 
 ```bash
-ssh flag@10.1.77.193
+ssh flag@10.152.160.55
 ```
 
 输入密码 `flag`。本文后续命令按 Bash 编写；如果 SSH 登录后的终端不是 Bash，先执行：
@@ -75,6 +76,9 @@ udev 固定设备名：
 | 曝光值 | 150 |
 | 增益 | 5 |
 | 动态帧率 | 关闭 |
+
+`dual_camera.launch` 还会对前视画面固定旋转 180°，下视画面不旋转。
+该处理只改变前视 ROS 图像方向，不改变相机采集分辨率和帧率。
 
 配置文件：
 
@@ -170,7 +174,7 @@ src/uav_vision/templates/
 └── house.png
 ```
 
-### 4.5 启动浏览器降落可视化
+### 4.5 启动浏览器可视化
 
 终端 5：
 
@@ -181,7 +185,7 @@ roslaunch uav_vision landing_debug_web.launch
 在与 NUC 同一网络的电脑浏览器中打开：
 
 ```text
-http://10.1.77.193:8080
+http://10.152.160.55:8080
 ```
 
 网页画面包含五个 Tag 的边框、ID、图像中心、降落区域中心和像素偏差。该网页节点只负责显示；关闭它不会影响 `/landing_tag_node` 的识别和结果发布。
@@ -203,12 +207,16 @@ roslaunch uav_vision target_debug_web.launch
 然后打开：
 
 ```text
-http://10.1.77.193:8081
+http://10.152.160.55:8081
 ```
 
 端口 `8080` 固定用于降落可视化，端口 `8081` 固定用于目标分类
 可视化。两个网页节点相互独立，关闭任一网页都不会停止对应感知节点
 或结果消息发布。
+
+目标分类网页为降低无线传输延迟，固定使用 960 × 540、JPEG 质量 70、
+最大 10 FPS。该限制只作用于 HTTP 网页流；分类节点仍使用
+1280 × 720、约 30 Hz 的原始前视图像。
 
 ## 5. 节点与话题总表
 
@@ -217,7 +225,7 @@ http://10.1.77.193:8081
 | `/front_camera_node` | 无 | `/vision/front/image_raw` | 发布前视相机图像 |
 | `/down_camera_node` | 无 | `/vision/down/image_raw` | 发布下视相机图像 |
 | `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 识别五个 AprilTag 并计算像素偏差 |
-| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | 方形目标板检测和四类别模板匹配 |
+| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | ORB/AKAZE 特征优先定位、方框兜底和四类别模板匹配 |
 | `/landing_debug_web` | `/vision/landing/debug_image` | HTTP 8080 端口 | 在浏览器中显示降落调试画面 |
 | `/target_debug_web` | `/vision/target/debug_image` | HTTP 8081 端口 | 在浏览器中显示目标分类调试画面 |
 
@@ -330,7 +338,15 @@ uav_vision_msgs/TargetMatch[] matches
 | `valid` | 本帧是否具有经过时间投票确认的有效分类结果 |
 | `matches` | 有效目标结果数组；当前实现有效时只有 1 项，无效时为空 |
 
-当前时间投票窗口为 5 帧，至少 3 帧同类才稳定。若当前帧无有效目标，即使历史投票中曾有稳定类别，本帧仍发布 `valid=false`。连续 3 帧丢失目标后清空投票状态。
+当前时间投票窗口为 5 帧，至少 3 帧同类才稳定。类别稳定后，允许
+跨过最多 2 个连续空帧：这两帧继续发布最近一次稳定结果；连续第 3
+帧丢失时清空状态并发布 `valid=false`。若检测到另一个有效类别，
+不会沿用旧类别，而是重新投票。
+
+跨过空帧时，`header` 使用当前前视图像的时间戳，但 `matches[0]`
+复用最近一次稳定结果，因此其中的 `corners` 和分数最多可能滞后 2
+帧。上层任务只应使用稳定后的 `label` 做类别判断，不应把该消息的
+角点用于实时控制。
 
 ### 7.2 `TargetMatch`
 
@@ -471,13 +487,14 @@ fuser /dev/uav_down_camera
 
 在对应启动终端按 `Ctrl+C`。建议按以下顺序关闭：
 
-1. `landing_debug_web.launch`
-2. `target_match.launch`
-3. `landing_tag.launch`
-4. `dual_camera.launch`
-5. `roscore`
+1. `target_debug_web.launch`
+2. `landing_debug_web.launch`
+3. `target_match.launch`
+4. `landing_tag.launch`
+5. `dual_camera.launch`
+6. `roscore`
 
-若只关闭浏览器可视化节点，降落识别结果仍会继续发布。
+若只关闭浏览器可视化节点，对应识别结果仍会继续发布。
 
 ## 11. 当前实机验证记录
 
@@ -489,5 +506,9 @@ fuser /dev/uav_down_camera
 - 150 帧中 `tag_count` 均为 5，`tag_ids` 均为 `[0, 1, 2, 3, 4]`。
 - `/vision/landing/offset` 实测约 26.9 Hz；低于相机 30 Hz 是 AprilTag 处理开销造成的正常现象。
 - 消息时间戳严格递增，偏差公式和字段一致性检查通过。
+- 房子打印图在外沿对比不足时，ORB 兜底连续 36 帧均识别为
+  `house` 且 `valid=true`，分类结果约 12 Hz。
+- 汽车打印图近距离验证中，特征优先流程连续 102 条消息均为
+  `car` 且 `valid=true`，未出现 `house` 或 `unknown`，约 12.2 Hz。
 
 以上验证只代表当时道具位置和光照条件。重新搭建场地后，仍应先用浏览器调试画面确认五个 Tag 都清晰、无遮挡。
