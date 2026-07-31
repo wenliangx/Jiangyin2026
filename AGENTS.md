@@ -15,7 +15,7 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 
 ```
 ./
-├── src/               # Primary catkin workspace (14 packages)
+├── src/               # Primary catkin workspace (11 packages)
 │   ├── SUPER/         # Core planning: super_planner, rog_map, mission_planner, mars_uav_sim
 │   ├── ego-planner-v2/ # Local trajectory planning (22 pkgs, 12 CATKIN_IGNORE)
 │   ├── fsm_ctrl/      # FSM + NMPC controller (sml + legacy)
@@ -24,17 +24,14 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 │   ├── uav_vision_msgs/ # Vision message definitions
 │   ├── apriltag_ros/  # AprilTag visual localization (CATKIN_IGNORE)
 │   ├── apriltag_echo_message/  # AprilTag→laser echo bridge (CATKIN_IGNORE)
-│   ├── gz_external_pose/  # Gazebo→VRPN pose bridge (Python)
 │   ├── libs/px4_plugs/  # PX4 plugins: link_monitor, log_manager, param_migrator
-│   ├── mid360_gazebo/ # Incomplete MID360 plugin
 │   └── livox_ros_driver/  # Legacy driver dir
 ├── docker/            # Container images: core, dev, prod, sim, debs (5 layered)
 ├── deb/               # Pre-built .deb packages (CasADi, Sophus, Livox SDK2)
 ├── vrpn/              # VRPN client ROS integration (external)
-├── sim_config/        # Simulation pipeline config+launch
 ├── docs/              # Runtime guides, plans
 ├── build/ devel/ logs/       # Catkin artifacts (gitignored)
-├── tmux-sim.sh / tmux-real.sh # Simulation (5 panes) / real-robot (9 panes) launchers
+├── tmux-real.sh       # Real-robot (9 panes) tmux launcher
 ├── docker-compose.yml # Container orchestration (sim/gui/jy2026/jy-dev)
 └── .opencode/         # AI coding assistant config (Node.js)
 ```
@@ -50,13 +47,12 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 | Landing vision | `src/uav_vision/` | AprilTag landing + target template matching (C++/Python) |
 | Vision message defs | `src/uav_vision_msgs/` | LandingOffset, TargetMatch, TargetMatchArray |
 | Simulation (PX4 SITL) | `docker/sim/` | start_px4_mid360.sh, Dockerfile |
-| Unit tests | `src/fsm_ctrl/test/` | GTest (36 TEST_F), rostest smoke test |
+| Unit tests | `src/fsm_ctrl/test/` | GTest (38 TEST_F), rostest smoke test |
 | Vision tests | `src/uav_vision/test/` | GTest (test_landing_core) + 5 Python tests |
 | ROS msg definitions | `src/*/msg/` | 17+ custom .msg packages |
 | PX4 plugins | `src/libs/px4_plugs/` | px4_link_monitor, px4_log_manager, px4_param_migrator (Python) |
 | Build (container) | `docker/Dockerfile.*` | 5 layered images: core→dev→prod, sim (standalone) |
 | Build (local) | `catkin_make` | ROS1 workspace + RA-LIO standalone |
-| NMPC hover tuning | `sim_config/params/nmpc_hover_tune.yaml` | Thrust tuning config |
 
 ## CODE MAP
 
@@ -81,7 +77,6 @@ Python ROS nodes:
 | `px4_link_monitor` | px4_plugs | `scripts/link_monitor_node.py` | MAVLink link health monitoring |
 | `px4_log_manager` | px4_plugs | `scripts/log_manager_node.py` | PX4 flight log download/parse/erase |
 | `px4_param_migrator` | px4_plugs | `scripts/param_migrator_node.py` | PX4 parameter export/import |
-| `gazebo_pose_to_vrpn` | gz_external_pose | `scripts/gazebo_pose_to_vrpn.py` | Gazebo → VRPN pose bridge |
 | `landing_debug_web` | uav_vision | `scripts/landing_debug_web.py` | MJPEG landing debug web UI |
 | `target_match_node` | uav_vision | `scripts/target_match_node.py` | Front-camera target classification |
 
@@ -93,7 +88,7 @@ Python ROS nodes:
 - **Nulls**: `NULL` preferred over `nullptr` (clang-tidy `NullMacros`)
 - **Optimization**: Aggressive `-O3` with fast-math, loop unrolling in apriltag_ros and SUPER
 - **Package-level AGENTS.md**: Deep-dive docs for `src/`, `src/fsm_ctrl/`, `src/ego-planner-v2/`, `src/SUPER/`, `src/RA-LIO/`.
-- **Testing**: GTest (36 TEST_F in fsm_ctrl) + rostest smoke test + uav_vision (1 CTest + 5 Python tests). Hand-rolled fake classes.
+- **Testing**: GTest (38 TEST_F in fsm_ctrl) + rostest smoke test + uav_vision (1 CTest + 5 Python tests). Hand-rolled fake classes.
 - **ROS package naming**: `*_msgs` suffix for message packages, `<package format="2">` schema
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -106,7 +101,6 @@ Python ROS nodes:
 - **DO NOT** use `aim_pos` / `aim_vel` for attitude control — position/velocity only
 - **DO NOT** edit SUPER template CMakeLists.txt/package.xml under `ros/` — always use `select_ros_version.sh`
 - Submodule `src/libs/livox_ros_driver2` is **uninitialized** — must `git submodule update --init`
-- `src/mid360_gazebo/` has `drwx------` permissions, no package definition
 - **17 CATKIN_IGNORE** packages: ego-planner sim/Utils (12), apriltag_ros, apriltag_echo_message, plane_Det, RA-LIO/build
 - 15+ package.xml files have `<license>TODO</license>` — legal/audit risk
 - RA-LIO build is standalone — no automatic dependency resolution
@@ -131,7 +125,7 @@ docker build -t jiangyin_px4_mid360:latest -f docker/sim/Dockerfile docker/sim/
 docker build -t jiangyin_jy2026:latest -f docker/Dockerfile.prod .
 
 # Tests
-catkin_make run_tests single_offboard_sml_test       # FSM unit tests (36 GTest)
+catkin_make run_tests single_offboard_sml_test       # FSM unit tests (38 GTest)
 rostest fsm_ctrl single_offboard_sml_smoke.test      # ROS integration test
 
 # Stack / analysis
@@ -144,6 +138,6 @@ python3 analyze_bag.py /path/to/robot.bag            # Bag analysis
 
 - **3 planners coexist**: ego-planner-v2 (local replanning), SUPER (corridor-based), NMPC (in fsm_ctrl). Pipeline: RA-LIO (odom) → px4_estimator (fusion) → FSM (guidance) → PX4 (actuation)
 - **No CI/CD** — manual build verification via Docker images
-- **Test coverage**: Only fsm_ctrl (36 GTest) and uav_vision (1 CTest + 5 Python) have active tests. SUPER, ego-planner, RA-LIO have none.
+- **Test coverage**: Only fsm_ctrl (38 GTest) and uav_vision (1 CTest + 5 Python) have active tests. SUPER, ego-planner, RA-LIO have none.
 - **Ubuntu 20.04 + ROS Noetic** is Tier 1; ROS2 is experimental
 - **Latest changes**: SML FSM uses `CoreFlightStateMachine` (not raw SML); precision landing via `LandingObservation` from `uav_vision_msgs/LandingOffset`; removed ego/mission legacy tracking (ring2, apriltag prepoint, TimedPose cache)

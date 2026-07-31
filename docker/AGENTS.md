@@ -8,7 +8,7 @@
 osrf/ros:noetic-desktop-full (Ubuntu 20.04 + ROS Noetic)
 ├── localhost/jiangyin_px4_mid360:latest    # PX4 v1.14.3 + Gazebo Classic + iris_mid360 model
 └── localhost/jiangyin_core:latest           # CasADi+IPOPT, Livox SDK2, Sophus (from .core or .core.prebuilt)
-    ├── localhost/jiangyin_jy2026:with-mid360-sim  # Copies src/, runs catkin_make + RA-LIO at build time
+    ├── localhost/jiangyin_jy2026:latest        # Copies src/, runs catkin_make + RA-LIO at build time
     └── localhost/jiangyin_jy-dev:latest     # Adds clangd-22, libpcl-dev, Gazebo plugins, plotjuggler
 ```
 
