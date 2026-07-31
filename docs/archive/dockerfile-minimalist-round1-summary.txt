@@ -1,0 +1,38 @@
+ROUND 1 MINIMALIST ANALYSIS — ONE DOCKERFILE
+TeamRunId: 72ea875e-e8bc-40de-881a-65b65a745db3
+===============================================
+
+CURRENT STATE: 6 Dockerfiles, 5 images, 4 compose services
+
+REDUNDANCY FINDINGS:
+1. Dockerfile.debs — KEEP (detached build tool for build-debs.sh/build-debs-podman.sh)
+2. Dockerfile.core + .core.prebuilt — redundant dual deployment. Use deb/ prebuilt ONLY
+3. docker/sim/Dockerfile — PX4 SITL content (L0-L6) goes into single Dockerfile
+4. Dockerfile.prod — DEAD WEIGHT. Bakes everything at build time, contradicts user goal
+5. docker/dev/Dockerfile.dev — TEMPLATE for single Dockerfile (minus jiangyin_core dep)
+
+LAYER SEQUENCE (9 layers):
+L0: FROM osrf/ros:noetic-desktop-full
+L1: Merged apt deps (deduped, remove clangd/libapriltag-dev)
+L2: CMake 3.28.3 to /opt/cmake
+L3: COPY deb/ && apt install *.deb (CasADi+Sophus+Livox)
+L4: geographiclib datasets + PX4 pip deps
+L5: PX4 v1.14.3 clone + submodules
+L6: iris_mid360 model creation + DONT_RUN=1 make px4_sitl gazebo-classic
+L7: clangd-22 + libpcl-dev + gazebo plugins + plotjuggler
+L8: jy-docker.sh mode router (replaces 4 scripts)
+L9: WORKDIR /ws; ENTRYPOINT [jy-docker.sh]; CMD ["shell"]
+
+10 SCRIPTS → 1: Merge start_px4_mid360.sh + start_jy2026.sh + jy-stack.sh + jy-sim-control.sh
+→ one /usr/local/bin/jy-docker.sh <mode> (shell/sitl/gui/dev/stack/all/takeoff/land/reset)
+
+COMPOSE: 4 services → 1 service + profiles (sim/gui/dev)
+SIZE: ~8.5 GB total
+
+3 STRONGEST POSITIONS:
+1. USE deb/ PREBUILT — NEVER build CasADi/Sophus/Livox from source in Dockerfile. Saves 40min + 1.5GB
+2. MERGE ALL ENTRYPOINT SCRIPTS → ONE ROUTER. 70% boilerplate duplication eliminated
+3. DELETE DOCKERFILE.PROD. Source-mount + compile-on-start is strictly better than baked. Multi-stage from dev handles prod if ever needed
+
+Full analysis: docs/dockerfile-minimalist-round1.md (194 lines)
+Summary: this file (35 lines)
