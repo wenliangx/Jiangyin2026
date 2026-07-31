@@ -4,8 +4,8 @@ SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib
-ENV GAZEBO_MODEL_PATH=/ws/src/mid360_gazebo/models:/home/user/.gazebo/models
-ENV GAZEBO_RESOURCE_PATH=/ws/src/mid360_gazebo/models:/usr/share/gazebo-11/models:/home/user/.gazebo/models
+ENV GAZEBO_MODEL_PATH=/home/user/.gazebo/models
+ENV GAZEBO_RESOURCE_PATH=/usr/share/gazebo-11/models:/home/user/.gazebo/models
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcl-dev \

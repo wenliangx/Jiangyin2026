@@ -7,11 +7,9 @@
 #   --dev       — source is mounted at /ws/src/, compile on startup
 #
 # Pipeline:
-#   1. mid360_bridge  (Gazebo PointCloud2 → /livox/lidar)
-#   2. IMU relay      (/mavros/imu/data → /livox/imu)
-#   3. RA-LIO         (LiDAR SLAM → /Odometry)
-#   4. px4_estimator  (/Odometry → /mavros/vision_pose/pose → PX4 EKF2)
-#   5. FSM+NMPC       (PX4 control → NMPC hover)
+#   1. RA-LIO         (LiDAR SLAM → /Odometry)
+#   2. px4_estimator  (/Odometry → /mavros/vision_pose/pose → PX4 EKF2)
+#   3. FSM+NMPC       (PX4 control → NMPC hover)
 # ============================================================================
 set -euo pipefail
 
@@ -122,7 +120,7 @@ fi
 
 if [[ "${DEV_MODE}" == "true" && "${AUTO_START_STACK:-0}" != "1" ]]; then
   log_info "Dev container ready. Algorithm stack is stopped by default."
-  log_info "Run jy-start-stack to launch mid360_bridge, fake mocap, RA-LIO, px4_estimator, and FSM+NMPC."
+  log_info "Run jy-start-stack to launch RA-LIO, px4_estimator, and FSM+NMPC."
   exec tail -f /dev/null
 fi
 
@@ -142,16 +140,8 @@ if [[ "${AUTO_START_STACK:-0}" == "1" && -x /usr/local/bin/jy-stack ]]; then
 fi
 
 # ---- Launch pipeline (production fallback) --------------------------------
-launch_service "mid360_bridge" \
-  "rosrun mid360_gazebo mid360_bridge.py" 2
-
 launch_service "IMU relay" \
   "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2
-
-if [[ "${GZ_MOCAP_ENABLED:-0}" == "1" ]]; then
-  launch_service "Gazebo mocap bridge" \
-    "roslaunch gz_external_pose gazebo_pose_to_vrpn.launch model_name:=${GZ_MOCAP_MODEL:-iris_mid360} output_topic:=/vrpn_client_node/jy0/pose odom_topic:=/ground_truth/state ready_topic:=/gz_mocap/ready zero_origin:=${GZ_MOCAP_ZERO_ORIGIN:-true}" 2
-fi
 
 launch_service "RA-LIO" \
   "roslaunch ra_lio mapping_mid360.launch use_sim_time:=false rviz:=false" 5
@@ -162,6 +152,6 @@ launch_service "px4_estimator" \
 launch_service "FSM+NMPC" \
   "roslaunch fsm_ctrl single.launch start_mavros:=false use_external_odom:=true" 8
 
-log_info "Pipeline ready: mid360_bridge -> RA-LIO -> px4_estimator -> FSM+NMPC -> PX4 EKF2"
+log_info "Pipeline ready: RA-LIO -> px4_estimator -> FSM+NMPC -> PX4 EKF2"
 
 exec tail -f /dev/null
