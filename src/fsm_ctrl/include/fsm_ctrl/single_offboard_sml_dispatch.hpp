@@ -67,8 +67,6 @@ class CommandDispatcherT {
   int previous_{0};
 };
 
-using CommandDispatcher = CommandDispatcherT<StateMachine>;
-using CoreFlightCommandDispatcher = CommandDispatcherT<CoreFlightStateMachine>;
 using MissionCommandDispatcher = CommandDispatcherT<MissionStateMachine>;
 using SegmentedMissionCommandDispatcher =
     CommandDispatcherT<SegmentedMissionStateMachine>;
