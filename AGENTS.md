@@ -26,13 +26,13 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 │   ├── apriltag_echo_message/  # AprilTag→laser echo bridge (CATKIN_IGNORE)
 │   ├── libs/px4_plugs/  # PX4 plugins: link_monitor, log_manager, param_migrator
 │   └── livox_ros_driver/  # Legacy driver dir
-├── docker/            # Container images: single Dockerfile + scripts (dev/prod)
+├── docker/            # Container images: Dockerfile + scripts + compose.yml (dev/prod)
 ├── deb/               # Pre-built .deb packages (CasADi, Sophus, Livox SDK2)
 ├── vrpn/              # VRPN client ROS integration (external)
 ├── docs/              # Runtime guides, plans
 ├── build/ devel/ logs/       # Catkin artifacts (gitignored)
 ├── tmux-real.sh       # Real-robot (9 panes) tmux launcher
-├── docker-compose.yml # Container orchestration (single jy service + gui profile)
+├── docker/compose.yml # Container orchestration (single headless jy service)
 └── .opencode/         # AI coding assistant config (Node.js)
 ```
 
@@ -120,8 +120,7 @@ cp build/bin/ralio_mapping ../../devel/lib/ra_lio/
 # Containers (single-image model; entrypoint jy-docker.sh)
 docker build -f docker/Dockerfile -t jiangyin_jy2026 .            # dev (default)
 docker build -f docker/Dockerfile -t jiangyin_jy2026:prod --target prod .  # baked algo stack
-podman-compose up -d                                              # jy (SITL + stack)
-podman-compose --profile gui up -d                                # + Gazebo GUI
+podman-compose -f docker/compose.yml up -d --build               # jy (image build + dev shell)
 docker run --rm -it --network=host jiangyin_jy2026 sitl           # PX4 SITL headless
 docker run --rm -it --network=host jiangyin_jy2026 smoke          # runtime gate
 
