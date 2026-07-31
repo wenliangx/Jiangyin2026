@@ -1,0 +1,38 @@
+# Git & repo metadata
+.git/
+.codegraph/
+.codex/
+.omo/
+
+# Catkin build artifacts
+build/
+devel/
+logs/
+sim_logs/
+.catkin_workspace
+.catkin_tools/
+
+# Editor / IDE
+.vscode/
+.devcontainer/
+.clangd/
+.clangd-*
+
+# Cache / generated
+.cache/
+dist/
+server/
+node_modules/
+compile_commands.json
+
+# Runtime data
+*.bag
+*.log
+*.pyc
+__pycache__/
+
+# Docs junk
+docs/superpowers/
+
+# External submodules
+vrpn/

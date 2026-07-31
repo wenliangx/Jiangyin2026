@@ -41,5 +41,5 @@ osrf/ros:noetic-desktop-full (Ubuntu 20.04 + ROS Noetic)
 - **Build order**: debs (optional) → core → prod/dev (parallel) ↔ sim (standalone independent)
 - **Dev vs Prod**: dev mounts source as volume (hot-reload), prod bakes compiled binaries at image build time
 - **GPU**: sim and gui require NVIDIA GPU with nvidia-container-runtime; jy2026 and jy-dev do not
-- **Network**: All containers communicate via `jy-net` bridge DNS (ROS_MASTER_URI=http://sim:11311)
+- **Network**: Multi-container mode uses `jy-net` bridge DNS (ROS_MASTER_URI=http://sim:11311). Single-container mode uses localhost (ROS_MASTER_URI=http://localhost:11311, ROS_IP=127.0.0.1). Script defaults match single-container; compose overrides MASTER explicitly for multi-container.
 - **No CI/CD**: All images built manually. No GitHub/GitLab CI pipeline.

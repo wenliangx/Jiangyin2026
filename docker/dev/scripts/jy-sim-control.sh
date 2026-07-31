@@ -7,8 +7,8 @@ if [[ "${command_name}" == "jy-sim-control" || "${command_name}" == "jy-sim-cont
   [[ $# -gt 0 ]] && shift
 fi
 
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://sim:11311}"
-export ROS_IP="${ROS_IP:-jy-dev}"
+export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
+export ROS_IP="${ROS_IP:-127.0.0.1}"
 source /opt/ros/noetic/setup.bash
 
 usage() {

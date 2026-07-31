@@ -19,5 +19,6 @@ __pycache__/
 *.png
 *.ipynb
 /docs/superpowers
+dist/
 
 logs/

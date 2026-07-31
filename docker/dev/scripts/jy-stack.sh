@@ -7,8 +7,8 @@ if [[ "${command_name}" == "jy-stack" || "${command_name}" == "jy-stack.sh" ]]; 
   [[ $# -gt 0 ]] && shift
 fi
 
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://sim:11311}"
-export ROS_IP="${ROS_IP:-jy-dev}"
+export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
+export ROS_IP="${ROS_IP:-127.0.0.1}"
 source /opt/ros/noetic/setup.bash
 if [[ -f /ws/devel/setup.bash ]]; then
   source /ws/devel/setup.bash

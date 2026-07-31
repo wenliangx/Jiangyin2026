@@ -22,9 +22,9 @@ fi
 if [[ "${DEV_MODE}" == "true" ]]; then
   export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
 else
-  export ROS_MASTER_URI="${ROS_MASTER_URI:-http://sim:11311}"
+  export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
 fi
-export ROS_IP="${ROS_IP:-jy-dev}"
+export ROS_IP="${ROS_IP:-127.0.0.1}"
 
 source /opt/ros/noetic/setup.bash
 
