@@ -1,8 +1,6 @@
 # =============================================================================
 # Jiangyin2026 — single Dockerfile (multi-stage: dev + prod)
 # =============================================================================
-# Consolidation of the legacy 4-image pipeline (docker/sim, Dockerfile.core,
-# docker/dev/Dockerfile.dev, Dockerfile.prod) into ONE file.
 # Located at docker/Dockerfile; build context = repo root (.dockerignore there).
 #
 #   dev stage (default target) : apt deps + clangd-22 + CMake 3.28.3 +
@@ -22,7 +20,6 @@
 # RUNTIME MODES — entrypoint jy-docker.sh <mode> (default: shell)
 #   shell   interactive bash inside the image
 #   sitl    roscore + MAVROS + PX4 SITL + Gazebo (headless)
-#   gui     sitl with Gazebo GUI rendering
 #   dev     compile /ws/src (source-mount model) then start the stack
 #   stack   algorithm stack only (RA-LIO → px4_estimator → FSM+NMPC)
 #   all     sitl + stack together
@@ -52,9 +49,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
-# L1 — system deps: union of the apt lists of docker/sim/Dockerfile,
-#      Dockerfile.core, docker/dev/Dockerfile.dev, Dockerfile.prod (deduped),
-#      + LLVM repo prerequisites + clangd-22 via apt.llvm.org
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
