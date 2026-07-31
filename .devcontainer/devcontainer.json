@@ -1,7 +1,7 @@
 {
   "name": "Jiangyin 2026",
   "dockerComposeFile": "../docker-compose.yml",
-  "service": "jy-dev",
+  "service": "jy",
   "workspaceFolder": "/ws",
   "mounts": [
     "source=${localWorkspaceFolder},target=/ws,type=bind"
@@ -29,6 +29,6 @@
   },
   "remoteEnv": {
     "ROS_MASTER_URI": "http://localhost:11311",
-    "ROS_IP": "jy-dev"
+    "ROS_IP": "127.0.0.1"
   }
 }

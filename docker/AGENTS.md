@@ -1,45 +1,74 @@
 # docker/ — Container Image Pipeline
 
-**5 layered images, 4 compose services, 6 deployment scripts.** Builds PX4 SITL + full algorithm stack.
+**Single unified image + 2 compose services.** One Dockerfile builds a dev image with PX4 SITL baked in; a `prod` target bakes the algorithm stack for competition day.
 
-## IMAGE HIERARCHY
+## IMAGE
 
 ```
-osrf/ros:noetic-desktop-full (Ubuntu 20.04 + ROS Noetic)
-├── localhost/jiangyin_px4_mid360:latest    # PX4 v1.14.3 + Gazebo Classic + iris_mid360 model
-└── localhost/jiangyin_core:latest           # CasADi+IPOPT, Livox SDK2, Sophus (from .core or .core.prebuilt)
-    ├── localhost/jiangyin_jy2026:latest        # Copies src/, runs catkin_make + RA-LIO at build time
-    └── localhost/jiangyin_jy-dev:latest     # Adds clangd-22, libpcl-dev, Gazebo plugins, plotjuggler
+osrf/ros:noetic-desktop-full (Ubuntu 20.04 + ROS Noetic, digest-pinned)
+└── localhost/jiangyin_jy2026:latest   # single image: deps + PX4 SITL + Gazebo + jy-docker.sh
 ```
 
-## SERVICES (docker-compose.yml, jy-net bridge)
+| File | Role |
+|------|------|
+| `Dockerfile` | The ONE Dockerfile. Default target = dev; `--target prod` = baked algo stack |
+| `Dockerfile.debs` | Deb factory (CasADi+IPOPT, Sophus, Livox SDK2, livox_ros_driver2) — detached, kept for rebuilds |
+| `scripts/jy-docker.sh` | Single entrypoint mode router (shell/sitl/gui/dev/stack/all/takeoff/land/reset/smoke) |
+| `scripts/jy-smoke-test` | Authoritative runtime gate (gzserver + px4 + /mavros/imu/data + /mavros/state) |
+| `sim/scripts/configure_px4_mid360.py` | Legacy mid360 LiDAR sim config (unused; kept for reference) |
+| `sim/worlds/` | Gazebo worlds (unused by default SITL) |
+| `build-debs.sh` / `build-debs-podman.sh` | Rebuild the .deb packages |
 
-| Service | Image | Role | GPU |
-|---------|-------|------|-----|
-| `sim` | jiangyin_px4_mid360 | PX4 SITL headless (gzserver) | yes |
-| `gui` | jiangyin_px4_mid360 | Gazebo GUI (gzclient, XRDP) | yes |
-| `jy2026` | jiangyin_jy2026 | Algorithm pipeline (production) | no |
-| `jy-dev` | jiangyin_jy-dev | Dev workspace (source mount, compile on start) | no |
+## BUILD
 
-## KEY SCRIPTS
+```bash
+# dev image (default; PX4 SITL baked, jobs = core count)
+docker build -f docker/Dockerfile -t jiangyin_jy2026 .
 
-| Script | Role |
-|--------|------|
-| `Dockerfile.core` / `.core.prebuilt` | Build core image from source or prebuilt debs |
-| `Dockerfile.prod` | Build production image: copy src/, catkin_make, RA-LIO |
-| `docker/dev/Dockerfile.dev` | Build dev image with clangd, PCL, Gazebo plugins |
-| `docker/sim/Dockerfile` | Build simulation image (PX4 v1.14.3 + Gazebo Classic) |
-| `dev/scripts/start_jy2026.sh` | Pipeline launcher (dev mode compiles on start) |
-| `dev/scripts/jy-stack.sh` | Stack lifecycle: start/stop/status for all algorithm nodes |
-| `dev/scripts/jy-sim-control.sh` | Sim controls: `jy-takeoff`, `jy-land`, `jy-reset` |
-| `sim/scripts/start_px4_mid360.sh` | PX4 SITL entrypoint (roscore → MAVROS → px4+gzserver) |
-| `sim/scripts/configure_px4_mid360.py` | Build-time: creates iris_mid360 model with simulated LiDAR |
-| `build-debs.sh` / `build-debs-podman.sh` | Build CasADi/Sophus/Livox SDK2 .deb packages |
+# prod image (bakes src/ + catkin_make + RA-LIO for competition day)
+docker build -f docker/Dockerfile -t jiangyin_jy2026:prod --target prod .
+
+# optional: cap PX4 make jobs (RAM-limited machines), or run smoke at build
+docker build -f docker/Dockerfile --build-arg PX4_BUILD_JOBS=4 .
+docker build -f docker/Dockerfile --build-arg RUN_SMOKE=1 .
+```
+
+Context = repo root (`.dockerignore` there keeps it ~310MB).
+
+## RUNTIME
+
+Entrypoint `jy-docker.sh <mode>` — single container, ROS master on localhost:
+
+| Mode | What it does |
+|------|--------------|
+| `shell` | interactive bash (default) |
+| `sitl` | roscore → MAVROS → px4 + gzserver (headless, stock iris model) |
+| `gui` | sitl + gzclient (X11) |
+| `dev` | compile /ws/src (catkin_make + RA-LIO), then bash |
+| `stack` | algorithm stack (RA-LIO → px4_estimator → FSM+NMPC) |
+| `all` | sitl (bg) + stack (fg) |
+| `takeoff` / `land` / `reset` | FSM UDP commands + Gazebo reset |
+| `smoke` | run jy-smoke-test |
+
+**No lidar/radar simulation** — SITL uses the stock PX4 iris model + empty world. The mid360 LiDAR is real-hardware only (RA-LIO stack in `dev`/`stack` modes).
+
+## SERVICES (docker-compose.yml)
+
+| Service | Profile | Role |
+|---------|---------|------|
+| `jy` | default | everything in one container (`jy-docker.sh all`) |
+| `gui` | `gui` | same image, `jy-docker.sh gui` (X11, needs display) |
+
+```bash
+podman-compose up -d                # headless: SITL + stack
+podman-compose --profile gui up -d  # + Gazebo GUI
+podman-compose down
+```
 
 ## NOTES
 
-- **Build order**: debs (optional) → core → prod/dev (parallel) ↔ sim (standalone independent)
-- **Dev vs Prod**: dev mounts source as volume (hot-reload), prod bakes compiled binaries at image build time
-- **GPU**: sim and gui require NVIDIA GPU with nvidia-container-runtime; jy2026 and jy-dev do not
-- **Network**: Multi-container mode uses `jy-net` bridge DNS (ROS_MASTER_URI=http://sim:11311). Single-container mode uses localhost (ROS_MASTER_URI=http://localhost:11311, ROS_IP=127.0.0.1). Script defaults match single-container; compose overrides MASTER explicitly for multi-container.
-- **No CI/CD**: All images built manually. No GitHub/GitLab CI pipeline.
+- **PX4**: v1.14.3 pinned at SHA `de8a295af4d8192a3e85b2565040367378a07d8e` (not tag). Baked via `DONT_RUN=1 make px4_sitl gazebo-classic` with `j=$(nproc)` (PX4's Makefile reads the `j` variable, not `-j`).
+- **GPU**: only needed for `gui` mode (gzclient). Headless SITL is CPU-only (stock iris has no GPU sensors).
+- **Networking**: single-container localhost model (ROS_MASTER_URI=http://localhost:11311). No jy-net bridge.
+- **Deployment**: prod target for field machines; `tmux-real.sh` covers bare-metal real-robot.
+- **No CI/CD**: images built manually.
