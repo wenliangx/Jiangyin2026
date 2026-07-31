@@ -23,7 +23,7 @@ RUN for so in /opt/ros/noetic/lib/*.so; do \
     done 2>/dev/null || true
 
 COPY src/ /ws/src/
-COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
+COPY docker/dev/scripts/start_jy2026.sh /opt/start_jy2026.sh
 
 WORKDIR /ws
 
