@@ -26,13 +26,13 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 │   ├── apriltag_echo_message/  # AprilTag→laser echo bridge (CATKIN_IGNORE)
 │   ├── libs/px4_plugs/  # PX4 plugins: link_monitor, log_manager, param_migrator
 │   └── livox_ros_driver/  # Legacy driver dir
-├── docker/            # Container images: core, dev, prod, sim, debs (5 layered)
+├── docker/            # Container images: single Dockerfile + scripts (dev/prod)
 ├── deb/               # Pre-built .deb packages (CasADi, Sophus, Livox SDK2)
 ├── vrpn/              # VRPN client ROS integration (external)
 ├── docs/              # Runtime guides, plans
 ├── build/ devel/ logs/       # Catkin artifacts (gitignored)
 ├── tmux-real.sh       # Real-robot (9 panes) tmux launcher
-├── docker-compose.yml # Container orchestration (sim/gui/jy2026/jy-dev)
+├── docker-compose.yml # Container orchestration (single jy service + gui profile)
 └── .opencode/         # AI coding assistant config (Node.js)
 ```
 
@@ -46,12 +46,12 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 | LiDAR-inertial odometry | `src/RA-LIO/` | ralio_mapping node, FAST-LIO2-style IEKF |
 | Landing vision | `src/uav_vision/` | AprilTag landing + target template matching (C++/Python) |
 | Vision message defs | `src/uav_vision_msgs/` | LandingOffset, TargetMatch, TargetMatchArray |
-| Simulation (PX4 SITL) | `docker/sim/` | start_px4_mid360.sh, Dockerfile |
+| Simulation (PX4 SITL) | `docker/Dockerfile` + `docker/scripts/` | jy-docker.sh sitl mode (baked PX4, no lidar sim) |
 | Unit tests | `src/fsm_ctrl/test/` | GTest (38 TEST_F), rostest smoke test |
 | Vision tests | `src/uav_vision/test/` | GTest (test_landing_core) + 5 Python tests |
 | ROS msg definitions | `src/*/msg/` | 17+ custom .msg packages |
 | PX4 plugins | `src/libs/px4_plugs/` | px4_link_monitor, px4_log_manager, px4_param_migrator (Python) |
-| Build (container) | `docker/Dockerfile.*` | 5 layered images: core→dev→prod, sim (standalone) |
+| Build (container) | `docker/Dockerfile` | single image: deps + PX4 SITL + jy-docker.sh; `--target prod` bakes algo stack |
 | Build (local) | `catkin_make` | ROS1 workspace + RA-LIO standalone |
 
 ## CODE MAP
@@ -117,12 +117,13 @@ catkin_make -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DROS_EDITION=ROS1 -j$(nproc)  # W
 cd src/RA-LIO && cmake . -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
 cp build/bin/ralio_mapping ../../devel/lib/ra_lio/
 
-# Containers
-podman-compose up -d jy-dev                          # Dev container
-podman-compose up -d                                 # sim + jy2026 (headless)
-podman-compose up -d sim gui                         # sim + Gazebo GUI
-docker build -t jiangyin_px4_mid360:latest -f docker/sim/Dockerfile docker/sim/
-docker build -t jiangyin_jy2026:latest -f docker/Dockerfile.prod .
+# Containers (single-image model; entrypoint jy-docker.sh)
+docker build -f docker/Dockerfile -t jiangyin_jy2026 .            # dev (default)
+docker build -f docker/Dockerfile -t jiangyin_jy2026:prod --target prod .  # baked algo stack
+podman-compose up -d                                              # jy (SITL + stack)
+podman-compose --profile gui up -d                                # + Gazebo GUI
+docker run --rm -it --network=host jiangyin_jy2026 sitl           # PX4 SITL headless
+docker run --rm -it --network=host jiangyin_jy2026 smoke          # runtime gate
 
 # Tests
 catkin_make run_tests single_offboard_sml_test       # FSM unit tests (38 GTest)
