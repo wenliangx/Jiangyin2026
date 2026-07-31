@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  jy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: localhost/jiangyin_jy2026:latest
+    container_name: jy
+    environment:
+      - ROS_MASTER_URI=http://localhost:11311
+      - ROS_IP=127.0.0.1
+      - HEADLESS=1
+    stdin_open: true
+    tty: true
+    volumes:
+      - ..:/ws:Z
+    command: ["dev"]
+    restart: "no"
