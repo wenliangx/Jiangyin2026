@@ -3,7 +3,6 @@
 # jy-docker.sh — single entrypoint mode router for the Jiangyin2026 stack.
 #
 # Consolidates four legacy entrypoint scripts into one:
-#   docker/sim/scripts/start_px4_mid360.sh   -> sitl / gui modes
 #   docker/dev/scripts/start_jy2026.sh       -> dev mode
 #   docker/dev/scripts/jy-stack.sh           -> stack mode
 #   docker/dev/scripts/jy-sim-control.sh     -> takeoff / land / reset modes
@@ -25,7 +24,6 @@ Usage: jy-docker.sh <mode> [args]
 Modes:
   shell     Interactive dev shell (default when no mode given)
   sitl      PX4 SITL + Gazebo, headless (roscore -> MAVROS -> px4+gzserver)
-  gui       PX4 SITL + Gazebo with GUI (gzclient --verbose)
   dev       Compile-from-source dev shell (livox deb check, catkin_make, RA-LIO)
   stack     Algorithm stack lifecycle: start (default) | stop | status
   all       SITL in background + algorithm stack in foreground
@@ -50,7 +48,7 @@ export ROS_IP="${ROS_IP:-127.0.0.1}"
 export PX4_HOME="${PX4_HOME:-/opt/PX4-Autopilot}"           # PX4 source path
 export PX4_SIM_MODEL="${PX4_SIM_MODEL:-iris}"               # drone SDF model (stock PX4)
 export PX4_SIM_WORLD="${PX4_SIM_WORLD:-empty}"              # gazebo world (stock)
-export HEADLESS="${HEADLESS:-1}"                            # 1 = no gzclient
+export HEADLESS="${HEADLESS:-1}"
 export QT_X11_NO_MITSHM=1                                    # avoid X11 shm issues
 
 # Gazebo plugins and ROS library paths
@@ -62,11 +60,6 @@ source /opt/ros/noetic/setup.bash
 log_info()  { printf '[jy] %s\n' "$*"; }
 log_error() { printf '[jy ERROR] %s\n' "$*"; }
 
-# ============================================================================
-# sitl mode body — docker/sim/scripts/start_px4_mid360.sh
-# roscore (30s wait) -> MAVROS -> px4 + gzserver via sitl_run.sh
-# (no lidar/radar simulation: stock PX4 iris model + default gazebo world)
-# ============================================================================
 start_sitl() {
   # Load ROS and Gazebo environments
   source "${PX4_HOME}/Tools/simulation/gazebo-classic/setup_gazebo.bash" \
@@ -109,20 +102,6 @@ wait_sitl_ready() {
     sleep 1
   done
   printf '[jy ERROR] SITL failed to connect MAVROS within 15s. Check: gzserver running, bin/px4 alive, MAVLink port 14557 listening.\n'
-  exit 1
-}
-
-# ============================================================================
-# gui mode body — start_px4_mid360.sh + explicit gzclient
-# ============================================================================
-wait_gzserver_ready() {
-  for i in $(seq 1 20); do
-    if pgrep -x gzserver >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
-  printf '[jy ERROR] gzserver is not up after 20s. Gazebo master (GAZEBO_MASTER_URI=%s) is not reachable — check that gzserver started, gazebo-11 plugins are on LD_LIBRARY_PATH, and the sim image launched PX4 SITL first.\n' "${GAZEBO_MASTER_URI:-http://localhost:11345}"
   exit 1
 }
 
@@ -348,6 +327,17 @@ dev_main() {
   log_info "Using Livox ROS driver deb from ${livox_driver_share}"
 
   if [[ -f /ws/build/Makefile || -f /ws/build/CMakeCache.txt ]]; then
+    cached_generator=""
+    if [[ -f /ws/build/CMakeCache.txt ]]; then
+      cached_generator="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' /ws/build/CMakeCache.txt)"
+    fi
+    if [[ -n "${cached_generator}" && "${cached_generator}" != "Ninja" ]]; then
+      log_info "Removing stale catkin build cache (generator ${cached_generator})"
+      rm -rf /ws/build
+    fi
+  fi
+
+  if [[ -f /ws/build/Makefile || -f /ws/build/CMakeCache.txt ]]; then
     cached_cmake=""
     if [[ -f /ws/build/Makefile ]]; then
       cached_cmake="$(sed -n 's/^CMAKE_COMMAND = //p' /ws/build/Makefile)"
@@ -365,7 +355,7 @@ dev_main() {
   cd /ws
 
   log_info "catkin_make..."
-  catkin_make -j"$(nproc)" \
+  catkin_make --use-ninja -j"$(nproc)" \
     -DROS_EDITION=ROS1 \
     -DCATKIN_BLACKLIST_PACKAGES=livox_ros_driver2 2>&1 | tail -20
   source /ws/devel/setup.bash
@@ -401,13 +391,6 @@ case "${mode}" in
     start_sitl &
     wait_sitl_ready
     wait
-    ;;
-  gui)
-    start_sitl &
-    wait_gzserver_ready
-    source "${PX4_HOME}/Tools/simulation/gazebo-classic/setup_gazebo.bash" \
-      "${PX4_HOME}" "${PX4_HOME}/build/px4_sitl_default"
-    exec gzclient --verbose
     ;;
   dev)
     dev_main

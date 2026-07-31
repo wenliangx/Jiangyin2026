@@ -98,7 +98,7 @@ else
     else
       echo "  Suggestion: Start the SITL container first."
       echo "    docker run -h jy-sim localhost/jiangyin_jy2026"
-      echo "    # or:    docker-compose up"
+      echo "    # or:    podman-compose -f docker/compose.yml up"
     fi
     exit 1
   fi
