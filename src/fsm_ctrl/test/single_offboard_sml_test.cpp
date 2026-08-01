@@ -2,13 +2,35 @@
 
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <fsm_ctrl/single_offboard_sml.hpp>
-#include <fsm_ctrl/single_offboard_sml_dispatch.hpp>
+#include <fsm_ctrl/single_offboard_sml/actions/common.hpp>
+#include <fsm_ctrl/single_offboard_sml/actions/mission.hpp>
+#include <fsm_ctrl/single_offboard_sml/actions/segmented_mission.hpp>
+#include <fsm_ctrl/single_offboard_sml/context.hpp>
+#include <fsm_ctrl/single_offboard_sml/dispatch.hpp>
+#include <fsm_ctrl/single_offboard_sml/machines/mission.hpp>
+#include <fsm_ctrl/single_offboard_sml/machines/segmented_mission.hpp>
+#include <fsm_ctrl/single_offboard_sml/ports.hpp>
+#include <fsm_ctrl/single_offboard_sml/states.hpp>
+#include <fsm_ctrl/single_offboard_sml/types.hpp>
 
 namespace {
 using namespace fsm_ctrl::single_sml;
+
+TEST(HeaderLayoutCompatibility,
+     OldWrappersAndCanonicalHeadersExposePublicTypes) {
+  static_assert(std::is_same<ActiveMachine, MissionMachine>::value,
+                "ActiveMachine must remain the mission machine alias");
+  static_assert(std::is_same<ActiveStateMachine,
+                             boost::sml::sm<ActiveMachine>>::value,
+                "ActiveStateMachine must remain compatible with ActiveMachine");
+  static_assert(std::is_same<ActiveCommandDispatcher,
+                             CommandDispatcherT<ActiveStateMachine>>::value,
+                "ActiveCommandDispatcher must remain the active dispatcher");
+}
 
 class FakeClock final : public Clock {
  public:

@@ -1,5 +1,5 @@
 #include <fsm_ctrl/single_offboard_sml.hpp>
-#include <fsm_ctrl/single_offboard_sml_dispatch.hpp>
+#include <fsm_ctrl/single_offboard_sml/dispatch.hpp>
 #include <fsm_ctrl/NMPC_Controller.hpp>
 #include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
