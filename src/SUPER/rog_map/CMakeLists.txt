@@ -62,7 +62,16 @@ set(THIRD_PARTY
         yaml-cpp
 )
 
-file(GLOB_RECURSE srcs CONFIGURE_DEPENDS src/*.cpp include/*.h include/*.hpp include/*.cpp)
+set(srcs
+        include/rog_map/rog_map_core/raycaster.cpp
+        src/rog_map/counter_map.cpp
+        src/rog_map/esdf_map.cpp
+        src/rog_map/inf_map.cpp
+        src/rog_map/prob_map.cpp
+        src/rog_map/rog_map.cpp
+        src/rog_map/sliding_map.cpp
+        src/rog_map_ros/rog_map_ros1.cpp
+)
 add_library(rog_map STATIC ${srcs})
 
 target_include_directories(rog_map PUBLIC include)

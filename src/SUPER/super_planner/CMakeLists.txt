@@ -63,7 +63,31 @@ set(THIRD_PARTY
         -ldw
 )
 
-file(GLOB_RECURSE srcs CONFIGURE_DEPENDS src/*.cpp include/*.h include/*.hpp)
+set(srcs
+        src/super_core/astar.cpp
+        src/super_core/ciri.cpp
+        src/super_core/corridor_generator.cpp
+        src/super_core/fsm.cpp
+        src/super_core/super_planner.cpp
+        src/traj_opt/backup_traj_optimizer_s4.cpp
+        src/traj_opt/exp_traj_optimizer_s4.cpp
+        src/traj_opt/yaw_traj_opt.cpp
+        src/utils/banded_system.cpp
+        src/utils/ellipsoid.cpp
+        src/utils/geometry_utils.cpp
+        src/utils/lbfgs.cpp
+        src/utils/minco.cpp
+        src/utils/mvie.cpp
+        src/utils/optimization_utils.cpp
+        src/utils/piece.cpp
+        src/utils/polynomial_interpolation.cpp
+        src/utils/polytope.cpp
+        src/utils/quickhull.cpp
+        src/utils/root_finder.cpp
+        src/utils/sdlp.cpp
+        src/utils/trajectory.cpp
+        src/utils/waypoint_trajectory_optimizer.cpp
+)
 add_library(super STATIC ${srcs})
 target_include_directories(super PUBLIC
         include)
