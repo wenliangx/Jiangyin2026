@@ -47,7 +47,7 @@ catkin_package(
 
 include_directories(
   include
-  ${EIGEN_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -93,7 +93,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
 ## Add gtest based cpp test target and link libraries
 catkin_add_gtest(${PROJECT_NAME}-test src/${PROJECT_NAME}_test.cpp)
 if(TARGET ${PROJECT_NAME}-test)
-  target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
+  add_dependencies(${PROJECT_NAME}-test ${catkin_EXPORTED_TARGETS})
 endif()
 
 ## Add folders to be run by python nosetests
