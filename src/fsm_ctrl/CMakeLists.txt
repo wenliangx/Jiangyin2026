@@ -33,6 +33,17 @@ else()
   set(FSM_CTRL_YAML_CPP_TARGET ${YAML_CPP_LIBRARIES})
 endif()
 
+## ------------------------------------------------------------------
+## CasADi discovery
+## ------------------------------------------------------------------
+find_library(FSM_CTRL_CASADI_LIBRARY
+  NAMES casadi casadi.so.3.7 libcasadi.so.3.7
+  PATHS /usr/local/lib
+)
+if(NOT FSM_CTRL_CASADI_LIBRARY)
+  message(FATAL_ERROR "CasADi library not found; expected libcasadi.so.3.7 in /usr/local/lib or a discoverable casadi library")
+endif()
+
 ################################################
 ## Declare ROS messages, services and actions ##
 ################################################
@@ -104,14 +115,22 @@ add_library(traj_gen
   src/traj_gen.cpp
 )
 
+# Generated-message dependencies (messages must be generated before libraries link them)
+add_dependencies(ctrl_math ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(dfbc ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(att_nmpc ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(nmpc_ctrl ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(FLAG_NMPC ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(traj_gen ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 add_executable(single_offboard_fsm
   src/single_offboard_fsm.cpp
 )
 target_link_libraries(single_offboard_fsm
   ctrl_math dfbc att_nmpc nmpc_ctrl FLAG_NMPC traj_gen ${catkin_LIBRARIES} boost_system boost_filesystem
 )
-target_link_libraries(single_offboard_fsm 
-  /usr/local/lib/libcasadi.so.3.7
+target_link_libraries(single_offboard_fsm
+  ${FSM_CTRL_CASADI_LIBRARY}
 ) 
 
 add_executable(px4_estimator
@@ -127,6 +146,10 @@ add_executable(swarm_user_cmd
 target_link_libraries(swarm_user_cmd
   ctrl_math ${catkin_LIBRARIES} boost_system boost_filesystem
 )
+
+add_dependencies(single_offboard_fsm ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(px4_estimator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(swarm_user_cmd ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 # ------------------------------------------------------------------
 # single_offboard_sml  (C++14, Boost.SML FSM)
@@ -146,7 +169,7 @@ target_link_libraries(single_offboard_sml
   ${FSM_CTRL_YAML_CPP_TARGET}
   boost_system boost_filesystem
   Threads::Threads
-  /usr/local/lib/libcasadi.so.3.7
+  ${FSM_CTRL_CASADI_LIBRARY}
 )
 
 catkin_install_python(PROGRAMS
