@@ -1,19 +1,18 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(ra_lio)
 
-SET(CMAKE_BUILD_TYPE "Release")
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type" FORCE)
+endif()
 
-ADD_COMPILE_OPTIONS(-std=c++14 )
-ADD_COMPILE_OPTIONS(-std=c++14 )
-set( CMAKE_CXX_FLAGS "-std=c++14 -O3" )
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -pthread -fexceptions")
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions" )
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -pthread -std=c++0x -std=c++14 -fexceptions")
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
@@ -36,9 +35,6 @@ else()
 endif()
 
 find_package(OpenMP REQUIRED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
-# set(Sophus_DIR "/usr/local/share/sophus")
 
 
 find_package(catkin REQUIRED COMPONENTS
@@ -61,8 +57,14 @@ find_package(PCL 1.8 REQUIRED)
 find_package(Sophus REQUIRED )
 set(Sophus_INCLUDE_DIRS "/usr/local/include")
 find_package(rosfmt REQUIRED)
-# find_library(ROSFMT_LIB NAMES rosfmt9 PATHS /opt/ros/noetic/lib NO_DEFAULT_PATH)
-message(STATUS "rosfmt library: ${ROSFMT_LIB}")
+find_library(ROSFMT_LIBRARY
+  NAMES rosfmt9 rosfmt
+  PATHS /opt/ros/noetic/lib
+)
+if(NOT ROSFMT_LIBRARY)
+  message(FATAL_ERROR "rosfmt library not found")
+endif()
+message(STATUS "rosfmt library: ${ROSFMT_LIBRARY}")
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 
@@ -91,7 +93,7 @@ catkin_package(
 )
 
 add_executable(ralio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+target_compile_features(ralio_mapping PRIVATE cxx_std_14)
 add_dependencies(ralio_mapping ra_lio_generate_messages)
-target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} /opt/ros/noetic/lib/librosfmt9.so)
+target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} ${ROSFMT_LIBRARY} OpenMP::OpenMP_CXX)
 target_include_directories(ralio_mapping PRIVATE /usr/local/include ${PYTHON_INCLUDE_DIRS})
-
