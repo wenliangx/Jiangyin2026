@@ -224,7 +224,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._send_udp_command(0)
         time.sleep(0.3)
         with self._lock:
-            ref_before_cmd4 = len(self._reference_positions)
             state_before_cmd4 = len(self._nmpc_states)
             att_before_cmd4 = len(self._attitudes)
         self._publish_pose(self._local_pose_pub, 0.2, -0.1, 0.8)
@@ -236,7 +235,6 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
             self._publish_landing_offset()
             with self._lock:
                 saw_landing_output = (
-                    len(self._reference_positions) > ref_before_cmd4 and
                     len(self._nmpc_states) > state_before_cmd4)
         self.assertTrue(saw_landing_output)
         self.assertTrue(self._wait_for(

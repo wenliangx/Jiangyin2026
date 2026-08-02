@@ -77,29 +77,6 @@ struct MissionPoint {
   int perc_mode{0};       // 感知模式字段，保留旧结构含义。
 };
 
-// 构造 Super 任务航点表。
-std::vector<MissionPoint> createSuperTrajectory() {
-  return std::vector<MissionPoint>{
-      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 0.0, 3},
-      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0.0, 0},
-      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0.0, 0},
-      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0.0, 0},
-      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0.0, 0},
-      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0.0, 0},
-      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0.0, 0},
-      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0.0, 0},
-  };
-}
-
-std::vector<std::vector<MissionPoint>> createSuperTrajectorySegments() {
-  const std::vector<MissionPoint> points = createSuperTrajectory();
-  return std::vector<std::vector<MissionPoint>>{
-      {points[0], points[1]},
-      {points[2], points[3]},
-      {points[4], points[5], points[6], points[7]},
-  };
-}
-
 double optionalWaypointYaw(const YAML::Node& node) {
   if (!node || node.IsNull()) {
     return std::numeric_limits<double>::quiet_NaN();
@@ -722,8 +699,11 @@ class RosMissionPort final : public smlfsm::MissionPort {
     }
   }
 
+  bool available() const override { return trajectory_available_; }
+
   void reset() override {
-    super_waypoint_upload_active_ = true;
+    loadSuperTrajectory();
+    super_waypoint_upload_active_ = trajectory_available_;
     super_waypoint_upload_index_ = 0u;
     segment_arrived_ = false;
     super_planner_valid_ = false;
@@ -763,10 +743,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
       const smlfsm::TelemetrySnapshot& telemetry,
       std::vector<smlfsm::ReferencePoint>& horizon) override {
     active_segment_index_ = segment_index;
-    if (super_segments_.empty()) {
-      loadSuperTrajectory();
-    }
-    if (segment_index < 0 ||
+    if (!trajectory_available_ ||
+        segment_index < 0 ||
         static_cast<std::size_t>(segment_index) >= super_segments_.size() ||
         super_segments_[segment_index].empty()) {
       horizon.clear();
@@ -823,10 +801,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
     if (!super_waypoint_upload_active_) {
       return;
     }
-    if (super_segments_.empty()) {
-      loadSuperTrajectory();
-    }
-    if (active_segment_index_ < 0 ||
+    if (!trajectory_available_ || active_segment_index_ < 0 ||
         static_cast<std::size_t>(active_segment_index_) >=
             super_segments_.size()) {
       return;
@@ -856,12 +831,15 @@ class RosMissionPort final : public smlfsm::MissionPort {
   }
 
   void loadSuperTrajectory() {
+    super_segments_.clear();
+    trajectory_available_ = false;
     if (waypoints_file_.empty()) {
-      super_segments_ = createSuperTrajectorySegments();
+      ROS_WARN("mission_super_waypoints_file not set; super mission unavailable");
       return;
     }
     try {
       super_segments_ = loadSuperTrajectorySegmentsFile(waypoints_file_);
+      trajectory_available_ = true;
       std::size_t waypoint_count = 0u;
       for (const auto& segment : super_segments_) {
         waypoint_count += segment.size();
@@ -870,9 +848,10 @@ class RosMissionPort final : public smlfsm::MissionPort {
                waypoint_count, super_segments_.size(), waypoints_file_.c_str());
     } catch (const std::exception& error) {
       ROS_ERROR("Failed to load mission super waypoints from %s: %s; "
-                "falling back to built-in waypoints",
+                "super mission unavailable",
                 waypoints_file_.c_str(), error.what());
-      super_segments_ = createSuperTrajectorySegments();
+      super_segments_.clear();
+      trajectory_available_ = false;
     }
   }
 
@@ -925,6 +904,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
   double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
+  bool trajectory_available_{false};  // mission super 航点是否加载成功。
   std::string waypoints_file_;     // mission super waypoint YAML 文件。
   std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
   std::vector<smlfsm::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。

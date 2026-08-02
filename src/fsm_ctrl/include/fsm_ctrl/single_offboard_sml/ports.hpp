@@ -60,6 +60,8 @@ class MissionPort {
   virtual ~MissionPort() = default;
   virtual void selectCommand(int command) {}
   virtual void reset() = 0;
+  // 任务航点是否可用（YAML 加载成功）。super 任务转换用它做 guard。
+  virtual bool available() const { return true; }
   virtual bool prepareSuper(double now, const TelemetrySnapshot& telemetry,
                             std::vector<ReferencePoint>& horizon) = 0;
   virtual bool prepareCoreSuperGoal(double now,

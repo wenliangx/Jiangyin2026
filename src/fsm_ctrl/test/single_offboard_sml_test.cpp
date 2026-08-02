@@ -138,6 +138,7 @@ class FakeMission final : public MissionPort {
   void reset() override {
     ++resets;
   }
+  bool available() const override { return available_result; }
   bool prepareSuper(double value, const TelemetrySnapshot& telemetry,
                     std::vector<ReferencePoint>& output) override {
     ++super_calls;
@@ -161,6 +162,7 @@ class FakeMission final : public MissionPort {
   int core_super_calls{0};
   double last_time{0.0};
   TelemetrySnapshot last_telemetry;
+  bool available_result{true};
   bool super_result{true};
   bool core_super_result{true};
   std::vector<ReferencePoint> super_points{ReferencePoint{}};
@@ -365,6 +367,22 @@ TEST_F(Fixture, DirectOnCommand3ResetsSuperOnceFromEverySourceState) {
     SendCommandEventByStateIndex(machine, 3);
     EXPECT_EQ(resets_after_source_command + 1, mission.resets);
     ExpectStateByIndex(machine, 3);
+  }
+}
+
+TEST_F(Fixture, OnCommand3IsBlockedWhenMissionUnavailable) {
+  mission.available_result = false;
+  for (int source = 0; source < 7; ++source) {
+    if (source == 3) {
+      continue;
+    }
+    SCOPED_TRACE(StateName(source));
+    ActiveStateMachine machine(context);
+    SendCommandEventByStateIndex(machine, source);
+    const int resets_after_source_command = mission.resets;
+    SendCommandEventByStateIndex(machine, 3);
+    EXPECT_EQ(resets_after_source_command, mission.resets);
+    ExpectStateByIndex(machine, source);
   }
 }
 
@@ -730,11 +748,6 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
   ASSERT_EQ(1u, setpoint.monitors.size());
   EXPECT_DOUBLE_EQ(2.1, setpoint.monitors[0].references[0].position.x);
   EXPECT_FALSE(context.landing_reached);
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::ActionLanding));
-  const LogRecord& action = FirstEvent(logger, LogEvent::ActionLanding);
-  EXPECT_EQ(LogSeverity::Debug, action.severity);
-  EXPECT_EQ(1u, action.horizon_size);
-  EXPECT_DOUBLE_EQ(2.1, action.reference_position.x);
   ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcPublishSuccess));
 }
 
@@ -748,7 +761,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(0, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.monitors.empty());
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::EmptyHorizon));
+  EXPECT_EQ(0u, CountEvent(logger, LogEvent::EmptyHorizon));
 
   ClearOutputs();
   landing.result = true;
@@ -756,7 +769,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   sm.process_event(Tick{});
   EXPECT_EQ(1, landing.prepare_calls);
   EXPECT_EQ(0, nmpc.track_calls);
-  ASSERT_EQ(2u, CountEvent(logger, LogEvent::EmptyHorizon));
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::EmptyHorizon));
 
   ClearOutputs();
   landing.points = {ReferencePoint{}};
@@ -783,14 +796,12 @@ TEST_F(Fixture, LandingCompletionKeepsLegacyLatchAndDisarmSemantics) {
   landing.complete = true;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingLatched));
   sm.process_event(Tick{});
   EXPECT_TRUE(autopilot.calls.empty());
   context.telemetry.mode = "POSCTL";
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls[0]);
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingDisarmRequested));
 }
 
 TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
@@ -804,7 +815,6 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   context.telemetry.position.z = 0.06;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingLatched));
 }
 
 TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
@@ -825,7 +835,6 @@ TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls[0]);
-  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingDisarmRequested));
 }
 
 TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {

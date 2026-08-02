@@ -15,13 +15,13 @@ namespace single_sml {
       boost::sml::state<ArmOnly>,                                             \
   boost::sml::state<source_state> + boost::sml::event<OnCommand2> =           \
       boost::sml::state<NmpcHover>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand3> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand3> [MissionAvailable{}] / \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperSegment1>,                                       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand4> [MissionAvailable{}] / \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperSegment2>,                                       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand5> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand5> [MissionAvailable{}] / \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperSegment3>,                                       \
   boost::sml::state<source_state> + boost::sml::event<OnCommand6> /           \
@@ -46,7 +46,7 @@ struct SegmentedMissionMachine {
         state<SuperSegment1> + event<Tick> / TickSuperSegment1{},
         state<SuperSegment2> + event<Tick> / TickSuperSegment2{},
         state<SuperSegment3> + event<Tick> / TickSuperSegment3{},
-        state<Landing> + event<Tick> / TickCoreLanding{},
+        state<Landing> + event<Tick> / TickLanding{},
         state<Emergency> + event<Tick> / TickEmergency{},
         state<SafeNoop> + event<Tick> / Noop{},
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(Idle),

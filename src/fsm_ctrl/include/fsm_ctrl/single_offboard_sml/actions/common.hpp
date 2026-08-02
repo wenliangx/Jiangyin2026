@@ -131,39 +131,25 @@ struct TickCoreHoverToOneMeter {
   }
 };
 
-struct TickCoreLanding {
+struct TickLanding {
   void operator()(Context& context) const {
     if (!context.landing_reached) {
       context.ensureOffboardArm();
       std::vector<ReferencePoint> horizon;
       if (context.landing.prepareLanding(context.clock.now(),
-                                         context.telemetry, horizon) &&
-          !horizon.empty()) {
-        writeHorizonLog(
-            context, HorizonLogFields{LogSeverity::Debug,
-                                      LogEvent::ActionLanding, horizon});
-        context.setpoint.publishFeedbackPosition(context.telemetry.position,
-                                                 context.telemetry.attitude);
-        context.setpoint.publishReferencePosition(horizon.front().position,
-                                                  horizon.front().attitude);
+                                         context.telemetry, horizon)) {
         publishTrackCommand(context, horizon);
-      } else {
-        writeHorizonLog(
-            context, HorizonLogFields{LogSeverity::Warn, LogEvent::EmptyHorizon,
-                                      horizon});
       }
       if (context.landing.isComplete() ||
           std::abs(context.telemetry.position.z -
                    context.config.landing_reference_z) <
               context.config.landing_tolerance_z) {
         context.landing_reached = true;
-        writeLog(context, LogSeverity::Info, LogEvent::LandingLatched);
       }
       return;
     }
 
     if (context.telemetry.mode != "OFFBOARD" && context.telemetry.armed) {
-      writeLog(context, LogSeverity::Warn, LogEvent::LandingDisarmRequested);
       context.autopilot.requestDisarm();
     }
   }
@@ -172,6 +158,13 @@ struct TickCoreLanding {
 struct ResetSuperTrack {
   void operator()(Context& context) const {
     context.mission.reset();
+  }
+};
+
+// SML 转换 guard：任务航点不可用（YAML 加载失败）时禁止进入 super 状态。
+struct MissionAvailable {
+  bool operator()(const Context& context) const {
+    return context.mission.available();
   }
 };
 

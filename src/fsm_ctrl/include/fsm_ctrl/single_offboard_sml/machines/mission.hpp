@@ -15,7 +15,7 @@ namespace single_sml {
       boost::sml::state<ArmOnly>,                                             \
   boost::sml::state<source_state> + boost::sml::event<OnCommand2> =           \
       boost::sml::state<NmpcHover>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand3> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand3> [MissionAvailable{}] / \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperTrack>,                                          \
   boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
@@ -42,7 +42,7 @@ struct MissionMachine {
         state<ArmOnly> + event<Tick> / TickArmOnly{},
         state<NmpcHover> + event<Tick> / TickCoreHoverToOneMeter{},
         state<SuperTrack> + event<Tick> / TickSuperTrack{},
-        state<Landing> + event<Tick> / TickCoreLanding{},
+        state<Landing> + event<Tick> / TickLanding{},
         state<Emergency> + event<Tick> / TickEmergency{},
         state<SafeNoop> + event<Tick> / Noop{},
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(Idle),

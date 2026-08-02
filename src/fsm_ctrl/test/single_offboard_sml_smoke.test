@@ -3,6 +3,8 @@
         name="single_offboard_fsm" output="screen">
     <param name="udp_port" value="12001"/>
     <param name="use_traj_gen" value="false"/>
+    <param name="mission_super_waypoints_file"
+           value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"/>
   </node>
 
   <test test-name="single_offboard_sml_smoke"
