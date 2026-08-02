@@ -55,13 +55,8 @@ tmux send-keys "sleep 2s" C-m
 tmux send-keys "source devel/setup.bash" C-m 
 tmux send-keys "roslaunch --wait ego_planner happy_fly.launch" C-m 
 
-tmux select-pane -t flag:egov2.4
-tmux send-keys "sleep 5s" C-m 
-tmux send-keys "source devel/setup.bash" C-m 
-tmux send-keys "roslaunch plane_Det det.launch" C-m 
-
 # running finite state machine
-tmux select-pane -t flag:egov2.5
+tmux select-pane -t flag:egov2.4
 tmux send-keys "sleep 2s" C-m 
 tmux send-keys "source devel/setup.bash" C-m  
 tmux send-keys "roslaunch --wait fsm_ctrl single.launch" C-m 

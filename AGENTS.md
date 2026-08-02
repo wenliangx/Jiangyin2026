@@ -101,7 +101,7 @@ Python ROS nodes:
 - **DO NOT** use `aim_pos` / `aim_vel` for attitude control — position/velocity only
 - **DO NOT** edit SUPER template CMakeLists.txt/package.xml under `ros/` — always use `select_ros_version.sh`
 - Submodule `src/libs/livox_ros_driver2` is **uninitialized** — must `git submodule update --init`
-- **17 CATKIN_IGNORE** packages: ego-planner sim/Utils (12), apriltag_ros, apriltag_echo_message, plane_Det, RA-LIO/build
+- **16 CATKIN_IGNORE** packages: ego-planner sim/Utils (12), apriltag_ros, apriltag_echo_message, RA-LIO/build
 - 15+ package.xml files have `<license>TODO</license>` — legal/audit risk
 - RA-LIO build is standalone — no automatic dependency resolution
 - **SML → legacy mismatch**: single_offboard_sml no longer subscribes to `/ego_planner/flag_state`, `/target_pose`, or `/tf_output`. Replaced with `uav_vision_msgs/LandingOffset`. Legacy callbacks removed.

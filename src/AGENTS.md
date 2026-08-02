@@ -14,7 +14,6 @@
 | `uav_vision_msgs/` | — | Message contracts: LandingOffset, TargetMatch, TargetMatchArray |
 | `apriltag_ros/` | C++17 | Continuous AprilTag detector (ROS1, aggressive -O3). **CATKIN_IGNORE** |
 | `apriltag_echo_message/` | — | Bridge: AprilTag → laser msg. **CATKIN_IGNORE** |
-| `plane_Det/` | — | Visual plane detection. **CATKIN_IGNORE** |
 | `libs/px4_plugs/` | Python | PX4 plugins: link_monitor, log_manager, param_migrator (3 Python ROS nodes) |
 | `livox_ros_driver/` | — | Legacy driver. No ROS pkg structure |
 
@@ -22,7 +21,7 @@
 
 - **Build order matters:** RA-LIO built separately → `src/RA-LIO/build/` → copy binaries to `devel/lib/` manually. Does not go through catkin_make.
 - **SUPER ROS dual-mode:** `src/SUPER/scripts/select_ros_version.sh` toggles between ROS1 and ROS2 builds. Switch affects package deps and msg types across all 6 sub-packages. Never edit template files directly.
-- **18+ CATKIN_IGNORE markers** across plane_Det, apriltag_ros, apriltag_echo_message, 12+ in ego-planner-v2 — expect excluded from default builds.
+- **17+ CATKIN_IGNORE markers** across apriltag_ros, apriltag_echo_message, 12+ in ego-planner-v2 — expect excluded from default builds.
 - **Submodules:** `libs/px4_plugs` is forked-branch clone; `libs/livox_ros_driver2` uninitialized (needs `git submodule update --init`).
 - **3 planners in pipeline:** RA-LIO (odom) → px4_estimator (fusion) → FSM/NMPC (guidance) → PX4 (actuation). ego-planner and SUPER provide corridor/global inputs to FSM.
 - **Python ROS nodes** in px4_plugs (3), uav_vision (3) — all via catkin_install_python.
