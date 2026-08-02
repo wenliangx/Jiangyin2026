@@ -13,6 +13,7 @@ struct Context {
           SetpointPort& setpoint_in, NmpcPort& nmpc_in,
           ReferenceProvider& reference_in, MissionPort& mission_in,
           PrecisionLandingPort& landing_in,
+          LogPort& log_in,
           const Config& config_in = Config{})
       : clock(clock_in),
         autopilot(autopilot_in),
@@ -21,6 +22,7 @@ struct Context {
         reference(reference_in),
         mission(mission_in),
         landing(landing_in),
+        log(log_in),
         config(config_in),
         last_service_request(clock_in.now()) {}
 
@@ -61,10 +63,12 @@ struct Context {
   ReferenceProvider& reference;
   MissionPort& mission;
   PrecisionLandingPort& landing;
+  LogPort& log;
   Config config;
   TelemetrySnapshot telemetry;
   double last_service_request;
   bool landing_reached{false};
+  double last_success_log_time{-1.0};
 };
 
 }  // namespace single_sml

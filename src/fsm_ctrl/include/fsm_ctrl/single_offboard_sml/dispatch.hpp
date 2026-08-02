@@ -12,15 +12,26 @@ class CommandDispatcherT {
  public:
   explicit CommandDispatcherT(StateMachineT& machine,
                               ReferenceProvider* reference = nullptr,
-                              MissionPort* mission = nullptr)
-      : machine_(machine), reference_(reference), mission_(mission) {}
+                              MissionPort* mission = nullptr,
+                              LogPort* log = nullptr,
+                              Clock* clock = nullptr)
+      : machine_(machine),
+        reference_(reference),
+        mission_(mission),
+        log_(log),
+        clock_(clock) {}
 
   bool update(int command) {
     if (has_previous_ && command == previous_) {
+      log(LogSeverity::Warn, LogEvent::CommandRepeatedSuppressed, command);
       return false;
     }
     previous_ = command;
     has_previous_ = true;
+    log(LogSeverity::Info, LogEvent::CommandNew, command);
+    if (command < 0 || command > 9) {
+      log(LogSeverity::Warn, LogEvent::CommandUnsupported, command);
+    }
     if (reference_) {
       reference_->selectCommand(command);
     }
@@ -32,6 +43,20 @@ class CommandDispatcherT {
   }
 
  private:
+  void log(LogSeverity severity, LogEvent event, int command) {
+    if (!log_) {
+      return;
+    }
+    LogRecord record;
+    record.severity = severity;
+    record.event = event;
+    record.command = command;
+    if (clock_) {
+      record.stamp = clock_->now();
+    }
+    log_->write(record);
+  }
+
   void dispatch(int command) {
     switch (command) {
       case 0: machine_.process_event(OnCommand0{}); break;
@@ -51,6 +76,8 @@ class CommandDispatcherT {
   StateMachineT& machine_;
   ReferenceProvider* reference_{nullptr};
   MissionPort* mission_{nullptr};
+  LogPort* log_{nullptr};
+  Clock* clock_{nullptr};
   bool has_previous_{false};
   int previous_{0};
 };

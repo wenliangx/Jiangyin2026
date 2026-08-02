@@ -195,9 +195,54 @@ class FakeLanding final : public PrecisionLandingPort {
   LandingObservation last_observation;
 };
 
+class FakeLogger final : public LogPort {
+ public:
+  void write(const LogRecord& value) override { records.push_back(value); }
+
+  std::vector<LogRecord> records;
+};
+
+std::size_t CountEvent(const FakeLogger& logger, LogEvent event) {
+  std::size_t count = 0u;
+  for (const LogRecord& record : logger.records) {
+    if (record.event == event) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+const LogRecord& FirstEvent(const FakeLogger& logger, LogEvent event) {
+  for (const LogRecord& record : logger.records) {
+    if (record.event == event) {
+      return record;
+    }
+  }
+  ADD_FAILURE() << "missing log event";
+  return logger.records.front();
+}
+
+TEST(LoggingPort, FakeLoggerCapturesStructuredRecord) {
+  FakeLogger logger;
+  LogRecord record;
+  record.severity = LogSeverity::Warn;
+  record.event = LogEvent::CommandUnsupported;
+  record.command = 42;
+  record.stamp = 12.5;
+
+  logger.write(record);
+
+  ASSERT_EQ(1u, logger.records.size());
+  EXPECT_EQ(LogSeverity::Warn, logger.records[0].severity);
+  EXPECT_EQ(LogEvent::CommandUnsupported, logger.records[0].event);
+  EXPECT_EQ(42, logger.records[0].command);
+  EXPECT_DOUBLE_EQ(12.5, logger.records[0].stamp);
+}
+
 struct Fixture : testing::Test {
   Fixture()
-      : context(clock, autopilot, setpoint, nmpc, reference, mission, landing),
+      : context(clock, autopilot, setpoint, nmpc, reference, mission, landing,
+                logger),
         sm(context) {}
 
   static const char* StateName(int index) {
@@ -268,6 +313,7 @@ struct Fixture : testing::Test {
   FakeReference reference;
   FakeMission mission;
   FakeLanding landing;
+  FakeLogger logger;
   Context context;
   ActiveStateMachine sm;
 };
@@ -335,7 +381,7 @@ TEST_F(Fixture, DirectOnCommand4ResetsOnceFromEverySourceState) {
 }
 
 TEST_F(Fixture, ActiveCommandDispatcherMapsMissionAndSafeNoopCommands) {
-  ActiveCommandDispatcher dispatcher(sm, &reference, &mission);
+  ActiveCommandDispatcher dispatcher(sm, &reference, &mission, &logger);
   EXPECT_TRUE(dispatcher.update(0));
   EXPECT_TRUE(sm.is(boost::sml::state<Idle>));
   EXPECT_TRUE(dispatcher.update(1));
@@ -368,8 +414,37 @@ TEST_F(Fixture, ActiveCommandDispatcherMapsMissionAndSafeNoopCommands) {
   EXPECT_EQ(expected_commands, mission.selected_commands);
 }
 
+TEST_F(Fixture, ActiveCommandDispatcherLogsCommandDecisions) {
+  ActiveCommandDispatcher dispatcher(sm, &reference, &mission, &logger,
+                                     &clock);
+  clock.value = 7.5;
+
+  EXPECT_TRUE(dispatcher.update(3));
+  ASSERT_EQ(1u, logger.records.size());
+  EXPECT_EQ(LogEvent::CommandNew, logger.records[0].event);
+  EXPECT_EQ(LogSeverity::Info, logger.records[0].severity);
+  EXPECT_EQ(3, logger.records[0].command);
+  EXPECT_DOUBLE_EQ(7.5, logger.records[0].stamp);
+
+  EXPECT_FALSE(dispatcher.update(3));
+  ASSERT_EQ(2u, logger.records.size());
+  EXPECT_EQ(LogEvent::CommandRepeatedSuppressed, logger.records[1].event);
+  EXPECT_EQ(LogSeverity::Warn, logger.records[1].severity);
+  EXPECT_EQ(3, logger.records[1].command);
+  EXPECT_EQ(1u, reference.selected_commands.size());
+  EXPECT_EQ(1u, mission.selected_commands.size());
+
+  EXPECT_TRUE(dispatcher.update(42));
+  ASSERT_EQ(4u, logger.records.size());
+  EXPECT_EQ(LogEvent::CommandNew, logger.records[2].event);
+  EXPECT_EQ(LogEvent::CommandUnsupported, logger.records[3].event);
+  EXPECT_EQ(LogSeverity::Warn, logger.records[3].severity);
+  EXPECT_EQ(42, logger.records[3].command);
+  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
+}
+
 TEST_F(Fixture, ActiveCommandDispatcherSuppressesRepeatedMissionAndUnknownCommands) {
-  ActiveCommandDispatcher dispatcher(sm, &reference, &mission);
+  ActiveCommandDispatcher dispatcher(sm, &reference, &mission, &logger);
   EXPECT_TRUE(dispatcher.update(3));
   EXPECT_TRUE(sm.is(boost::sml::state<SuperTrack>));
   EXPECT_FALSE(dispatcher.update(3));

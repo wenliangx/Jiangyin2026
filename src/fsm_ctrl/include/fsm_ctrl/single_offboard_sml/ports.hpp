@@ -3,6 +3,7 @@
 
 #include <fsm_ctrl/single_offboard_sml/types.hpp>
 
+#include <cstddef>
 #include <vector>
 
 namespace fsm_ctrl {
@@ -90,6 +91,44 @@ class PrecisionLandingPort {
   virtual bool prepareLanding(double now, const TelemetrySnapshot& telemetry,
                               std::vector<ReferencePoint>& horizon) = 0;
   virtual bool isComplete() const = 0;
+};
+
+enum class LogSeverity { Debug, Info, Warn, Error };
+
+enum class LogEvent {
+  CommandNew,
+  CommandRepeatedSuppressed,
+  CommandUnsupported,
+  ActionArmOnly,
+  ActionHoverToOneMeter,
+  ActionSuperTrack,
+  ActionSuperSegment,
+  ActionLanding,
+  ActionEmergency,
+  EmptyHorizon,
+  NmpcSolveFailure,
+  NmpcNonFiniteOutput,
+  NmpcPublishSuccess,
+  LandingLatched,
+  LandingDisarmRequested,
+};
+
+struct LogRecord {
+  LogSeverity severity{LogSeverity::Info};
+  LogEvent event{LogEvent::CommandNew};
+  double stamp{0.0};
+  int command{0};
+  int segment_index{-1};
+  std::size_t horizon_size{0u};
+  Vec3 position;
+  Vec3 reference_position;
+  BodyRateThrust command_output;
+};
+
+class LogPort {
+ public:
+  virtual ~LogPort() = default;
+  virtual void write(const LogRecord& record) = 0;
 };
 
 }  // namespace single_sml
