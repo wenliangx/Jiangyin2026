@@ -74,7 +74,8 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
-  include)
+  include
+  lib)
 
 add_message_files(
   FILES
@@ -92,7 +93,7 @@ catkin_package(
   INCLUDE_DIRS
 )
 
-add_executable(ralio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+add_executable(ralio_mapping src/laserMapping.cpp lib/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
 target_compile_features(ralio_mapping PRIVATE cxx_std_14)
 add_dependencies(ralio_mapping ra_lio_generate_messages)
 target_link_libraries(ralio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} ${ROSFMT_LIBRARY} OpenMP::OpenMP_CXX)

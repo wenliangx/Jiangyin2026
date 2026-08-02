@@ -14,7 +14,7 @@ RA-LIO is the first perception stage in the Jiangyin2026 pipeline:
 | `include/esekfom.hpp` | IEKF on SO(3): `predict()` (IMU propagation), `update_iterated_dyn_share_modified()` (point-to-plane residual with global observation buffers) |
 | `include/use-ikfom.hpp` | 24D state `state_ikfom` (pos3, rot3, lidar2imu_off6, vel3, bg3, ba3, grav3), process model `get_f()`, noise cov Q |
 | `include/IMU_Processing.hpp` | `ImuProcess` class: IMU preintegration for point cloud undistortion, gravity alignment over first ~20 frames, bias estimation |
-| `include/ikd-Tree/ikd_Tree.h` | Incremental dynamic KD-tree for local map management. Dynamic FOV sliding, node add/delete/rebuild |
+| `lib/ikd-Tree/ikd_Tree.h` | Incremental dynamic KD-tree for local map management. Dynamic FOV sliding, node add/delete/rebuild |
 | `config/mid360.yaml` | Noise covariances, extrinsic T/R, blind range, detection range, feature flags |
 
 ## BUILD

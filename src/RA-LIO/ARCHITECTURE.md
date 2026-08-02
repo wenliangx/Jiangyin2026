@@ -287,7 +287,7 @@
 #   源文件:
 #     src/laserMapping.cpp
 #     src/preprocess.cpp
-#     include/ikd-Tree/ikd_Tree.cpp
+#     lib/ikd-Tree/ikd_Tree.cpp
 #
 #   外部依赖:
 #     ROS (roscpp, sensor_msgs, nav_msgs, tf, pcl_ros, ...)
