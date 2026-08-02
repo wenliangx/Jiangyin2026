@@ -5,7 +5,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: localhost/jiangyin_jy2026:latest
+    image: localhost/jiangyin:latest
     container_name: jy
     environment:
       - ROS_MASTER_URI=http://localhost:11311

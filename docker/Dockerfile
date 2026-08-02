@@ -289,32 +289,32 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /ws
 COPY src/ /ws/src/
 
-# package_ROS1.xml → package.xml (no-clobber) + enable ego-planner-v2
-RUN if [ -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml ]; then \
-        cp -n /ws/src/libs/livox_ros_driver2/package_ROS1.xml /ws/src/libs/livox_ros_driver2/package.xml; \
-    fi \
-    && rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
+# # package_ROS1.xml → package.xml (no-clobber) + enable ego-planner-v2
+# RUN if [ -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml ]; then \
+#         cp -n /ws/src/libs/livox_ros_driver2/package_ROS1.xml /ws/src/libs/livox_ros_driver2/package.xml; \
+#     fi \
+#     && rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
 
-ARG JOBS=4
+ARG JOBS=64
 
 # NOTE: podman/buildah ignores the SHELL instruction under the OCI image
 # format, so RUN steps execute under /bin/sh — ROS setup.bash is bash-only;
 # use the POSIX setup.sh variant and '.' instead of 'source'.
 RUN . /opt/ros/noetic/setup.sh \
-    && catkin_make -j"${JOBS}" -DROS_EDITION=ROS1
+    && catkin_make -j"${JOBS}" --use-ninja
 
-# RA-LIO standalone build (needs livox_ros_driver2 from /ws/devel), then merge
-# the binaries into /ws/devel (Dockerfile.prod steps)
-RUN . /opt/ros/noetic/setup.sh \
-    && . /ws/devel/setup.sh \
-    && mkdir -p /ws/src/RA-LIO/build \
-    && cd /ws/src/RA-LIO/build \
-    && cmake .. -DCMAKE_BUILD_TYPE=Release -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake \
-    && make -j"${JOBS}" \
-    && cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true; \
-    cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true; \
-    cp -rn devel/share/* /ws/devel/share/ 2>/dev/null || true; \
-    echo 'RA-LIO built and merged into /ws/devel/'
+# # RA-LIO standalone build (needs livox_ros_driver2 from /ws/devel), then merge
+# # the binaries into /ws/devel (Dockerfile.prod steps)
+# RUN . /opt/ros/noetic/setup.sh \
+#     && . /ws/devel/setup.sh \
+#     && mkdir -p /ws/src/RA-LIO/build \
+#     && cd /ws/src/RA-LIO/build \
+#     && cmake .. -DCMAKE_BUILD_TYPE=Release -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake \
+#     && make -j"${JOBS}" \
+#     && cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true; \
+#     cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true; \
+#     cp -rn devel/share/* /ws/devel/share/ 2>/dev/null || true; \
+#     echo 'RA-LIO built and merged into /ws/devel/'
 
 RUN echo "source /ws/devel/setup.bash" >> /root/.bashrc
 
