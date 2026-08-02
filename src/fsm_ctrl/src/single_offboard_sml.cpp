@@ -39,6 +39,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cctype>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1001,6 +1002,56 @@ class UdpCommandMailbox {
   std::thread worker_;                // UDP 接收线程。
 };
 
+const char* logEventName(smlfsm::LogEvent event) {
+  switch (event) {
+    case smlfsm::LogEvent::CommandNew: return "command.new";
+    case smlfsm::LogEvent::CommandRepeatedSuppressed:
+      return "command.repeated_suppressed";
+    case smlfsm::LogEvent::CommandUnsupported: return "command.unsupported";
+    case smlfsm::LogEvent::ActionArmOnly: return "action.arm_only";
+    case smlfsm::LogEvent::ActionHoverToOneMeter:
+      return "action.hover_to_one_meter";
+    case smlfsm::LogEvent::ActionSuperTrack: return "action.super_track";
+    case smlfsm::LogEvent::ActionSuperSegment: return "action.super_segment";
+    case smlfsm::LogEvent::ActionLanding: return "action.landing";
+    case smlfsm::LogEvent::ActionEmergency: return "action.emergency";
+    case smlfsm::LogEvent::EmptyHorizon: return "horizon.empty";
+    case smlfsm::LogEvent::NmpcSolveFailure: return "nmpc.solve_failure";
+    case smlfsm::LogEvent::NmpcNonFiniteOutput:
+      return "nmpc.non_finite_output";
+    case smlfsm::LogEvent::NmpcPublishSuccess: return "nmpc.publish_success";
+    case smlfsm::LogEvent::LandingLatched: return "landing.latched";
+    case smlfsm::LogEvent::LandingDisarmRequested:
+      return "landing.disarm_requested";
+  }
+  return "unknown";
+}
+
+class RosLogPort final : public smlfsm::LogPort {
+ public:
+  void write(const smlfsm::LogRecord& record) override {
+    char line[512];
+    std::snprintf(
+        line, sizeof(line),
+        "sml_fsm event=%s command=%d segment=%d horizon=%zu "
+        "pos=(%.3f,%.3f,%.3f) ref=(%.3f,%.3f,%.3f) "
+        "body_rate=(%.3f,%.3f,%.3f) thrust=%.3f stamp=%.3f",
+        logEventName(record.event), record.command, record.segment_index,
+        record.horizon_size, record.position.x, record.position.y,
+        record.position.z, record.reference_position.x,
+        record.reference_position.y, record.reference_position.z,
+        record.command_output.body_rate.x, record.command_output.body_rate.y,
+        record.command_output.body_rate.z, record.command_output.thrust,
+        record.stamp);
+    switch (record.severity) {
+      case smlfsm::LogSeverity::Debug: ROS_DEBUG("%s", line); break;
+      case smlfsm::LogSeverity::Info: ROS_INFO("%s", line); break;
+      case smlfsm::LogSeverity::Warn: ROS_WARN("%s", line); break;
+      case smlfsm::LogSeverity::Error: ROS_ERROR("%s", line); break;
+    }
+  }
+};
+
 // 新 SML 节点的 ROS adapter：负责订阅/发布、命令分发和 50Hz Tick 调度。
 class SingleOffboardNode {
  public:
@@ -1014,9 +1065,9 @@ class SingleOffboardNode {
         mission_(node_, private_node_),
         config_(loadConfig()),
         context_(clock_, autopilot_, setpoint_, nmpc_, reference_, mission_,
-                 landing_, config_),
+                 landing_, log_, config_),
         machine_(context_),
-        dispatcher_(machine_, &reference_, &mission_),
+        dispatcher_(machine_, &reference_, &mission_, &log_, &clock_),
         mailbox_(loadUdpPort()) {
     state_sub_ = node_.subscribe("/mavros/state", 10,
                                 &SingleOffboardNode::stateCallback, this);
@@ -1152,6 +1203,7 @@ class SingleOffboardNode {
   RosReferenceProvider reference_;  // cmd5 参考轨迹适配器。
   RosPrecisionLandingPort landing_;  // 下视视觉精准降落适配器。
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
+  RosLogPort log_;
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
   smlfsm::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。
