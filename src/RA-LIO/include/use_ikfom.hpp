@@ -1,4 +1,4 @@
-// use-ikfom.hpp - IKFoM (Iterated Kalman Filter on Manifold) 状态定义和过程模型
+// use_ikfom.hpp - IKFoM (Iterated Kalman Filter on Manifold) 状态定义和过程模型
 // 功能：
 //   1. 定义24维系统状态量 state_ikfom：位置、姿态、外参（LiDAR到IMU）、速度、IMU偏置、重力向量
 //   2. 定义IMU输入量 input_ikfom：加速度、角速度

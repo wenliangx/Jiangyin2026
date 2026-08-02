@@ -63,7 +63,7 @@ Core binaries (ROS nodes) — C++:
 | `single_offboard_fsm` | fsm_ctrl | `src/single_offboard_fsm.cpp` (2829L) | Legacy FSM + NMPC controller |
 | `single_offboard_sml` | fsm_ctrl | `src/single_offboard_sml.cpp` (959L) | Boost.SML FSM with precision landing handoff |
 | `px4_estimator` | fsm_ctrl | `src/px4_estimator.cpp` (224L) | Odometry fusion for PX4 EKF2 |
-| `ralio_mapping` | RA-LIO | `src/laserMapping.cpp` (~1000L) | LiDAR-inertial SLAM (FAST-LIO2) |
+| `ralio_mapping` | RA-LIO | `src/laser_mapping.cpp` (~1000L) | LiDAR-inertial SLAM (FAST-LIO2) |
 | `ego_planner_node` | ego-planner | `plan_manage/src/ego_planner_node.cpp` | Local trajectory planner (EGOReplanFSM) |
 | `traj_server` | ego-planner | `plan_manage/src/traj_server.cpp` | Trajectory publishing server |
 | `fsm_node` | super_planner | `Apps/fsm_node_ros1.cpp` | SUPER planner FSM |

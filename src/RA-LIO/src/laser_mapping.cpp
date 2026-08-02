@@ -1,4 +1,4 @@
-// laserMapping.cpp - RA-LIO主节点：激光雷达-惯性里程计实时建图
+// laser_mapping.cpp - RA-LIO主节点：激光雷达-惯性里程计实时建图
 // 基于 FAST-LIO2 框架的简化版本，适配Livox MID360固态激光雷达
 // 核心流程：
 //   1. 数据同步：将LiDAR帧与对应时间段内的IMU数据打包成MeasureGroup
@@ -42,7 +42,7 @@
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 
-#include "IMU_Processing.hpp"
+#include "imu_processing.hpp"
 
 #include <cmath>
 #include <limits>

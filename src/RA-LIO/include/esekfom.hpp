@@ -17,7 +17,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include "use-ikfom.hpp"
+#include "use_ikfom.hpp"
 #include <ikd-Tree/ikd_Tree.h>
 
 // 收敛判定阈值：状态增量小于此值时认为收敛

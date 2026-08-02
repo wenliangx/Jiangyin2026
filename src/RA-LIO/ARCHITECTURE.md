@@ -16,7 +16,7 @@
 #                ┌────────────────────┼────────────────────┐
 #                ▼                    ▼                    ▼
 #        ┌──────────────┐   ┌──────────────┐     ┌──────────────┐
-#        │use-ikfom.hpp │   │IMU_Processing│     │preprocess.h  │
+#        │use_ikfom.hpp│   │imu_processing│     │preprocess.h  │
 #        │ 状态定义+模型 │   │    .hpp      │     │  点云预处理   │
 #        └──────┬───────┘   └──────┬───────┘     └──────┬───────┘
 #               │                  │                    │
@@ -27,7 +27,7 @@
 #        └──────┬───────┘                      └──────┬───────┘
 #               │                                     │
 #               │         ┌──────────────┐            │
-#               └────────►│laserMapping  │◄───────────┘
+#               └────────►│laser_mapping │◄───────────┘
 #                         │    .cpp      │
 #                         │  主建图节点   │
 #                         └──────┬───────┘
@@ -182,13 +182,13 @@
 #         CB_I --> IB[imu_buffer]
 #     end
 #
-#     subgraph 数据同步 laserMapping.cpp
+#     subgraph 数据同步 laser_mapping.cpp
 #         LB --> SP[sync_packages<br/>一帧LiDAR+对应IMU]
 #         IB --> SP
 #         SP --> MG[MeasureGroup]
 #     end
 #
-#     subgraph IMU处理 IMU_Processing.hpp
+#     subgraph IMU处理 imu_processing.hpp
 #         MG --> IP{imu_need_init?}
 #         IP -->|是| II[IMU_init<br/>重力对齐/bias估计]
 #         IP -->|否| CT[坐标变换<br/>P_lidar→P_imu→P_world]
@@ -220,7 +220,7 @@
 #         FOV --> DEL[ikdtree.Delete_Point_Boxes<br/>删除超出FOV的点]
 #     end
 #
-#     subgraph 发布输出 laserMapping.cpp
+#     subgraph 发布输出 laser_mapping.cpp
 #         SP2 --> ODOM[publish_odometry<br/>里程计 + TF变换]
 #         SP2 --> PATH[publish_path<br/>运动轨迹]
 #         SP2 --> MKR[Visualization_speed<br/>速度向量箭头]
@@ -285,7 +285,7 @@
 #
 #   可执行文件: ralio_mapping
 #   源文件:
-#     src/laserMapping.cpp
+#     src/laser_mapping.cpp
 #     src/preprocess.cpp
 #     lib/ikd-Tree/ikd_Tree.cpp
 #
