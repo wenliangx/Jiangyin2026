@@ -5,8 +5,7 @@
 //   3. 定义系统过程模型函数 get_f（状态导数）、df_dx（状态雅可比）、df_dw（噪声雅可比）
 //   4. 定义过程噪声协方差 process_noise_cov
 
-#ifndef USE_IKFOM_H1
-#define USE_IKFOM_H1
+#pragma once
 
 #include <vector>
 #include <cstdlib>
@@ -129,5 +128,3 @@ Eigen::Matrix<double, 24, 12> df_dw(state_ikfom s, input_ikfom in)
 	cov.block<3, 3>(18, 9) = Eigen::Matrix3d::Identity();      // d(ba)/d(n_ba) = I (公式(7)第5行第4列)
 	return cov;
 }
-
-#endif

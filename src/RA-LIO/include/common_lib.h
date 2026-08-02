@@ -5,8 +5,7 @@
 //   3. 定义 MeasureGroup 结构体（Lidar+IMU数据组）
 //   4. 提供工具函数：坐标变换、平面估计、旋转矩阵转换等
 
-#ifndef COMMON_LIB_H1
-#define COMMON_LIB_H1
+#pragma once
 
 #include <Eigen/Eigen>
 #include <pcl/point_types.h>
@@ -195,5 +194,3 @@ Eigen::Matrix3d g2R(const Eigen::Vector3d &g)
     R0 = ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;  // 消除旋转后的偏航分量
     return R0;
 }
-
-#endif

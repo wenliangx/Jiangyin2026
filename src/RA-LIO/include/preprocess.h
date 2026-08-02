@@ -2,6 +2,8 @@
 // 功能：原始点云数据预处理，包括不同型号激光雷达的数据格式转换、时间戳处理、采样滤波
 // 支持激光雷达类型：AVIA (Livox), VELO16, OUST64, RS32 (速腾), VANJEE16 (万集)
 
+#pragma once
+
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
