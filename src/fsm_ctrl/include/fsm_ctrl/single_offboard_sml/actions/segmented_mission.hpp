@@ -14,11 +14,19 @@ inline void tickSuperSegment(Context& context, int segment_index) {
   if (context.mission.prepareSuperSegment(segment_index, context.clock.now(),
                                           context.telemetry, horizon) &&
       !horizon.empty()) {
+    writeHorizonLog(
+        context, HorizonLogFields{LogSeverity::Debug,
+                                  LogEvent::ActionSuperSegment, horizon,
+                                  segment_index});
     context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                              context.telemetry.attitude);
     context.setpoint.publishReferencePosition(horizon.front().position,
-                                              horizon.front().attitude);
+                                               horizon.front().attitude);
     publishTrackCommand(context, horizon);
+  } else {
+    writeHorizonLog(
+        context, HorizonLogFields{LogSeverity::Warn, LogEvent::EmptyHorizon,
+                                  horizon, segment_index});
   }
 }
 

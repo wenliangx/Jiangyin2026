@@ -16,11 +16,18 @@ struct TickSuperTrack {
         context.mission.prepareSuper(context.clock.now(), context.telemetry,
                                      horizon);
     if (prepared && !horizon.empty()) {
+      writeHorizonLog(
+          context, HorizonLogFields{LogSeverity::Debug,
+                                    LogEvent::ActionSuperTrack, horizon});
       context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                                context.telemetry.attitude);
       context.setpoint.publishReferencePosition(horizon.front().position,
                                                 horizon.front().attitude);
       publishTrackCommand(context, horizon);
+    } else {
+      writeHorizonLog(
+          context, HorizonLogFields{LogSeverity::Warn, LogEvent::EmptyHorizon,
+                                    horizon});
     }
   }
 };

@@ -478,7 +478,7 @@ TEST_F(Fixture, ActiveCommandDispatcherSuppressesRepeatedMissionAndUnknownComman
 }
 
 TEST_F(Fixture, CommandDispatcherProcessesFirstIntMinCommand) {
-  ActiveCommandDispatcher dispatcher(sm, &reference, &mission);
+  ActiveCommandDispatcher dispatcher(sm, &reference, &mission, &logger);
   EXPECT_TRUE(dispatcher.update(std::numeric_limits<int>::min()));
   EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_FALSE(dispatcher.update(std::numeric_limits<int>::min()));
@@ -606,6 +606,17 @@ TEST_F(Fixture, NmpcHoverTracksCurrentXyAtOneMeter) {
   EXPECT_DOUBLE_EQ(5.0, setpoint.monitors[0].feedback.velocity.y);
   EXPECT_DOUBLE_EQ(0.4, setpoint.monitors[0].target.body_rate.x);
   EXPECT_DOUBLE_EQ(0.7, setpoint.monitors[0].target.thrust);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::ActionHoverToOneMeter));
+  const LogRecord& action = FirstEvent(logger, LogEvent::ActionHoverToOneMeter);
+  EXPECT_EQ(LogSeverity::Debug, action.severity);
+  EXPECT_DOUBLE_EQ(1.0, action.reference_position.x);
+  EXPECT_DOUBLE_EQ(2.0, action.reference_position.y);
+  EXPECT_DOUBLE_EQ(1.0, action.reference_position.z);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcPublishSuccess));
+  const LogRecord& publish = FirstEvent(logger, LogEvent::NmpcPublishSuccess);
+  EXPECT_EQ(LogSeverity::Debug, publish.severity);
+  EXPECT_EQ(10u, publish.horizon_size);
+  EXPECT_DOUBLE_EQ(0.7, publish.command_output.thrust);
 }
 
 TEST_F(Fixture, Cmd3UsesSuperMissionReferenceAndNmpcMonitor) {
@@ -642,6 +653,12 @@ TEST_F(Fixture, Cmd3UsesSuperMissionReferenceAndNmpcMonitor) {
   EXPECT_DOUBLE_EQ(1.0, setpoint.monitors[0].feedback.position.x);
   EXPECT_DOUBLE_EQ(4.0, setpoint.monitors[0].feedback.velocity.x);
   EXPECT_DOUBLE_EQ(0.46, setpoint.monitors[0].target.thrust);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::ActionSuperTrack));
+  const LogRecord& action = FirstEvent(logger, LogEvent::ActionSuperTrack);
+  EXPECT_EQ(LogSeverity::Debug, action.severity);
+  EXPECT_EQ(1u, action.horizon_size);
+  EXPECT_DOUBLE_EQ(16.0, action.reference_position.x);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcPublishSuccess));
 }
 
 TEST_F(Fixture, Cmd3RejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -653,11 +670,15 @@ TEST_F(Fixture, Cmd3RejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(0, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.monitors.empty());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::EmptyHorizon));
+  EXPECT_EQ(LogSeverity::Warn,
+            FirstEvent(logger, LogEvent::EmptyHorizon).severity);
 
   mission.super_result = true;
   mission.super_points.clear();
   sm.process_event(Tick{});
   EXPECT_EQ(0, nmpc.track_calls);
+  ASSERT_EQ(2u, CountEvent(logger, LogEvent::EmptyHorizon));
 
   mission.super_points = {ReferencePoint{}};
   nmpc.track_result = false;
@@ -667,6 +688,9 @@ TEST_F(Fixture, Cmd3RejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_TRUE(setpoint.monitors.empty());
   EXPECT_EQ(1u, setpoint.reference_positions.size());
   EXPECT_EQ(1u, setpoint.feedback_positions.size());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcSolveFailure));
+  EXPECT_EQ(LogSeverity::Error,
+            FirstEvent(logger, LogEvent::NmpcSolveFailure).severity);
 
   ClearOutputs();
   mission.super_points = {ReferencePoint{}};
@@ -678,6 +702,9 @@ TEST_F(Fixture, Cmd3RejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_TRUE(setpoint.monitors.empty());
   EXPECT_EQ(1u, setpoint.reference_positions.size());
   EXPECT_EQ(1u, setpoint.feedback_positions.size());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcNonFiniteOutput));
+  EXPECT_EQ(LogSeverity::Error,
+            FirstEvent(logger, LogEvent::NmpcNonFiniteOutput).severity);
 }
 
 TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
@@ -703,6 +730,12 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
   ASSERT_EQ(1u, setpoint.monitors.size());
   EXPECT_DOUBLE_EQ(2.1, setpoint.monitors[0].references[0].position.x);
   EXPECT_FALSE(context.landing_reached);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::ActionLanding));
+  const LogRecord& action = FirstEvent(logger, LogEvent::ActionLanding);
+  EXPECT_EQ(LogSeverity::Debug, action.severity);
+  EXPECT_EQ(1u, action.horizon_size);
+  EXPECT_DOUBLE_EQ(2.1, action.reference_position.x);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcPublishSuccess));
 }
 
 TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -715,6 +748,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(0, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.monitors.empty());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::EmptyHorizon));
 
   ClearOutputs();
   landing.result = true;
@@ -722,6 +756,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   sm.process_event(Tick{});
   EXPECT_EQ(1, landing.prepare_calls);
   EXPECT_EQ(0, nmpc.track_calls);
+  ASSERT_EQ(2u, CountEvent(logger, LogEvent::EmptyHorizon));
 
   ClearOutputs();
   landing.points = {ReferencePoint{}};
@@ -729,6 +764,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   sm.process_event(Tick{});
   EXPECT_EQ(1, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcSolveFailure));
 
   ClearOutputs();
   nmpc.track_result = true;
@@ -737,6 +773,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(1, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.monitors.empty());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::NmpcNonFiniteOutput));
 }
 
 TEST_F(Fixture, LandingCompletionKeepsLegacyLatchAndDisarmSemantics) {
@@ -746,12 +783,14 @@ TEST_F(Fixture, LandingCompletionKeepsLegacyLatchAndDisarmSemantics) {
   landing.complete = true;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingLatched));
   sm.process_event(Tick{});
   EXPECT_TRUE(autopilot.calls.empty());
   context.telemetry.mode = "POSCTL";
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls[0]);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingDisarmRequested));
 }
 
 TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
@@ -765,6 +804,7 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   context.telemetry.position.z = 0.06;
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingLatched));
 }
 
 TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
@@ -785,11 +825,12 @@ TEST_F(Fixture, LandingDisarmsOnlyWhenLatchedNonOffboardAndArmed) {
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls[0]);
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::LandingDisarmRequested));
 }
 
 TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {
   MissionStateMachine machine(context);
-  MissionCommandDispatcher dispatcher(machine, &reference, &mission);
+  MissionCommandDispatcher dispatcher(machine, &reference, &mission, &logger);
   EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
 
   EXPECT_TRUE(dispatcher.update(1));
@@ -812,7 +853,8 @@ TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {
 
 TEST_F(Fixture, SegmentedMissionMachineMapsCommandsToSegmentsAndLanding) {
   SegmentedMissionStateMachine machine(context);
-  SegmentedMissionCommandDispatcher dispatcher(machine, &reference, &mission);
+  SegmentedMissionCommandDispatcher dispatcher(machine, &reference, &mission,
+                                               &logger);
   EXPECT_TRUE(machine.is(boost::sml::state<Idle>));
 
   EXPECT_TRUE(dispatcher.update(1));
@@ -851,6 +893,10 @@ TEST_F(Fixture, EmergencyPublishesIdentityAttitudeAndLegacyThrust) {
   EXPECT_TRUE(autopilot.calls.empty());
   EXPECT_TRUE(setpoint.positions.empty());
   EXPECT_TRUE(setpoint.body_rates.empty());
+  ASSERT_EQ(1u, CountEvent(logger, LogEvent::ActionEmergency));
+  const LogRecord& action = FirstEvent(logger, LogEvent::ActionEmergency);
+  EXPECT_EQ(LogSeverity::Warn, action.severity);
+  EXPECT_DOUBLE_EQ(0.37, action.command_output.thrust);
 }
 
 }  // namespace
