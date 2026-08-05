@@ -29,6 +29,10 @@ docker build -f docker/Dockerfile --build-arg PX4_BUILD_JOBS=4 .
 docker build -f docker/Dockerfile --build-arg RUN_SMOKE=1 .
 ```
 
+# arm64 (Jetson) — QEMU-emulated on x86 host; debs in deb/arm64/
+./docker/build-arm64.sh debs
+./docker/build-arm64.sh image   # -> jiangyin_jy2026:arm64
+
 Context = repo root (`.dockerignore` there keeps it ~310MB).
 
 ## RUNTIME
@@ -65,3 +69,4 @@ podman-compose -f docker/compose.yml down    # stop
 - **Networking**: single-container localhost model (ROS_MASTER_URI=http://localhost:11311). No jy-net bridge.
 - **Deployment**: prod target for field machines; `tmux-real.sh` covers bare-metal real-robot.
 - **No CI/CD**: images built manually.
+- **arm64**: image uses `ros:noetic-ros-base-focal` + OSRF gazebo repo; full SITL smoke must run on Jetson (QEMU timing).

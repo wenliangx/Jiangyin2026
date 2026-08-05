@@ -49,3 +49,18 @@ podman-compose -f docker/compose.yml down
 - PX4: v1.14.3 pinned at SHA `de8a295af4d8192a3e85b2565040367378a07d8e`.
 - Headless: stock PX4 iris model + empty world, CPU-only. The mid360 LiDAR is real-hardware only.
 - No CI/CD: images are built manually.
+
+## ARM64 (NVIDIA Jetson)
+
+Arm64 debs and images are built on an x86_64 host via QEMU emulation:
+
+```bash
+./docker/build-arm64.sh debs    # build arm64 debs -> deb/arm64/ (slow)
+./docker/build-arm64.sh image   # build jiangyin_jy2026:arm64 (PX4 bake: hours)
+PX4_BUILD_JOBS=4 ./docker/build-arm64.sh   # both, jobs capped
+```
+
+- Base image: `ros:noetic-ros-base-focal` (official arm64) + OSRF gazebo repo for `gazebo11`.
+- Tag: `jiangyin_jy2026:arm64` (amd64 stays `:latest`).
+- **Smoke-testing**: QEMU emulation does not satisfy PX4 lockstep timing — run `jy-smoke-test` on the Jetson, not the x86 host.
+- Run on the Jetson: `podman run --rm -it --network=host jiangyin_jy2026:arm64 sitl` (or `all`).
