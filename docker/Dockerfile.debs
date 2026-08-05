@@ -27,6 +27,9 @@ WORKDIR /build
 
 FROM build-base AS casadi-build
 
+ARG CASADI_COMMIT=f959d3175a444d763e4eda4aece48f4c5f4a6f90
+ARG BUILD_JOBS=4
+
 RUN git init casadi \
     && git -C casadi remote add origin https://github.com/casadi/casadi.git \
     && git -C casadi fetch --depth 1 origin "${CASADI_COMMIT}" \
@@ -54,6 +57,11 @@ RUN chmod +x /usr/local/bin/build-jiangyin-debs \
     && build-jiangyin-debs /pkg /out/debs casadi
 
 FROM casadi-build AS full-build
+
+ARG BUILD_JOBS=4
+ARG LIVOX_SDK2_COMMIT=master
+ARG LIVOX_ROS_DRIVER2_COMMIT=13eb05e4e6dd7a765b934d0c5fd6236676a57b49
+ARG SOPHUS_COMMIT=49c07cca02c80781274c25d39e4f1f28c9092e03
 
 RUN apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=5 update \
     && apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=5 install -y --no-install-recommends \
