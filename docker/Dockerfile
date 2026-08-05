@@ -42,7 +42,8 @@
 # ---------------------------------------------------------------------------
 # L0 — base image (Ubuntu 20.04 + ROS Noetic desktop-full, pinned digest)
 # ---------------------------------------------------------------------------
-FROM docker.io/osrf/ros:noetic-desktop-full@sha256:7dbfb9576d8e6d226c31e06129a82aaab8702695f38eca2116918cb9b9308797 AS dev
+ARG ROS_BASE_IMAGE=docker.io/osrf/ros:noetic-desktop-full@sha256:7dbfb9576d8e6d226c31e06129a82aaab8702695f38eca2116918cb9b9308797
+FROM ${ROS_BASE_IMAGE} AS dev
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -50,7 +51,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG TARGETARCH
+RUN if [ "${TARGETARCH}" = "arm64" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+        && curl -fsSL http://packages.osrfoundation.org/gazebo.key | gpg --dearmor -o /usr/share/keyrings/gazebo-archive-keyring.gpg \
+        && echo "deb [signed-by=/usr/share/keyrings/gazebo-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable focal main" > /etc/apt/sources.list.d/gazebo-stable.list; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     ca-certificates \
@@ -116,8 +124,11 @@ RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 22 \
 # ---------------------------------------------------------------------------
 # L2 — CMake 3.28.3 (Ubuntu 20.04 ships 3.16; Sophus requires 3.24+)
 # ---------------------------------------------------------------------------
-RUN curl -fsSL \
-      "https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.tar.gz" \
+ARG TARGETARCH
+ARG CMAKE_TARBALL=cmake-3.28.3-linux-x86_64.tar.gz
+RUN if [ "${TARGETARCH}" = "arm64" ]; then CMAKE_TARBALL=cmake-3.28.3-linux-aarch64.tar.gz; fi \
+    && curl -fsSL \
+      "https://github.com/Kitware/CMake/releases/download/v3.28.3/${CMAKE_TARBALL}" \
       -o /tmp/cmake.tar.gz \
     && mkdir -p /opt/cmake \
     && tar -xzf /tmp/cmake.tar.gz --strip-components=1 -C /opt/cmake \
@@ -130,11 +141,13 @@ ENV PATH=/opt/cmake/bin:${PATH}
 # L3 — per-library debs (one COPY per family for cache granularity)
 #      runtime apt deps for CasADi (IPOPT), Livox-SDK2, Sophus, apriltag, PCL
 # ---------------------------------------------------------------------------
-COPY deb/jiangyin-sophus-dev_*.deb /tmp/
-COPY deb/jiangyin-casadi-dev_*.deb /tmp/
-COPY deb/jiangyin-livox-sdk2-dev_*.deb /tmp/
-COPY deb/jiangyin-livox-ros-driver2_*.deb /tmp/
-COPY deb/jiangyin-ros1-deps_*.deb deb/jiangyin-source-deps_*.deb /tmp/
+ARG TARGETARCH
+ARG DEB_DIR=deb
+COPY ${DEB_DIR}/jiangyin-sophus-dev_*.deb /tmp/
+COPY ${DEB_DIR}/jiangyin-casadi-dev_*.deb /tmp/
+COPY ${DEB_DIR}/jiangyin-livox-sdk2-dev_*.deb /tmp/
+COPY ${DEB_DIR}/jiangyin-livox-ros-driver2_*.deb /tmp/
+COPY ${DEB_DIR}/jiangyin-ros1-deps_*.deb ${DEB_DIR}/jiangyin-source-deps_*.deb /tmp/
 RUN apt-get update && apt-get install -y --no-install-recommends \
     /tmp/*.deb \
     coinor-libipopt1v5 \
@@ -243,8 +256,10 @@ RUN find /opt/PX4-Autopilot/build/px4_sitl_default -name '*.o' -delete \
 # ---------------------------------------------------------------------------
 # L9 — dev tooling: gazebo plugin symlinks, jy-* convenience symlinks, ENV
 # ---------------------------------------------------------------------------
+ARG TARGETARCH
+ARG GZ_LIBDIR=/usr/lib/x86_64-linux-gnu/gazebo-11/plugins
 RUN for so in /opt/ros/noetic/lib/*.so; do \
-        ln -sf "$so" "/usr/lib/x86_64-linux-gnu/gazebo-11/plugins/$(basename $so)"; \
+        ln -sf "$so" "${GZ_LIBDIR}/$(basename $so)"; \
     done 2>/dev/null || true \
     && ln -sf /usr/local/bin/jy-docker.sh /usr/local/bin/jy-takeoff \
     && ln -sf /usr/local/bin/jy-docker.sh /usr/local/bin/jy-land \
@@ -253,7 +268,7 @@ RUN for so in /opt/ros/noetic/lib/*.so; do \
     && ln -sf /usr/local/bin/jy-docker.sh /usr/local/bin/jy-start-stack
 
 # Single-container networking + Gazebo/PX4 runtime env
-ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins
+ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib:${GZ_LIBDIR}
 ENV GAZEBO_MODEL_PATH=/home/user/.gazebo/models:/usr/share/gazebo-11/models
 ENV GAZEBO_RESOURCE_PATH=/usr/share/gazebo-11/models:/home/user/.gazebo/models
 ENV SIM_LOCKSTEP=1

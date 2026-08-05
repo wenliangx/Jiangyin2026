@@ -51,9 +51,12 @@ export PX4_SIM_WORLD="${PX4_SIM_WORLD:-empty}"              # gazebo world (stoc
 export HEADLESS="${HEADLESS:-1}"
 export QT_X11_NO_MITSHM=1                                    # avoid X11 shm issues
 
-# Gazebo plugins and ROS library paths
-export GAZEBO_PLUGIN_PATH="/opt/ros/noetic/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins${GAZEBO_PLUGIN_PATH:+:${GAZEBO_PLUGIN_PATH}}"
-export LD_LIBRARY_PATH="/opt/ros/noetic/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# Gazebo plugins and ROS library paths (multiarch dir derived from uname -m:
+# x86_64 -> /usr/lib/x86_64-linux-gnu, aarch64 -> /usr/lib/aarch64-linux-gnu)
+machine="$(uname -m)"
+gazebo_libdir="/usr/lib/${machine}-linux-gnu/gazebo-11/plugins"
+export GAZEBO_PLUGIN_PATH="/opt/ros/noetic/lib:${gazebo_libdir}${GAZEBO_PLUGIN_PATH:+:${GAZEBO_PLUGIN_PATH}}"
+export LD_LIBRARY_PATH="/opt/ros/noetic/lib:${gazebo_libdir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 source /opt/ros/noetic/setup.bash
 
