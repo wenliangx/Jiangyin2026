@@ -3,6 +3,7 @@ set -euo pipefail
 
 package_root="$1"
 output_dir="$2"
+component="${3:-all}"
 architecture="$(dpkg --print-architecture)"
 
 mkdir -p "$output_dir"
@@ -50,30 +51,32 @@ EOF
 casadi_depends='coinor-libipopt1v5, libblas3, liblapack3, libgfortran5, libgcc-s1, libstdc++6'
 make_package \
     jiangyin-casadi-dev \
-    3.7.0-1 \
+    3.7.2-1 \
     "$package_root/casadi" \
     'CasADi built with IPOPT for Jiangyin2026.' \
     "$casadi_depends"
 
-make_package \
-    jiangyin-livox-sdk2-dev \
-    0.0.0-1 \
-    "$package_root/livox" \
-    'Livox SDK2 development files for Jiangyin2026.'
+if [[ "$component" != "casadi" ]]; then
+    make_package \
+        jiangyin-livox-sdk2-dev \
+        0.0.0-1 \
+        "$package_root/livox" \
+        'Livox SDK2 development files for Jiangyin2026.'
 
-make_package \
-    jiangyin-livox-ros-driver2 \
-    1.0.0-5 \
-    "$package_root/livox-ros-driver2" \
-    'Livox ROS Driver 2 for ROS Noetic and Jiangyin2026.' \
-    'jiangyin-livox-sdk2-dev (= 0.0.0-1), ros-noetic-roscpp, ros-noetic-rospy, ros-noetic-sensor-msgs, ros-noetic-std-msgs, ros-noetic-message-runtime, ros-noetic-rosbag, ros-noetic-pcl-ros, libapr1'
+    make_package \
+        jiangyin-livox-ros-driver2 \
+        1.0.0-5 \
+        "$package_root/livox-ros-driver2" \
+        'Livox ROS Driver 2 for ROS Noetic and Jiangyin2026.' \
+        'jiangyin-livox-sdk2-dev (= 0.0.0-1), ros-noetic-roscpp, ros-noetic-rospy, ros-noetic-sensor-msgs, ros-noetic-std-msgs, ros-noetic-message-runtime, ros-noetic-rosbag, ros-noetic-pcl-ros, libapr1'
 
-make_package \
-    jiangyin-sophus-dev \
-    1.22.10-1 \
-    "$package_root/sophus" \
-    'Sophus development files for Jiangyin2026.' \
-    'libeigen3-dev'
+    make_package \
+        jiangyin-sophus-dev \
+        1.22.10-1 \
+        "$package_root/sophus" \
+        'Sophus development files for Jiangyin2026.' \
+        'libeigen3-dev'
+fi
 
 meta="$(mktemp -d)"
 mkdir -p "$meta/DEBIAN"
@@ -84,11 +87,15 @@ Section: metapackages
 Priority: optional
 Architecture: all
 Maintainer: Jiangyin2026 <maintainers@jiangyin2026.local>
-Depends: jiangyin-casadi-dev (= 3.7.0-1), jiangyin-livox-sdk2-dev (= 0.0.0-1), jiangyin-sophus-dev (= 1.22.10-1)
+Depends: jiangyin-casadi-dev (= 3.7.2-1), jiangyin-livox-sdk2-dev (= 0.0.0-1), jiangyin-sophus-dev (= 1.22.10-1)
 Description: Source-built runtime and development dependencies for Jiangyin2026.
 EOF
 dpkg-deb --build "$meta" "$output_dir/jiangyin-source-deps_1.0.0-1_all.deb"
 rm -rf "$meta"
+
+if [[ "$component" == "casadi" ]]; then
+    exit 0
+fi
 
 meta="$(mktemp -d)"
 mkdir -p "$meta/DEBIAN"

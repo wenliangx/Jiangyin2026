@@ -1,8 +1,8 @@
 ARG ROS_BASE_IMAGE=docker.io/osrf/ros:noetic-desktop-full
-FROM ${ROS_BASE_IMAGE}
+FROM ${ROS_BASE_IMAGE} AS build-base
 
 ARG ROS_BASE_IMAGE
-ARG CASADI_COMMIT=7c4670ff02cc66bf2c08915d7679eed31adefc79
+ARG CASADI_COMMIT=f959d3175a444d763e4eda4aece48f4c5f4a6f90
 ARG BUILD_JOBS=4
 ARG LIVOX_SDK2_COMMIT=master
 ARG LIVOX_ROS_DRIVER2_COMMIT=13eb05e4e6dd7a765b934d0c5fd6236676a57b49
@@ -19,17 +19,13 @@ RUN apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=5 update \
     dpkg-dev \
     gfortran \
     git \
-    libapr1-dev \
-    libeigen3-dev \
     liblapack-dev \
     pkg-config \
-    ros-noetic-message-generation \
-    ros-noetic-pcl-ros \
-    ros-noetic-rosbag \
-    ros-noetic-rospy \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
+
+FROM build-base AS casadi-build
 
 RUN git init casadi \
     && git -C casadi remote add origin https://github.com/casadi/casadi.git \
@@ -41,6 +37,33 @@ RUN git init casadi \
       -DCMAKE_INSTALL_PREFIX=/usr/local \
     && cmake --build casadi/build --parallel "${BUILD_JOBS}" \
     && DESTDIR=/pkg/casadi cmake --install casadi/build
+
+COPY docker/tests/casadi_ipopt_smoke.cpp /tmp/casadi_ipopt_smoke.cpp
+RUN g++ -std=c++14 /tmp/casadi_ipopt_smoke.cpp \
+      -I/pkg/casadi/usr/local/include \
+      -L/pkg/casadi/usr/local/lib \
+      -Wl,-rpath,/pkg/casadi/usr/local/lib \
+      -lcasadi \
+      -o /tmp/casadi_ipopt_smoke \
+    && LD_LIBRARY_PATH=/pkg/casadi/usr/local/lib /tmp/casadi_ipopt_smoke
+
+FROM casadi-build AS casadi-deb
+
+COPY docker/build-debs.sh /usr/local/bin/build-jiangyin-debs
+RUN chmod +x /usr/local/bin/build-jiangyin-debs \
+    && build-jiangyin-debs /pkg /out/debs casadi
+
+FROM casadi-build AS full-build
+
+RUN apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=5 install -y --no-install-recommends \
+    libapr1-dev \
+    libeigen3-dev \
+    ros-noetic-message-generation \
+    ros-noetic-pcl-ros \
+    ros-noetic-rosbag \
+    ros-noetic-rospy \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN git init Livox-SDK2 \
     && git -C Livox-SDK2 remote add origin https://github.com/Livox-SDK/Livox-SDK2.git \
