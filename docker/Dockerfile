@@ -170,8 +170,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ---------------------------------------------------------------------------
 # L4 — GeographicLib geoid datasets (MAVROS GPS→ENU) + PX4 Python deps
+#      libxml2-dev/libxslt1-dev: lxml has no aarch64 wheel for py3.8, so pip
+#      builds it from source on arm64 (amd64 uses the prebuilt wheel)
 # ---------------------------------------------------------------------------
-RUN /opt/ros/noetic/lib/mavros/install_geographiclib_datasets.sh \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libxml2-dev libxslt1-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && /opt/ros/noetic/lib/mavros/install_geographiclib_datasets.sh \
     && test -r /usr/share/GeographicLib/geoids/egm96-5.pgm \
     && pip3 install --no-cache-dir \
     argcomplete \
