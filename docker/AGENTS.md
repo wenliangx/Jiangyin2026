@@ -29,9 +29,11 @@ docker build -f docker/Dockerfile --build-arg PX4_BUILD_JOBS=4 .
 docker build -f docker/Dockerfile --build-arg RUN_SMOKE=1 .
 ```
 
+```bash
 # arm64 (Jetson) — QEMU-emulated on x86 host; debs in deb/arm64/
 ./docker/build-arm64.sh debs
 ./docker/build-arm64.sh image   # -> jiangyin_jy2026:arm64
+```
 
 Context = repo root (`.dockerignore` there keeps it ~310MB).
 
