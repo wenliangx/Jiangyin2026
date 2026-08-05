@@ -114,12 +114,16 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# clangd-22 from apt.llvm.org (LLVM 22 toolchain repo)
-RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s 22 \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends clangd-22 \
-    && update-alternatives --install /usr/local/bin/clangd clangd /usr/bin/clangd-22 100 \
-    && rm -rf /var/lib/apt/lists/*
+# clangd-22 from apt.llvm.org (LLVM 22 toolchain repo).
+# apt.llvm.org publishes no focal arm64 packages (LLVM 22 nor older), so on
+# arm64 the Ubuntu clangd (10.x) from the L0 apt list is used instead.
+RUN if [ "${TARGETARCH}" != "arm64" ]; then \
+        wget -qO- https://apt.llvm.org/llvm.sh | bash -s 22 \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends clangd-22 \
+        && update-alternatives --install /usr/local/bin/clangd clangd /usr/bin/clangd-22 100 \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # ---------------------------------------------------------------------------
 # L2 — CMake 3.28.3 (Ubuntu 20.04 ships 3.16; Sophus requires 3.24+)
