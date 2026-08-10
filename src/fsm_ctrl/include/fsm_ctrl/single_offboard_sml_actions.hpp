@@ -80,6 +80,15 @@ struct TickCoreHoverToOneMeter {
   }
 };
 
+struct TickLowerHover {
+  void operator()(Context& context) const {
+    context.ensureOffboardArm();
+    const Vec3 target{context.telemetry.position.x, context.telemetry.position.y,
+                      0.4};
+    publishTrackCommand(context, fixedPositionHorizon(target));
+  }
+};
+
 struct TickPositionHold {
   void operator()(Context& context) const {
     context.ensureOffboardArm();

@@ -118,8 +118,7 @@ rog_map:
   inflation_step: 4
   unk_inflation_en: false
   unk_inflation_step: 1
-  map_size: [ 5
-  ...0,50,6 ]
+  map_size: [ 50,50,6 ]
   # If the map rolling is disable, the map origin [m] should be set.
   fix_map_origin: [0,0,1]  #原[ 0,0,1.5 ]
   frontier_extraction_en: false
