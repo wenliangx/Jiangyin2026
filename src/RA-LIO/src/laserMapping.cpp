@@ -65,8 +65,8 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-double theta = 30.0;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
-double alpha = 180.0;                       // 横滚补偿角 Roll（度），用于输出显示补偿
+double theta = 30;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
+double alpha = 180;                       // 横滚补偿角 Roll（度），用于输出显示补偿
 
 // === 线程同步 ===
 mutex mtx_buffer;                         // 数据buffer互斥锁
@@ -993,8 +993,12 @@ int main(int argc, char **argv)
             // 基于估计的重力向量计算俯仰(pitch)和横滚(roll)补偿角
             // theta = -atan(g_x / g_z);
             // alpha = -atan(g_y / g_z);
+            // theta = -atan(kf.get_x().grav(0)/kf.get_x().grav(2))*180.0/PI;
+            // alpha = -atan(kf.get_x().grav(1)/kf.get_x().grav(2)) *180.0/PI;
+
             std::printf(" theta: %.4f \n", theta);
             std::printf(" alpha: %.4f \n", alpha);
+            std::printf("6\n");
 
             // --- 步骤9：发布里程计 ---
             publish_odometry(pubOdomAftMapped);

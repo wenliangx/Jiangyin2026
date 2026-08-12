@@ -12,7 +12,7 @@
 common:
     lid_topic:  "/livox/lidar"   # LiDAR点云数据话题名
     imu_topic:  "/livox/imu"     # IMU数据话题名
-    time_sync_en: true            # 是否自动同步IMU和LiDAR时间戳
+    time_sync_en: false            # 是否自动同步IMU和LiDAR时间戳
                                   # true: 系统自动估算 LiDAR-IMU 时间偏移
                                   # false: 使用下面的固定偏移量
     time_offset_lidar_to_imu: 0.0 # LiDAR到IMU的固定时间偏移（秒）
@@ -35,13 +35,13 @@ preprocess:
 
 # === 建图 & ESKF 参数 ===
 mapping:
-    acc_cov: 0.0023                 # 加速度计测量噪声协方差（每轴，m²/s⁴）
+    acc_cov: 1                # 加速度计测量噪声协方差（每轴，m²/s⁴）
                                  # 越大 → 越不信任加速度计 → 更新时更依赖LiDAR
-    gyr_cov: 0.0023                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）
+    gyr_cov: 1                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）
                                  # 越大 → 越不信任陀螺仪 → 姿态更依赖LiDAR约束
-    b_acc_cov: 0.0007            # 加速度计 bias 随机游走噪声协方差
+    b_acc_cov: 0.1            # 加速度计 bias 随机游走噪声协方差
                                  # 控制 bias 估计的变化速率
-    b_gyr_cov: 0.0007            # 陀螺仪 bias 随机游走噪声协方差
+    b_gyr_cov: 0.1            # 陀螺仪 bias 随机游走噪声协方差
 
     fov_degree:    360           # LiDAR 视场角（度），用于局部地图范围判定
                                  # MID360 水平视场角为360°，设为360
