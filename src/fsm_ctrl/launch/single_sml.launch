@@ -15,10 +15,6 @@
        
         <remap from = "~odom"        to ="/camera/odom/sample"/>
 
-        <!-- LYX -->
-        <!-- <rosparam file="$(find fsm_ctrl)/config/traj_waypoints.yaml" command="load" /> --><!-- 文件不存在，已注释；NMPC悬停测试不需要此文件 -->
-        <!-- LYX -->
-
         <param name="kp_x" value="2.0" type="double"/>
         <param name="kp_y" value="2.0" type="double"/>
         <param name="kp_z" value="4.0" type="double"/>
@@ -64,8 +60,8 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" /> -->
 
-        <param name = "nmpc_mQ_py" type = "double" value = "120" />
-        <param name = "nmpc_mQ_px" type = "double" value = "120" />
+        <param name = "nmpc_mQ_py" type = "double" value = "160" />
+        <param name = "nmpc_mQ_px" type = "double" value = "160" />
         <param name = "nmpc_mQ_pz" type = "double" value = "160" />
         <param name = "nmpc_mQ_vx" type = "double" value = "1.0" />
         <param name = "nmpc_mQ_vy" type = "double" value = "1.0" />
@@ -88,6 +84,17 @@
                type="string"/>
         <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
+
+        <!-- 视觉闭环降落。swap=false 时 dx->x、dy->y；swap=true 时
+             dy->x、dx->y。x_sign/y_sign 分别用于翻转飞行坐标轴方向。 -->
+        <param name="landing_valid_timeout" value="0.25" type="double"/>
+        <param name="landing_align_px_threshold" value="50.0" type="double"/>
+        <param name="landing_xy_step" value="0.03" type="double"/>
+        <param name="landing_swap_xy" value="true" type="bool"/>
+        <param name="landing_x_sign" value="1.0" type="double"/>
+        <param name="landing_y_sign" value="1.0" type="double"/>
+        <param name="landing_descent_rate" value="0.15" type="double"/>
+        <param name="landing_min_z" value="0.03" type="double"/>
 
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
@@ -118,13 +125,13 @@
         <param name = "nmpc_Rwz" type = "double" value = "0.3" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
 
-        <param name = "nmpc_Qposx" type = "double" value = "55.0" />
-        <param name = "nmpc_Qposy" type = "double" value = "55.0" />
+        <param name = "nmpc_Qposx" type = "double" value = "75.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "75.0" />
         <param name = "nmpc_Qposz" type = "double" value = "75.0" />
 
-        <param name = "nmpc_Qvelx" type = "double" value = "4.0" />
-        <param name = "nmpc_Qvely" type = "double" value = "4.0" />
-        <param name = "nmpc_Qvelz" type = "double" value = "2.0" />
+        <param name = "nmpc_Qvelx" type = "double" value = "2.0" />
+        <param name = "nmpc_Qvely" type = "double" value = "2.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "1.0" />
 
         <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
         <param name = "nmpc_Qquaty" type = "double" value = "1.0" />
@@ -134,29 +141,6 @@
         <param name = "nmpc_Rwy" type = "double" value = "0.80" />
         <param name = "nmpc_Rwz" type = "double" value = "0.45" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.15" />
-
-        <!-- ========== Trajectory Generator (internal, no ego-planner needed) ========== -->
-        <!-- Set use_traj_gen=true to enable.  Works with cmd=5 when ego-planner is not running. -->
-        <param name = "use_traj_gen" type = "bool"   value = "true" />
-        <param name = "traj_type"    type = "string" value = "waypoint" />  <!-- circle | square | waypoint -->
-        <param name = "traj_cx"      type = "double" value = "0.0" />
-        <param name = "traj_cy"      type = "double" value = "0.0" />
-        <param name = "traj_alt"     type = "double" value = "1.0" />
-        <param name = "traj_param1"  type = "double" value = "2.0" />    <!-- circle→radius | square→side -->
-        <param name = "traj_param2"  type = "double" value = "0.8" />    <!-- speed [m/s] -->
-        <param name = "traj_hold_time" type = "double" value = "5.0" />    <!-- seconds to hover before motion -->
-
-        <!-- ===== Custom waypoints for traj_type="waypoint" ===== -->
-        <!-- Each waypoint is [x, y] or [x, y, yaw]. Uncomment to use. -->
-        
-        <rosparam param="traj_waypoints">
-          - [0.0, 0.0, 0.0]
-          - [2.0, 0.0, 0.0]
-          - [2.0, 2.0, 0.0]
-          - [0.0, 2.0, 0.0]
-          - [0.0, 0.0, 0.0]
-        </rosparam>
-       
 
     </node>
 

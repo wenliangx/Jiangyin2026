@@ -7,7 +7,7 @@
 | Binary | Source | Role |
 |--------|--------|------|
 | `single_offboard_fsm` | `src/single_offboard_fsm.cpp` (2829L) | Legacy FSM + NMPC controller (UDP cmd dispatcher) |
-| `single_offboard_sml` | `src/single_offboard_sml.cpp` | Modern Boost.SML FSM (10 states: idle→low_thrust→hover→land→track, 50Hz) |
+| `single_offboard_sml` | `src/single_offboard_sml.cpp` | Boost.SML segmented mission FSM (9 states, 50Hz) |
 | `px4_estimator` | `src/px4_estimator.cpp` | MoCap/RA-LIO pose → `/mavros/odometry/out` for PX4 EKF2 fusion (8 subs) |
 | `swarm_user_cmd` | `src/swarm_user_cmd.cpp` | Multi-drone UDP command parser |
 
@@ -16,7 +16,7 @@
 ```
 src/
 ├── single_offboard_fsm.cpp    # Legacy FSM — UDP recv, mode switching, Set_TargetPosition/Mavros
-├── single_offboard_sml.cpp    # Boost.SML FSM — RosSetpointPort, RosNmpcPort, RosReferenceProvider
+├── single_offboard_sml.cpp    # Boost.SML FSM — ROS setpoint, NMPC, mission, landing, camera adapters
 ├── px4_estimator.cpp          # 8 subscribers (mocap, odom, IMU, RC); publishes `/mavros/odometry/out`
 ├── NMPC_controller.cpp        # CasADi NMPC solver wrapper (NMPC_Ctrller / NMPC_Ctrller_simple)
 ├── att_nmpc.cpp               # Attitude-level NMPC (Q/R weights, thrust estimator)
@@ -43,16 +43,17 @@ launch/
 ├── swarm.launch                        # Multi-drone launch
 └── px4_estimator.launch                # px4_estimator node config
 test/
-└── single_offboard_sml_test.cpp    # GTest — 26 TEST_F; smoke test in single_offboard_sml_smoke.test
+└── single_offboard_sml_test.cpp    # GTest — 22 TEST_F; smoke test in single_offboard_sml_smoke.test
 ```
 
 ## CONVENTIONS
 
 - **C++14** (legacy FSM), **C++17** (SML FSM). Links `/usr/local/lib/libcasadi.so.3.7`
-- **SML FSM**: 10 states, 50Hz tick loop, `Select*` events from UDP dispatcher. ROS adapter via ports
+- **SML FSM**: active `SegmentedMissionMachine` has 9 states and a 50Hz tick loop; UDP commands are dispatched as `OnCommand*` events. `MissionMachine` remains for focused tests/alternate composition.
 - **Vision camera control**: every SML Tick publishes a complete `uav_vision_msgs/VisionControl` snapshot for front/down camera acquisition; the publisher remains latched for late subscribers
 - **Legacy FSM**: `Set_TargetPosition` for cmd1-4, `AttitudeTarget` for cmd5-8
-- **Testing**: GTest (`single_offboard_sml_test.cpp`, 41 TEST_F including 9×9 state transitions and camera-control heartbeats) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 8 interfaces, including `FakeCameraControl`. No gmock.
+- **Landing completion**: completion latches low-thrust output on every subsequent Tick; it does not request disarm or hand control back automatically. Landing vision observations are currently monitor-only and do not participate in the control loop.
+- **Testing**: GTest (`single_offboard_sml_test.cpp`, 22 TEST_F covering active command mapping, mission control, camera heartbeats, and landing low-thrust latching) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 7 interfaces, including `FakeCameraControl`. No gmock.
 - **NMPC_test.cpp** is production controller code (FLAG_NMPC library), NOT a test file despite its name
 - **NMPC weights**: ROS params (`nmpc_Qpos*`, `nmpc_Rwx`). Horizon: 10pt @ 0.05s, 8-step MPC
 - **Thrust estimation**: `ThrEst::LSE()` RLS with `rho=0.998` — DO NOT CHANGE

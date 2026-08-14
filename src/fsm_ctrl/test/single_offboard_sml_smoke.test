@@ -1,8 +1,8 @@
 <launch>
   <node pkg="fsm_ctrl" type="single_offboard_sml"
         name="single_offboard_fsm" output="screen">
-    <param name="udp_port" value="12001"/>
-    <param name="use_traj_gen" value="false"/>
+    <!-- Avoid colliding with a real-flight node that may already own 12001. -->
+    <param name="udp_port" value="12991"/>
   </node>
 
   <test test-name="single_offboard_sml_smoke"

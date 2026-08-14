@@ -6,14 +6,8 @@ namespace single_sml {
 
 struct Idle {};
 struct ArmOnly {};
-struct CoreHover {};
-struct CoreSuperLanding {};
-struct CoreLanding {};
-struct LowThrust {};
-struct PositionHold {};
 struct NmpcHover {};
 struct Landing {};
-struct NmpcTrack {};
 struct SuperTrack {};
 struct SuperSegment1 {};
 struct SuperSegment2 {};
