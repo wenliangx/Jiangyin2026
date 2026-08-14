@@ -5,6 +5,7 @@
 #include <fsm_ctrl/ctrl_math.hpp>
 #include <fsm_ctrl/nmpc_state.h>
 #include <fsm_ctrl/traj_gen.hpp>
+#include <iostream>
 
 // 旧版 NMPC 头文件会导出通用重力宏；这里清掉，避免污染 Boost.SML 和适配层头文件。
 #ifdef G
@@ -25,6 +26,7 @@
 #include <super_msgs/Flag.h>
 #include <traj_utils/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
+#include <uav_vision_msgs/VisionControl.h>
 #include <xmlrpcpp/XmlRpcValue.h>
 #include <yaml-cpp/yaml.h>
 
@@ -413,6 +415,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     if (!controller_ || horizon.empty()) {
       return false;
     }
+
     const std::vector<double> current{
         telemetry.position.x, telemetry.position.y, telemetry.position.z,
         telemetry.velocity.x, telemetry.velocity.y, telemetry.velocity.z,
@@ -422,6 +425,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     desired.reserve(kHorizonPoints * 10 + (kHorizonPoints - 1) * 4);
     for (std::size_t index = 0; index < kHorizonPoints; ++index) {
       const auto& point = horizon[std::min(index, horizon.size() - 1)];
+      std::cout<<"x:"<<point.position.x<<", y:"<<point.position.y<<"\n";
       desired.insert(desired.end(),
                      {point.position.x, point.position.y, point.position.z,
                       point.velocity.x, point.velocity.y, point.velocity.z,
@@ -627,14 +631,14 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
       return false;
     }
 
-    const bool observation_fresh =
-        last_observation_.valid && now >= last_observation_.stamp &&
-        now - last_observation_.stamp <= valid_timeout_;
-    if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
-        std::abs(last_observation_.dy) > 50.0) {
-      horizon.clear();
-      return false;
-    }
+    // const bool observation_fresh =
+    //     last_observation_.valid && now >= last_observation_.stamp &&
+    //     now - last_observation_.stamp <= valid_timeout_;
+    // if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
+    //     std::abs(last_observation_.dy) > 50.0) {
+    //   horizon.clear();
+    //   return false;
+    // }
 
     if (!locked_xy_) {
       lock_x_ = telemetry.position.x;
@@ -645,7 +649,7 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     }
 
     target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
-    if (target_z_ <= min_z_ || telemetry.position.z <= min_z_ + 0.02) {
+    if (target_z_ <= min_z_ || telemetry.position.z <= min_z_ + 0.01) {
       complete_ = true;
     }
 
@@ -697,8 +701,50 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
   double pixel_gain_y_{0.001};
   double max_xy_step_{0.08};
   double descent_rate_{0.15};
-  double min_z_{0.08};
+  double min_z_{0.03};
   double loss_hold_seconds_{0.5};
+};
+
+// 发布前视/下视相机的完整期望状态并锁存，保证晚启动的视觉节点也能立即
+// 获得当前模式，而不依赖可能丢失的一次性启停脉冲。
+class RosCameraControlPort final : public smlfsm::CameraControlPort {
+ public:
+  RosCameraControlPort(ros::NodeHandle& node,
+                       ros::NodeHandle& private_node) {
+    std::string topic = "/vision/control";
+    private_node.param("vision_control_topic", topic, topic);
+    publisher_ =
+        node.advertise<uav_vision_msgs::VisionControl>(topic, 1, true);
+  }
+
+  void publishControl(const smlfsm::CameraControlState& control) override {
+    uav_vision_msgs::VisionControl message;
+    message.header.stamp = ros::Time::now();
+    message.front_camera_enabled = control.front_camera_enabled;
+    message.down_camera_enabled = control.down_camera_enabled;
+    publisher_.publish(message);
+
+    const bool changed =
+        !has_last_control_ ||
+        last_control_.front_camera_enabled != control.front_camera_enabled ||
+        last_control_.down_camera_enabled != control.down_camera_enabled;
+    if (changed) {
+      ROS_INFO("Camera control: front=%s down=%s",
+               message.front_camera_enabled ? "enabled" : "disabled",
+               message.down_camera_enabled ? "enabled" : "disabled");
+    } else {
+      ROS_DEBUG_THROTTLE(1.0, "Camera control heartbeat: front=%s down=%s",
+                         message.front_camera_enabled ? "enabled" : "disabled",
+                         message.down_camera_enabled ? "enabled" : "disabled");
+    }
+    last_control_ = control;
+    has_last_control_ = true;
+  }
+
+ private:
+  ros::Publisher publisher_;
+  smlfsm::CameraControlState last_control_;
+  bool has_last_control_{false};
 };
 
 // Super 任务轨迹适配器：负责 waypoint 发布和 planner 缓存。
@@ -709,6 +755,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
             "/super/flag_waypoint", 10)) {
     private_node.param("mission_super_waypoints_file", waypoints_file_,
                        waypoints_file_);
+    ROS_INFO("Mission super waypoints file: %s", waypoints_file_.c_str());
     private_node.param("mission_super_arrival_tolerance",
                        arrival_tolerance_, arrival_tolerance_);
     loadSuperTrajectory();
@@ -762,7 +809,9 @@ class RosMissionPort final : public smlfsm::MissionPort {
       const smlfsm::TelemetrySnapshot& telemetry,
       std::vector<smlfsm::ReferencePoint>& horizon) override {
     active_segment_index_ = segment_index;
+    std::cout<<"active_segment_index_:"<<active_segment_index_<<"\n";
     if (super_segments_.empty()) {
+      std::cout<<"here\n";
       loadSuperTrajectory();
     }
     if (segment_index < 0 ||
@@ -855,7 +904,9 @@ class RosMissionPort final : public smlfsm::MissionPort {
   }
 
   void loadSuperTrajectory() {
+
     if (waypoints_file_.empty()) {
+      std::cout<<"waypoints_file_ is empty\n";
       super_segments_ = createSuperTrajectorySegments();
       return;
     }
@@ -1012,9 +1063,10 @@ class SingleOffboardNode {
         reference_(private_node_),
         landing_(private_node_),
         mission_(node_, private_node_),
+        camera_control_(node_, private_node_),
         config_(loadConfig()),
         context_(clock_, autopilot_, setpoint_, nmpc_, reference_, mission_,
-                 landing_, config_),
+                 landing_, camera_control_, config_),
         machine_(context_),
         dispatcher_(machine_, &reference_, &mission_),
         mailbox_(loadUdpPort()) {
@@ -1152,6 +1204,7 @@ class SingleOffboardNode {
   RosReferenceProvider reference_;  // cmd5 参考轨迹适配器。
   RosPrecisionLandingPort landing_;  // 下视视觉精准降落适配器。
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
+  RosCameraControlPort camera_control_;  // 前视/下视相机启停状态发布器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
   smlfsm::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。

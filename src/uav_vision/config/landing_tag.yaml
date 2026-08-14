@@ -1,4 +1,3 @@
-always_enabled: true
 image_topic: /vision/down/image_raw
 result_topic: /vision/landing/offset
 debug_topic: /vision/landing/debug_image

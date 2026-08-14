@@ -17,7 +17,9 @@
    - 每帧先对五个 Tag 中心取平均，再对最近 5 帧中心做中值滤波。
    - 输出降落区域中心相对图像中心的像素偏差。
 
-当前两个感知节点都是持续运行模式：收到图像就处理并发布结果。任务触发消息尚未定义，也尚未接入。
+两个相机节点通过 `/vision/control` 接收统一的期望状态。正式任务中由
+`fsm_ctrl` 的 SML 状态机在每个 Tick 按飞行阶段控制前视和下视相机采集。
+目标分类和降落识别节点不再由该消息启停：它们保持运行，收到图像就处理。
 
 ## 2. SSH 连接与工作空间
 
@@ -114,8 +116,12 @@ roscore
 终端 2：
 
 ```bash
-roslaunch uav_vision dual_camera.launch
+roslaunch uav_vision dual_camera.launch always_enabled:=true
 ```
+
+这里是脱离状态机的独立视觉调试流程，因此显式使两个相机始终开启。
+随整机任务运行时不要传 `always_enabled` 覆盖参数，由
+`/vision/control` 控制相机采集。
 
 该 launch 同时启动：
 
@@ -129,6 +135,8 @@ roslaunch uav_vision dual_camera.launch
 ```bash
 roslaunch uav_vision landing_tag.launch
 ```
+
+该节点始终保持运行；下视相机有图像到达时就执行 AprilTag 识别。
 
 该 launch 启动：
 
@@ -150,6 +158,8 @@ roslaunch uav_vision landing_tag.launch
 ```bash
 roslaunch uav_vision target_match.launch
 ```
+
+该节点同样始终保持运行；前视相机有图像到达时就执行目标匹配。
 
 该 launch 启动：
 
@@ -222,14 +232,99 @@ http://10.152.160.55:8081
 
 | 节点 | 订阅 | 发布 | 作用 |
 |---|---|---|---|
-| `/front_camera_node` | 无 | `/vision/front/image_raw` | 发布前视相机图像 |
-| `/down_camera_node` | 无 | `/vision/down/image_raw` | 发布下视相机图像 |
-| `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 识别五个 AprilTag 并计算像素偏差 |
-| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | ORB/AKAZE 特征优先定位、方框兜底和四类别模板匹配 |
+| `/front_camera_node` | `/vision/control` | `/vision/front/image_raw` | 按期望状态幂等地开启或释放前视相机，开启时发布图像 |
+| `/down_camera_node` | `/vision/control` | `/vision/down/image_raw` | 按期望状态幂等地开启或释放下视相机，开启时发布图像 |
+| `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 收到图像就识别五个 AprilTag 并计算像素偏差 |
+| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | 收到图像就执行 ORB/AKAZE 特征定位、方框兜底和四类别模板匹配 |
 | `/landing_debug_web` | `/vision/landing/debug_image` | HTTP 8080 端口 | 在浏览器中显示降落调试画面 |
 | `/target_debug_web` | `/vision/target/debug_image` | HTTP 8081 端口 | 在浏览器中显示目标分类调试画面 |
 
 所有图像订阅和发布队列均以低延迟为目标，队列长度为 1。
+
+### 5.1 相机采集启停控制消息
+
+消息类型：
+
+```text
+uav_vision_msgs/VisionControl
+```
+
+定义文件：
+
+```text
+src/uav_vision_msgs/msg/VisionControl.msg
+```
+
+原始定义：
+
+```text
+std_msgs/Header header
+bool front_camera_enabled
+bool down_camera_enabled
+```
+
+控制话题：
+
+```text
+/vision/control
+```
+
+字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `header` | 当前 SML Tick 发布控制快照的时间；`frame_id` 留空 |
+| `front_camera_enabled` | `true` 时保持前视相机采集和图像发布，`false` 时释放前视相机 |
+| `down_camera_enabled` | `true` 时保持下视相机采集和图像发布，`false` 时释放下视相机 |
+
+该消息表达“收到后应保持的期望状态”，不是需要翻转本地状态的一次性
+start/stop 脉冲。SML 状态机在每个 Tick 发布当前完整快照，正常主循环下约为
+50 Hz；即使状态没有切换，同一期望状态也会继续发布。发布端同时保留
+latched publisher，作为相机节点晚启动时立即获取最后一份快照的附加保障。
+两项布尔值在同一消息内作为一份完整状态更新。
+
+相机节点必须幂等地应用快照：重复收到相同的 `true` 不得重复打开设备，重复
+收到相同的 `false` 也不得重复释放。从 `false` 变为 `true` 时，节点打开
+`VideoCapture`、重新应用曝光和增益参数，并恢复图像发布；从 `true` 变为
+`false` 时，节点调用 `release()` 并停止发布该路图像。这是对 V4L2 采集设备的逻辑
+打开和释放，不是对 USB 相机的物理断电。
+
+目标匹配和降落识别节点保持运行，不订阅 `/vision/control`。相机关闭期间没有
+新图像，因此算法不会产生新结果；相机再次开启后，节点会对新到达的每帧图像
+自动恢复处理。
+
+当前 `ActiveStateMachine` 使用 `SegmentedMissionMachine`，默认映射如下：
+
+| UDP 命令 | SML 状态 | 前视相机 | 下视相机 |
+|---:|---|---|---|
+| `0` | `Idle` | 关 | 关 |
+| `1` | `ArmOnly` | 关 | 关 |
+| `2` | `NmpcHover` | 关 | 关 |
+| `3` | `SuperSegment1` | 开 | 关 |
+| `4` | `SuperSegment2` | 开 | 关 |
+| `5` | `SuperSegment3` | 关 | 开 |
+| `6` | `Landing` | 关 | 开 |
+| `7`、`8`、不支持的命令 | `SafeNoop` | 关 | 关 |
+| `9` | `Emergency` | 关 | 关 |
+
+除表中明确开启的状态外，两路相机均关闭。状态机退出前视任务阶段时必须把
+`front_camera_enabled` 置为 `false`；退出下视任务阶段时同理，不能依赖接收端
+自行推断上一个状态。
+
+两个相机节点的私有参数 `always_enabled` 用于脱离状态机单独调试：
+
+- `always_enabled=false`：服从 `/vision/control`；在尚未收到控制快照时默认关闭。
+- `always_enabled=true`：忽略对应的关闭指令，相机始终保持采集和图像发布。
+
+正式任务应使用 `always_enabled=false`。`true` 只用于相机、算法或网页画面的
+独立调试，不能用来验证状态机对相机的启停逻辑。
+
+查看当前期望状态和周期发布频率：
+
+```bash
+rostopic echo -n 1 /vision/control
+rostopic hz /vision/control
+```
 
 ## 6. 降落识别消息
 
@@ -438,7 +533,11 @@ rostopic hz /vision/target/result
         视为当前没有可靠分类结果
 ```
 
-当前尚未确定任务触发消息，所以不要假设存在 start/stop 服务或触发话题。后续接入时，可保留本文件所述结果消息不变，只在感知节点前增加启停状态控制。
+相机采集启停统一使用 `/vision/control`，不要再增加彼此独立的 start/stop 服务或
+裸整数模式话题。相机节点应直接采用消息中的布尔值作为完整期望状态；若重复
+收到相同快照，不得重复打开或释放设备。`always_enabled=true` 是相机节点的本地调试
+覆盖项，不改变 `/vision/control` 本身的含义。目标匹配和降落识别算法不解析该消息，
+只要收到对应图像就继续处理。
 
 ## 9. 常用检查命令
 
@@ -459,6 +558,7 @@ rostopic list | grep '^/vision/'
 ```bash
 rostopic info /vision/landing/offset
 rostopic info /vision/target/result
+rostopic info /vision/control
 ```
 
 查看自定义消息定义：
@@ -467,14 +567,19 @@ rostopic info /vision/target/result
 rosmsg show uav_vision_msgs/LandingOffset
 rosmsg show uav_vision_msgs/TargetMatchArray
 rosmsg show uav_vision_msgs/TargetMatch
+rosmsg show uav_vision_msgs/VisionControl
 ```
 
 检查相机帧率：
 
 ```bash
+rostopic hz /vision/control
 rostopic hz /vision/front/image_raw
 rostopic hz /vision/down/image_raw
 ```
+
+`/vision/control` 在 SML 主循环运行时应约为 50 Hz。某路相机字段为 `false` 时，
+对应 `image_raw` 话题不再有新帧；重新置为 `true` 后应恢复约 30 Hz 的图像。
 
 检查设备是否被进程占用：
 

@@ -50,8 +50,9 @@ test/
 
 - **C++14** (legacy FSM), **C++17** (SML FSM). Links `/usr/local/lib/libcasadi.so.3.7`
 - **SML FSM**: 10 states, 50Hz tick loop, `Select*` events from UDP dispatcher. ROS adapter via ports
+- **Vision camera control**: every SML Tick publishes a complete `uav_vision_msgs/VisionControl` snapshot for front/down camera acquisition; the publisher remains latched for late subscribers
 - **Legacy FSM**: `Set_TargetPosition` for cmd1-4, `AttitudeTarget` for cmd5-8
-- **Testing**: GTest (`single_offboard_sml_test.cpp`, 26 TEST_F across 9×9=81 state transitions) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 7 interfaces: FakeClock, FakeAutopilot, FakeSetpoint, FakeNmpc, FakeReference, FakeMission, FakeLanding. No gmock.
+- **Testing**: GTest (`single_offboard_sml_test.cpp`, 41 TEST_F including 9×9 state transitions and camera-control heartbeats) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 8 interfaces, including `FakeCameraControl`. No gmock.
 - **NMPC_test.cpp** is production controller code (FLAG_NMPC library), NOT a test file despite its name
 - **NMPC weights**: ROS params (`nmpc_Qpos*`, `nmpc_Rwx`). Horizon: 10pt @ 0.05s, 8-step MPC
 - **Thrust estimation**: `ThrEst::LSE()` RLS with `rho=0.998` — DO NOT CHANGE

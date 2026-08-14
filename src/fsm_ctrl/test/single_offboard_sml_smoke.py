@@ -14,7 +14,7 @@ from mavros_msgs.msg import AttitudeTarget
 from mavros_msgs.msg import RCIn
 from super_msgs.msg import Flag as SuperFlag
 from traj_utils.msg import Flag as EgoFlag
-from uav_vision_msgs.msg import LandingOffset
+from uav_vision_msgs.msg import LandingOffset, VisionControl
 
 
 class SingleOffboardSmlSmoke(unittest.TestCase):
@@ -26,6 +26,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._feedback_positions = []
         self._nmpc_states = []
         self._attitudes = []
+        self._vision_controls = []
         self._position_sub = rospy.Subscriber(
             "/mavros/setpoint_position/local", PoseStamped,
             self._position_callback, queue_size=100)
@@ -44,6 +45,9 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._attitude_sub = rospy.Subscriber(
             "/mavros/setpoint_raw/attitude", AttitudeTarget,
             self._attitude_callback, queue_size=100)
+        self._vision_control_sub = rospy.Subscriber(
+            "/vision/control", VisionControl,
+            self._vision_control_callback, queue_size=10)
         self._rc_pub = rospy.Publisher("/mavros/rc/in", RCIn, queue_size=1)
         self._planner_pub = rospy.Publisher(
             "/position_cmd_nmpc", EgoFlag, queue_size=1)
@@ -87,6 +91,12 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
                 (time.monotonic(), message.body_rate.x, message.body_rate.y,
                  message.body_rate.z, message.thrust))
 
+    def _vision_control_callback(self, message):
+        with self._lock:
+            self._vision_controls.append(
+                (message.front_camera_enabled,
+                 message.down_camera_enabled))
+
     def _send_udp_command(self, command):
         payload = str(command).encode("ascii")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
@@ -128,6 +138,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
             self._feedback_positions.clear()
             self._nmpc_states.clear()
             self._attitudes.clear()
+            self._vision_controls.clear()
 
     def _publish_planner_z(self, z):
         message = EgoFlag()
@@ -187,7 +198,7 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
         self._send_udp_command(2)
 
         self.assertTrue(self._wait_for(
-            lambda: any(abs(z - 1.0) < 1e-9 and thrust > 0.0
+            lambda: any(abs(z - 0.4) < 1e-9 and thrust > 0.0
                         for _, x, y, z, thrust in self._nmpc_states)))
         self.assertTrue(self._wait_for(
             lambda: any(thrust > 0.0 for _, _, _, _, thrust in
@@ -199,6 +210,73 @@ class SingleOffboardSmlSmoke(unittest.TestCase):
             recent = sum(1 for timestamp, _, _, _, _ in self._attitudes
                          if timestamp >= start)
         self.assertGreaterEqual(recent, 20)  # Allows scheduling jitter at 50 Hz.
+
+    def test_camera_control_heartbeat_and_latch_contract(self):
+        self._wait_for_node()
+
+        self._send_udp_command(0)
+        self.assertTrue(self._wait_for(
+            lambda: self._vision_controls and
+            self._vision_controls[-1] == (False, False)))
+
+        self._send_udp_command(3)
+        self.assertTrue(self._wait_for(
+            lambda: self._vision_controls and
+            self._vision_controls[-1] == (True, False)))
+
+        late_controls = []
+        late_lock = threading.Lock()
+
+        def late_callback(message):
+            with late_lock:
+                late_controls.append(
+                    (message.front_camera_enabled,
+                     message.down_camera_enabled))
+
+        late_subscriber = rospy.Subscriber(
+            "/vision/control", VisionControl, late_callback, queue_size=1)
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            with late_lock:
+                if late_controls:
+                    break
+            time.sleep(0.02)
+        with late_lock:
+            self.assertTrue(late_controls)
+            self.assertEqual((True, False), late_controls[-1])
+        late_subscriber.unregister()
+
+        with self._lock:
+            heartbeat_start = len(self._vision_controls)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._vision_controls) >= heartbeat_start + 3))
+        with self._lock:
+            heartbeats = self._vision_controls[heartbeat_start:]
+        self.assertTrue(heartbeats)
+        self.assertTrue(all(control == (True, False)
+                            for control in heartbeats))
+
+        with self._lock:
+            control_count = len(self._vision_controls)
+        self._send_udp_command(4)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._vision_controls) > control_count and
+            self._vision_controls[-1] == (True, False)))
+
+        self._send_udp_command(5)
+        self.assertTrue(self._wait_for(
+            lambda: self._vision_controls[-1] == (False, True)))
+
+        with self._lock:
+            control_count = len(self._vision_controls)
+        self._send_udp_command(6)
+        self.assertTrue(self._wait_for(
+            lambda: len(self._vision_controls) > control_count and
+            self._vision_controls[-1] == (False, True)))
+
+        self._send_udp_command(9)
+        self.assertTrue(self._wait_for(
+            lambda: self._vision_controls[-1] == (False, False)))
 
     def test_active_mission_cmd3_cmd4_contracts(self):
         self._clear_observations()

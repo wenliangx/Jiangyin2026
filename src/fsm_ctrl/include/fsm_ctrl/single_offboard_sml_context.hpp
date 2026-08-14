@@ -13,6 +13,7 @@ struct Context {
           SetpointPort& setpoint_in, NmpcPort& nmpc_in,
           ReferenceProvider& reference_in, MissionPort& mission_in,
           PrecisionLandingPort& landing_in,
+          CameraControlPort& camera_control_in,
           const Config& config_in = Config{})
       : clock(clock_in),
         autopilot(autopilot_in),
@@ -21,6 +22,7 @@ struct Context {
         reference(reference_in),
         mission(mission_in),
         landing(landing_in),
+        camera_control(camera_control_in),
         config(config_in),
         last_service_request(clock_in.now()) {}
 
@@ -61,6 +63,7 @@ struct Context {
   ReferenceProvider& reference;
   MissionPort& mission;
   PrecisionLandingPort& landing;
+  CameraControlPort& camera_control;
   Config config;
   TelemetrySnapshot telemetry;
   double last_service_request;

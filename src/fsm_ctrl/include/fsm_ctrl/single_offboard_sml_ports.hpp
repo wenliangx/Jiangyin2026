@@ -92,6 +92,12 @@ class PrecisionLandingPort {
   virtual bool isComplete() const = 0;
 };
 
+class CameraControlPort {
+ public:
+  virtual ~CameraControlPort() = default;
+  virtual void publishControl(const CameraControlState& control) = 0;
+};
+
 }  // namespace single_sml
 }  // namespace fsm_ctrl
 

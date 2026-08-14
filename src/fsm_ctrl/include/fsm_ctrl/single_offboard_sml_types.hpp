@@ -64,6 +64,13 @@ struct LandingObservation {
   double age{0.0};
 };
 
+// 视觉相机的期望运行状态。它是状态快照而不是一次性的启停脉冲，
+// 因而 ROS 适配层可以安全地使用 latched topic 交付给晚启动的节点。
+struct CameraControlState {
+  bool front_camera_enabled{false};
+  bool down_camera_enabled{false};
+};
+
 struct Config {
   double service_retry_seconds{5.0};
   double low_thrust{0.02};

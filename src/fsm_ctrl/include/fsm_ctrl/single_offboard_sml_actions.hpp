@@ -6,12 +6,32 @@
 
 #include <cmath>
 #include <vector>
-
+#include <iostream>
 namespace fsm_ctrl {
 namespace single_sml {
 
-struct Noop {
-  void operator()() const {}
+inline void publishCameraControl(Context& context, bool front_enabled,
+                                 bool down_enabled) {
+  context.camera_control.publishControl(
+      CameraControlState{front_enabled, down_enabled});
+}
+
+struct DisableCameras {
+  void operator()(Context& context) const {
+    publishCameraControl(context, false, false);
+  }
+};
+
+struct EnableFrontCamera {
+  void operator()(Context& context) const {
+    publishCameraControl(context, true, false);
+  }
+};
+
+struct EnableDownCamera {
+  void operator()(Context& context) const {
+    publishCameraControl(context, false, true);
+  }
 };
 
 inline bool publishTrackCommand(Context& context,
@@ -83,8 +103,8 @@ struct TickCoreHoverToOneMeter {
 struct TickLowerHover {
   void operator()(Context& context) const {
     context.ensureOffboardArm();
-    const Vec3 target{context.telemetry.position.x, context.telemetry.position.y,
-                      0.4};
+    const Vec3 target{0.0, 0.0, 0.4};
+    std::cout<<"hello \n";
     publishTrackCommand(context, fixedPositionHorizon(target));
   }
 };
@@ -240,6 +260,7 @@ inline void tickSuperSegment(Context& context, int segment_index) {
   if (context.mission.prepareSuperSegment(segment_index, context.clock.now(),
                                           context.telemetry, horizon) &&
       !horizon.empty()) {
+        std::cout<<"segment_index: "<<segment_index<<"\n";
     context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                              context.telemetry.attitude);
     context.setpoint.publishReferencePosition(horizon.front().position,

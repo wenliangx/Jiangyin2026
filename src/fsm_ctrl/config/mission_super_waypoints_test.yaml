@@ -5,14 +5,13 @@ frame_id: "world"
 segments:
   - name: "cmd3_segment_1"
     waypoints:
-      - {id: 0, x: 0.022490, y: -0.070107, z: 1.145462, mode: 2, is_map: 1, yaw: 0.076230, desired_speed: 0.000000}
-      - {id: 1, x: 6.651552, y: 3.366558, z: 1.165854, mode: 2, is_map: 1, yaw: -0.013686, desired_speed: 0.000000}
-      - {id: 2, x: 9.272301, y: 0.926593, z: 0.915766, mode: 2, is_map: 1, yaw: 0.174618, desired_speed: 0.000000}
-      - {id: 3, x: 11.239173, y: 1.822232, z: 0.902306, mode: 2, is_map: 1, yaw: 1.634129, desired_speed: 0.000000}
+      - {id: 0, x: 0.442544, y: 1.260746, z: 0.639739, mode: 2, is_map: 1, yaw: 0.468196, desired_speed: 0.000000}
+      - {id: 1, x: 1.991672, y: 2.088877, z: 0.697716, mode: 2, is_map: 1, yaw: 0.616878, desired_speed: 0.000000}
+      - {id: 2, x: 2.158190, y: 2.021180, z: 1.647711, mode: 2, is_map: 1, yaw: -2.637069, desired_speed: 0.000000}
   - name: "cmd4_segment_2"
     waypoints:
-      - {id: 0, x: 11.323241, y: 4.564595, z: 1.128336, mode: 2, is_map: 1, yaw: -1.633666, desired_speed: 0.000000}
-      - {id: 1, x: 13.887842, y: 4.331726, z: 0.750620, mode: 2, is_map: 1, yaw: 0.094252, desired_speed: 0.000000}
-      - {id: 2, x: 13.809507, y: 4.354392, z: 0.092614, mode: 2, is_map: 1, yaw: -0.004607, desired_speed: 0.000000}
+      - {id: 0, x: 0.196497, y: 1.157154, z: 1.557366, mode: 2, is_map: 1, yaw: -2.547814, desired_speed: 0.000000}
   - name: "cmd5_segment_3"
-    waypoints: []
+    waypoints:
+      - {id: 0, x: -0.262129, y: -0.093146, z: 0.691457, mode: 2, is_map: 1, yaw: -3.124558, desired_speed: 0.000000}
+      - {id: 1, x: -0.179513, y: -0.042311, z: -0.015141, mode: 2, is_map: 1, yaw: -3.102425, desired_speed: 0.000000}

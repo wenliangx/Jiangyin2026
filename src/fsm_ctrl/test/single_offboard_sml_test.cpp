@@ -173,9 +173,19 @@ class FakeLanding final : public PrecisionLandingPort {
   LandingObservation last_observation;
 };
 
+class FakeCameraControl final : public CameraControlPort {
+ public:
+  void publishControl(const CameraControlState& value) override {
+    controls.push_back(value);
+  }
+
+  std::vector<CameraControlState> controls;
+};
+
 struct Fixture : testing::Test {
   Fixture()
-      : context(clock, autopilot, setpoint, nmpc, reference, mission, landing),
+      : context(clock, autopilot, setpoint, nmpc, reference, mission, landing,
+                camera_control),
         sm(context) {}
 
   static const char* StateName(int index) {
@@ -238,11 +248,21 @@ struct Fixture : testing::Test {
     mission.super_calls = 0;
     mission.core_super_calls = 0;
     landing.prepare_calls = 0;
+    camera_control.controls.clear();
   }
 
   void SetOffboardAndArmed() {
     context.telemetry.mode = "OFFBOARD";
     context.telemetry.armed = true;
+  }
+
+  void ExpectLatestCameraControl(bool front_enabled,
+                                 bool down_enabled) const {
+    ASSERT_FALSE(camera_control.controls.empty());
+    EXPECT_EQ(front_enabled,
+              camera_control.controls.back().front_camera_enabled);
+    EXPECT_EQ(down_enabled,
+              camera_control.controls.back().down_camera_enabled);
   }
 
   FakeClock clock;
@@ -252,6 +272,7 @@ struct Fixture : testing::Test {
   FakeReference reference;
   FakeMission mission;
   FakeLanding landing;
+  FakeCameraControl camera_control;
   Context context;
   StateMachine sm;
 };
@@ -278,6 +299,18 @@ TEST_F(Fixture, InitialAndEveryCommandEventReachExpectedState) {
   EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   sm.process_event(OnCommand0{});
   EXPECT_TRUE(sm.is(boost::sml::state<Idle>));
+}
+
+TEST_F(Fixture, InitialStatePublishesCamerasDisabledOnEveryTick) {
+  EXPECT_TRUE(camera_control.controls.empty());
+
+  sm.process_event(Tick{});
+  ASSERT_EQ(1u, camera_control.controls.size());
+  ExpectLatestCameraControl(false, false);
+
+  sm.process_event(Tick{});
+  ASSERT_EQ(2u, camera_control.controls.size());
+  ExpectLatestCameraControl(false, false);
 }
 
 TEST_F(Fixture, EveryCommandEventWorksFromEveryState) {
@@ -399,7 +432,7 @@ TEST_F(Fixture, RepeatedCommandDoesNotReenterTrack) {
   EXPECT_EQ(2, reference.resets);
 }
 
-TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoOutput) {
+TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoFlightOutput) {
   sm.process_event(Tick{});
   sm.process_event(OnUnsupportedCommand{});
   sm.process_event(Tick{});
@@ -407,6 +440,8 @@ TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoOutput) {
   EXPECT_TRUE(setpoint.positions.empty());
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.attitudes.empty());
+  ASSERT_EQ(2u, camera_control.controls.size());
+  ExpectLatestCameraControl(false, false);
 }
 
 TEST_F(Fixture, LowThrustTickPublishesLegacyMessage) {
@@ -948,6 +983,79 @@ TEST_F(Fixture, SegmentedMissionMachineMapsCommandsToSegmentsAndLanding) {
   EXPECT_TRUE(dispatcher.update(6));
   EXPECT_TRUE(machine.is(boost::sml::state<Landing>));
   EXPECT_EQ(1, landing.resets);
+}
+
+TEST_F(Fixture, SegmentedMissionPublishesCameraStateOnEveryTick) {
+  SegmentedMissionStateMachine machine(context);
+  SegmentedMissionCommandDispatcher dispatcher(machine, &reference, &mission);
+  EXPECT_TRUE(camera_control.controls.empty());
+
+  machine.process_event(Tick{});
+  ASSERT_EQ(1u, camera_control.controls.size());
+  ExpectLatestCameraControl(false, false);
+
+  const std::size_t initial_count = camera_control.controls.size();
+  EXPECT_TRUE(dispatcher.update(3));
+  EXPECT_EQ(initial_count, camera_control.controls.size());
+  machine.process_event(Tick{});
+  ASSERT_EQ(initial_count + 1u, camera_control.controls.size());
+  ExpectLatestCameraControl(true, false);
+
+  machine.process_event(Tick{});
+  ASSERT_EQ(initial_count + 2u, camera_control.controls.size());
+  ExpectLatestCameraControl(true, false);
+
+  EXPECT_FALSE(dispatcher.update(3));
+  EXPECT_EQ(initial_count + 2u, camera_control.controls.size());
+  machine.process_event(Tick{});
+  ASSERT_EQ(initial_count + 3u, camera_control.controls.size());
+  ExpectLatestCameraControl(true, false);
+
+  EXPECT_TRUE(dispatcher.update(4));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(true, false);
+
+  EXPECT_TRUE(dispatcher.update(5));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, true);
+
+  EXPECT_TRUE(dispatcher.update(6));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, true);
+
+  EXPECT_TRUE(dispatcher.update(9));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
+
+  EXPECT_TRUE(dispatcher.update(7));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
+
+  EXPECT_TRUE(dispatcher.update(0));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
+}
+
+TEST_F(Fixture, CoreAndMissionMachinesPublishCameraStateOnTick) {
+  CoreFlightStateMachine core_machine(context);
+  CoreFlightCommandDispatcher core_dispatcher(core_machine);
+  EXPECT_TRUE(core_dispatcher.update(3));
+  EXPECT_TRUE(camera_control.controls.empty());
+  core_machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, true);
+  EXPECT_TRUE(core_dispatcher.update(2));
+  core_machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
+
+  MissionStateMachine mission_machine(context);
+  MissionCommandDispatcher mission_dispatcher(mission_machine, &reference,
+                                               &mission);
+  EXPECT_TRUE(mission_dispatcher.update(3));
+  mission_machine.process_event(Tick{});
+  ExpectLatestCameraControl(true, false);
+  EXPECT_TRUE(mission_dispatcher.update(4));
+  mission_machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, true);
 }
 
 TEST_F(Fixture, CoreFlightCmd3PublishesSuperControlAndLandingDebug) {
