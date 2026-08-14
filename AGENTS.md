@@ -146,4 +146,4 @@ python3 analyze_bag.py /path/to/robot.bag            # Bag analysis
 - **No CI/CD** — manual build verification via Docker images
 - **Test coverage**: Only fsm_ctrl (36 GTest) and uav_vision (1 CTest + 5 Python) have active tests. SUPER, ego-planner, RA-LIO have none.
 - **Ubuntu 20.04 + ROS Noetic** is Tier 1; ROS2 is experimental
-- **Latest changes**: SML FSM uses `CoreFlightStateMachine` (not raw SML); precision landing via `LandingObservation` from `uav_vision_msgs/LandingOffset`; removed ego/mission legacy tracking (ring2, apriltag prepoint, TimedPose cache)
+- **Latest changes**: SML node uses `SegmentedMissionMachine`; precision landing receives `LandingObservation` from `uav_vision_msgs/LandingOffset`; obsolete CoreFlight/FullMission machines and legacy reference tracking were removed.
