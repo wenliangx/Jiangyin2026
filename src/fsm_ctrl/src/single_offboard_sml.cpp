@@ -3,8 +3,10 @@
 #include <fsm_ctrl/NMPC_Controller.hpp>
 #include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
+#include <fsm_ctrl/nmpc_params.h>
 #include <fsm_ctrl/nmpc_state.h>
 #include <iostream>
+#include <ostream>
 
 // 旧版 NMPC 头文件会导出通用重力宏；这里清掉，避免污染 Boost.SML 和适配层头文件。
 #ifdef G
@@ -372,17 +374,59 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     private_node.param("nmpc_RtotalF", r_thrust, r_thrust);
     private_node.param("nmpc_hover_thrust", hover_thrust, hover_thrust);
 
+    // 控制器固定构造参数，提取为具名常量，保证与参数镜像 topic 一致。
+    constexpr std::array<double, 2> kAccZLimit{{0.0, 15.0}};
+    constexpr std::array<double, 2> kWLimit{{-3.14, 3.14}};
+    constexpr int kNlpPredictStep = 8;
+    constexpr double kNlpOnestepTime = 0.05;
+    constexpr int kNlpStateNum = 10;
+    constexpr int kNlpInputNum = 4;
+
     Eigen::Matrix<float, 3, 1> q_position, q_velocity, q_attitude, r_angular;
     q_position << q_pos_x, q_pos_y, q_pos_z;
     q_velocity << q_vel_x, q_vel_y, q_vel_z;
     q_attitude << q_quat_x, q_quat_y, q_quat_z;
     r_angular << r_w_x, r_w_y, r_w_z;
+    std::cout << q_pos_x << q_pos_y << q_pos_z << std::endl;
     controller_.reset(new NMPC_Ctrller_simple(
-        kInterval, std::array<double, 2>{{0.0, 15.0}},
-        std::array<double, 2>{{-3.14, 3.14}}, 8, 0.05, 10, 4,
-        q_position, q_velocity, q_attitude, r_angular, r_thrust,
-        hover_thrust));
+        kInterval, kAccZLimit, kWLimit, kNlpPredictStep, kNlpOnestepTime,
+        kNlpStateNum, kNlpInputNum, q_position, q_velocity, q_attitude,
+        r_angular, r_thrust, hover_thrust));
 
+    // 镜像实际生效的 NMPC 参数到 /nmpc_params，仅用于录包观察，
+    // 不参与任何控制计算。
+    params_msg_.q_pos_x = q_pos_x;
+    params_msg_.q_pos_y = q_pos_y;
+    params_msg_.q_pos_z = q_pos_z;
+    params_msg_.q_vel_x = q_vel_x;
+    params_msg_.q_vel_y = q_vel_y;
+    params_msg_.q_vel_z = q_vel_z;
+    params_msg_.q_quat_x = q_quat_x;
+    params_msg_.q_quat_y = q_quat_y;
+    params_msg_.q_quat_z = q_quat_z;
+    params_msg_.r_w_x = r_w_x;
+    params_msg_.r_w_y = r_w_y;
+    params_msg_.r_w_z = r_w_z;
+    params_msg_.r_acc_z = r_thrust;
+    params_msg_.hover_thrust = hover_thrust;
+    params_msg_.ctrl_t = kInterval;
+    params_msg_.acc_z_limit_low = kAccZLimit[0];
+    params_msg_.acc_z_limit_high = kAccZLimit[1];
+    params_msg_.w_limit_low = kWLimit[0];
+    params_msg_.w_limit_high = kWLimit[1];
+    params_msg_.nlp_predict_step = kNlpPredictStep;
+    params_msg_.nlp_onestep_time = kNlpOnestepTime;
+    params_msg_.nlp_state_num = kNlpStateNum;
+    params_msg_.nlp_input_num = kNlpInputNum;
+
+    // 锁存发布：后启动的录包/echo 也能立即收到当前参数。
+    params_pub_ = private_node.advertise<fsm_ctrl::nmpc_params>(
+        "/nmpc_params", 10, true);
+    params_pub_.publish(params_msg_);
+    // 1Hz 低频重发，保证 bag 中任意时间段都能看到这段参数。
+    params_timer_ = private_node.createTimer(
+        ros::Duration(1.0),
+        [this](const ros::TimerEvent&) { params_pub_.publish(params_msg_); });
   }
 
   bool solveTrack(const smlfsm::TelemetrySnapshot& telemetry,
@@ -432,6 +476,9 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
+  ros::Publisher params_pub_;          // /nmpc_params 参数镜像观察 topic。
+  ros::Timer params_timer_;            // 参数镜像 1Hz 重发定时器。
+  fsm_ctrl::nmpc_params params_msg_;   // 已加载 NMPC 参数的镜像消息。
 };
 
 class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {

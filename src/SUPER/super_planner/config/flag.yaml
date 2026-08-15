@@ -19,7 +19,7 @@ super_planner:
   print_log: false
   visual_process: false
   frontend_in_known_free: false
-  goal_yaw_en: true
+  goal_yaw_en: false
   goal_vel_en: false
   corridor_bound_dis: 0.8
   corridor_line_max_length: 1.0

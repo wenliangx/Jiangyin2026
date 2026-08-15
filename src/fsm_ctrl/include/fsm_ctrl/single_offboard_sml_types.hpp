@@ -77,8 +77,8 @@ struct Config {
   double hover_thrust{0.196};
   double position_hold_z{0.4};
   double landing_target_z{0.005};
-  double landing_reference_z{0.05};
-  double landing_tolerance_z{0.05};
+  double landing_reference_z{0.01};
+  double landing_tolerance_z{0.01};
 };
 
 }  // namespace single_sml

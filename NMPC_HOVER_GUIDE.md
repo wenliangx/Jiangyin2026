@@ -756,3 +756,7 @@ chmod +x ~/nmpc_hover_test.sh
 | `fcu_url` | `/dev/ttyACM0:921600` | single.launch:7 | 飞控串口 |
 | `nmpc_hover_thrust` | 0.385 | single.launch:79 | 悬停油门(younger NMPC用) |
 | `nmpc_Qpos{z}` | 50.0 | single.launch:98 | NMPC高度代价权重 |
+
+
+现在出现了一个严重问题，需要你从多方面考虑检查。在悬停过程中，虽然飞起来的过程很正常，但是悬停总是掉高度，然后发生振荡。你可以读取~/bag_temp 
+里的控制记录包裹，里面记录了详细的NMPC参数和飞行数据，分析他们。阅读这里的代码实现，分析一下。

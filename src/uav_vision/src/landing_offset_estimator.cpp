@@ -51,14 +51,14 @@ LandingEstimate LandingOffsetEstimator::update(
       return invalid(observed_ids, "duplicate_id");
     }
   }
-  if (targets.size() != expected.size()) {
+  if (targets.empty()) {
     return invalid(observed_ids, "missing_id");
   }
 
   double raw_x = 0.0;
   double raw_y = 0.0;
-  for (const int id : config_.expected_ids) {
-    const TagObservation& observation = *targets.at(id).front();
+  for (const auto& item : targets) {
+    const TagObservation& observation = *item.second.front();
     if (observation.hamming > config_.max_hamming) {
       return invalid(observed_ids, "hamming");
     }
@@ -68,8 +68,8 @@ LandingEstimate LandingOffsetEstimator::update(
     raw_x += observation.center.x;
     raw_y += observation.center.y;
   }
-  raw_x /= config_.expected_ids.size();
-  raw_y /= config_.expected_ids.size();
+  raw_x /= targets.size();
+  raw_y /= targets.size();
 
   if (has_filtered_center_ &&
       std::hypot(raw_x - filtered_x_, raw_y - filtered_y_) >

@@ -39,6 +39,7 @@ endif()
 
 add_message_files(
   FILES
+  nmpc_params.msg
   nmpc_state.msg
 )
 
