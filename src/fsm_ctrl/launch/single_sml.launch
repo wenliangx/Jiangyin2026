@@ -89,6 +89,20 @@
         <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
 
+        <!-- cmd5 视觉闭环降落：一次观测只生成一次调整，调整期间忽略视觉。 -->
+        <param name="landing_valid_timeout" value="0.25" type="double"/>
+        <param name="landing_align_px_threshold" value="50.0" type="double"/>
+        <param name="landing_xy_step" value="0.03" type="double"/>
+        <param name="landing_lock_min_tag_count" value="4" type="int"/>
+        <!-- 标签越少，给飞机调整并稳定的时间越长。 -->
+        <param name="landing_adjust_duration_tag1" value="1.2" type="double"/>
+        <param name="landing_adjust_duration_tag2" value="1.0" type="double"/>
+        <param name="landing_adjust_duration_tag3" value="0.8" type="double"/>
+        <param name="landing_adjust_duration_tag4" value="0.6" type="double"/>
+        <param name="landing_adjust_duration_tag5" value="0.4" type="double"/>
+        <param name="landing_descent_rate" value="0.15" type="double"/>
+        <param name="landing_min_z" value="0.03" type="double"/>
+
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
         <param name = "nmpc_Qposy" type = "double" value = "40.0" />

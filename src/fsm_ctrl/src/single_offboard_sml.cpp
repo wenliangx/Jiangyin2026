@@ -495,6 +495,24 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     private_node.param("landing_max_xy_step", max_xy_step_, max_xy_step_);
     private_node.param("landing_xy_step", closed_loop_config_.xy_step,
                        closed_loop_config_.xy_step);
+    private_node.param("landing_lock_min_tag_count",
+                       closed_loop_config_.lock_min_tag_count,
+                       closed_loop_config_.lock_min_tag_count);
+    private_node.param("landing_adjust_duration_tag1",
+                       closed_loop_config_.adjust_duration_tag1,
+                       closed_loop_config_.adjust_duration_tag1);
+    private_node.param("landing_adjust_duration_tag2",
+                       closed_loop_config_.adjust_duration_tag2,
+                       closed_loop_config_.adjust_duration_tag2);
+    private_node.param("landing_adjust_duration_tag3",
+                       closed_loop_config_.adjust_duration_tag3,
+                       closed_loop_config_.adjust_duration_tag3);
+    private_node.param("landing_adjust_duration_tag4",
+                       closed_loop_config_.adjust_duration_tag4,
+                       closed_loop_config_.adjust_duration_tag4);
+    private_node.param("landing_adjust_duration_tag5",
+                       closed_loop_config_.adjust_duration_tag5,
+                       closed_loop_config_.adjust_duration_tag5);
     private_node.param("landing_swap_xy", closed_loop_config_.swap_xy,
                        closed_loop_config_.swap_xy);
     private_node.param("landing_x_sign", closed_loop_config_.x_sign,
@@ -601,7 +619,9 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
         0.5,
         "Closed-loop landing: stage=%s valid=%s tags=%d dx=%.2f dy=%.2f "
         "age=%.3fs target=(%.3f, %.3f, %.3f)",
-        closed_loop_planner_.descending() ? "descend" : "align",
+        closed_loop_planner_.descending()
+            ? "descend"
+            : (closed_loop_planner_.adjusting() ? "adjust" : "observe"),
         observation.valid ? "true" : "false", observation.tag_count,
         observation.dx, observation.dy, observation_age, target.x, target.y,
         target.z);
@@ -1085,7 +1105,8 @@ class SingleOffboardNode {
       const uav_vision_msgs::LandingOffset::ConstPtr& message) {
     smlfsm::LandingObservation observation;
     observation.valid =
-        message->valid && message->tag_count == 5 &&
+        message->valid && message->tag_count >= 1 &&
+        message->tag_count <= 5 &&
         std::isfinite(message->dx) && std::isfinite(message->dy);
     observation.dx = message->dx;
     observation.dy = message->dy;
