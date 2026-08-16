@@ -96,15 +96,15 @@ struct SegmentedMissionMachine {
         state<ArmOnly> + event<Tick> /
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
-            (DisableCameras{}, TickLowerHover{}),
+            (EnableDownCamera{}, TickLowerHover{}),
         state<SuperSegment1> + event<Tick> /
             (EnableBothCameras{}, TickSuperSegment1{}),
         state<SuperSegment2> + event<Tick> /
             (EnableBothCameras{}, TickSuperSegment2{}),
         state<SuperSegment3> + event<Tick> /
-            (EnableDownCamera{}, TickSuperSegment3{}),
+            (EnableDownCamera{}, TickClosedLoopLanding{}),
         state<Landing> + event<Tick> /
-            (EnableDownCamera{}, TickLanding{}),
+            (EnableDownCamera{}, TickClosedLoopLanding{}),
         state<Emergency> + event<Tick> /
             (DisableCameras{}, TickEmergency{}),
         state<SafeNoop> + event<Tick> / DisableCameras{},
@@ -125,7 +125,7 @@ struct SegmentedMissionMachine {
 
 using MissionStateMachine = boost::sml::sm<MissionMachine>;
 using SegmentedMissionStateMachine = boost::sml::sm<SegmentedMissionMachine>;
-using ActiveMachine = MissionMachine;
+using ActiveMachine = SegmentedMissionMachine;
 using ActiveStateMachine = boost::sml::sm<ActiveMachine>;
 
 }  // namespace single_sml

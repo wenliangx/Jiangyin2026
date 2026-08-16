@@ -3,8 +3,10 @@
 #include <fsm_ctrl/NMPC_Controller.hpp>
 #include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
+#include <fsm_ctrl/nmpc_params.h>
 #include <fsm_ctrl/nmpc_state.h>
 #include <iostream>
+#include <ostream>
 
 // 旧版 NMPC 头文件会导出通用重力宏；这里清掉，避免污染 Boost.SML 和适配层头文件。
 #ifdef G
@@ -22,7 +24,6 @@
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
 #include <ros/ros.h>
-#include <std_msgs/Float64MultiArray.h>
 #include <super_msgs/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
 #include <uav_vision_msgs/VisionControl.h>
@@ -373,27 +374,59 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     private_node.param("nmpc_RtotalF", r_thrust, r_thrust);
     private_node.param("nmpc_hover_thrust", hover_thrust, hover_thrust);
 
+    // 控制器固定构造参数，提取为具名常量，保证与参数镜像 topic 一致。
+    constexpr std::array<double, 2> kAccZLimit{{0.0, 15.0}};
+    constexpr std::array<double, 2> kWLimit{{-3.14, 3.14}};
+    constexpr int kNlpPredictStep = 8;
+    constexpr double kNlpOnestepTime = 0.05;
+    constexpr int kNlpStateNum = 10;
+    constexpr int kNlpInputNum = 4;
+
     Eigen::Matrix<float, 3, 1> q_position, q_velocity, q_attitude, r_angular;
     q_position << q_pos_x, q_pos_y, q_pos_z;
     q_velocity << q_vel_x, q_vel_y, q_vel_z;
     q_attitude << q_quat_x, q_quat_y, q_quat_z;
     r_angular << r_w_x, r_w_y, r_w_z;
+    std::cout << q_pos_x << q_pos_y << q_pos_z << std::endl;
     controller_.reset(new NMPC_Ctrller_simple(
-        kInterval, std::array<double, 2>{{0.0, 15.0}},
-        std::array<double, 2>{{-3.14, 3.14}}, 8, 0.05, 10, 4,
-        q_position, q_velocity, q_attitude, r_angular, r_thrust,
-        hover_thrust));
+        kInterval, kAccZLimit, kWLimit, kNlpPredictStep, kNlpOnestepTime,
+        kNlpStateNum, kNlpInputNum, q_position, q_velocity, q_attitude,
+        r_angular, r_thrust, hover_thrust));
 
-    // 锁存实际加载到的参数，供主循环的调试 topic 发布。
-    debug_params_ = {{q_pos_x, q_pos_y, q_pos_z, q_vel_x, q_vel_y, q_vel_z,
-                      q_quat_x, q_quat_y, q_quat_z, r_w_x, r_w_y, r_w_z,
-                      r_thrust, hover_thrust}};
-  }
+    // 镜像实际生效的 NMPC 参数到 /nmpc_params，仅用于录包观察，
+    // 不参与任何控制计算。
+    params_msg_.q_pos_x = q_pos_x;
+    params_msg_.q_pos_y = q_pos_y;
+    params_msg_.q_pos_z = q_pos_z;
+    params_msg_.q_vel_x = q_vel_x;
+    params_msg_.q_vel_y = q_vel_y;
+    params_msg_.q_vel_z = q_vel_z;
+    params_msg_.q_quat_x = q_quat_x;
+    params_msg_.q_quat_y = q_quat_y;
+    params_msg_.q_quat_z = q_quat_z;
+    params_msg_.r_w_x = r_w_x;
+    params_msg_.r_w_y = r_w_y;
+    params_msg_.r_w_z = r_w_z;
+    params_msg_.r_acc_z = r_thrust;
+    params_msg_.hover_thrust = hover_thrust;
+    params_msg_.ctrl_t = kInterval;
+    params_msg_.acc_z_limit_low = kAccZLimit[0];
+    params_msg_.acc_z_limit_high = kAccZLimit[1];
+    params_msg_.w_limit_low = kWLimit[0];
+    params_msg_.w_limit_high = kWLimit[1];
+    params_msg_.nlp_predict_step = kNlpPredictStep;
+    params_msg_.nlp_onestep_time = kNlpOnestepTime;
+    params_msg_.nlp_state_num = kNlpStateNum;
+    params_msg_.nlp_input_num = kNlpInputNum;
 
-  // 调试 topic 的数据顺序：q_pos_x/y/z | q_vel_x/y/z | q_quat_x/y/z |
-  // r_w_x/y/z | r_thrust | hover_thrust。
-  const std::array<double, 14>& debugParams() const {
-    return debug_params_;
+    // 锁存发布：后启动的录包/echo 也能立即收到当前参数。
+    params_pub_ = private_node.advertise<fsm_ctrl::nmpc_params>(
+        "/nmpc_params", 10, true);
+    params_pub_.publish(params_msg_);
+    // 1Hz 低频重发，保证 bag 中任意时间段都能看到这段参数。
+    params_timer_ = private_node.createTimer(
+        ros::Duration(1.0),
+        [this](const ros::TimerEvent&) { params_pub_.publish(params_msg_); });
   }
 
   bool solveTrack(const smlfsm::TelemetrySnapshot& telemetry,
@@ -443,7 +476,9 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
-  std::array<double, 14> debug_params_{};  // 加载后的 NMPC 参数锁存，仅供调试 topic。
+  ros::Publisher params_pub_;          // /nmpc_params 参数镜像观察 topic。
+  ros::Timer params_timer_;            // 参数镜像 1Hz 重发定时器。
+  fsm_ctrl::nmpc_params params_msg_;   // 已加载 NMPC 参数的镜像消息。
 };
 
 class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
@@ -460,6 +495,24 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     private_node.param("landing_max_xy_step", max_xy_step_, max_xy_step_);
     private_node.param("landing_xy_step", closed_loop_config_.xy_step,
                        closed_loop_config_.xy_step);
+    private_node.param("landing_lock_min_tag_count",
+                       closed_loop_config_.lock_min_tag_count,
+                       closed_loop_config_.lock_min_tag_count);
+    private_node.param("landing_adjust_duration_tag1",
+                       closed_loop_config_.adjust_duration_tag1,
+                       closed_loop_config_.adjust_duration_tag1);
+    private_node.param("landing_adjust_duration_tag2",
+                       closed_loop_config_.adjust_duration_tag2,
+                       closed_loop_config_.adjust_duration_tag2);
+    private_node.param("landing_adjust_duration_tag3",
+                       closed_loop_config_.adjust_duration_tag3,
+                       closed_loop_config_.adjust_duration_tag3);
+    private_node.param("landing_adjust_duration_tag4",
+                       closed_loop_config_.adjust_duration_tag4,
+                       closed_loop_config_.adjust_duration_tag4);
+    private_node.param("landing_adjust_duration_tag5",
+                       closed_loop_config_.adjust_duration_tag5,
+                       closed_loop_config_.adjust_duration_tag5);
     private_node.param("landing_swap_xy", closed_loop_config_.swap_xy,
                        closed_loop_config_.swap_xy);
     private_node.param("landing_x_sign", closed_loop_config_.x_sign,
@@ -566,7 +619,9 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
         0.5,
         "Closed-loop landing: stage=%s valid=%s tags=%d dx=%.2f dy=%.2f "
         "age=%.3fs target=(%.3f, %.3f, %.3f)",
-        closed_loop_planner_.descending() ? "descend" : "align",
+        closed_loop_planner_.descending()
+            ? "descend"
+            : (closed_loop_planner_.adjusting() ? "adjust" : "observe"),
         observation.valid ? "true" : "false", observation.tag_count,
         observation.dx, observation.dy, observation_age, target.x, target.y,
         target.z);
@@ -966,8 +1021,6 @@ class SingleOffboardNode {
                                    &SingleOffboardNode::landingCallback, this);
     rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
                              &SingleOffboardNode::rcCallback, this);
-    nmpc_params_debug_pub_ = node_.advertise<std_msgs::Float64MultiArray>(
-        "/nmpc_params_debug", 10);
   }
 
   // 节点主循环：先发布 100 个位置 setpoint warmup，再按 UDP cmd 驱动 FSM。
@@ -986,7 +1039,6 @@ class SingleOffboardNode {
       const int command = mailbox_.latest();
       dispatcher_.update(command);
       machine_.process_event(smlfsm::Tick{});
-      publishNmpcParamsDebug();
       rate.sleep();
     }
   }
@@ -1016,15 +1068,6 @@ class SingleOffboardNode {
     int port = 12001;
     private_node_.param("udp_port", port, port);
     return port;
-  }
-
-  // 纯调试：发布实际加载的 NMPC 权重与悬停推力，无任何订阅者，
-  // 供 rostopic echo / rosbag 核对参数。data 顺序见 RosNmpcPort::debugParams。
-  void publishNmpcParamsDebug() {
-    std_msgs::Float64MultiArray message;
-    const std::array<double, 14>& params = nmpc_.debugParams();
-    message.data.assign(params.begin(), params.end());
-    nmpc_params_debug_pub_.publish(message);
   }
 
   // MAVROS 状态回调：更新飞控模式和解锁状态。
@@ -1062,7 +1105,8 @@ class SingleOffboardNode {
       const uav_vision_msgs::LandingOffset::ConstPtr& message) {
     smlfsm::LandingObservation observation;
     observation.valid =
-        message->valid && message->tag_count == 5 &&
+        message->valid && message->tag_count >= 1 &&
+        message->tag_count <= 5 &&
         std::isfinite(message->dx) && std::isfinite(message->dy);
     observation.dx = message->dx;
     observation.dy = message->dy;
@@ -1099,7 +1143,6 @@ class SingleOffboardNode {
   ros::Subscriber super_planner_sub_;  // super planner 订阅。
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
-  ros::Publisher nmpc_params_debug_pub_;  // NMPC 参数调试 topic（无订阅者）。
 };
 
 }  // namespace

@@ -22,7 +22,7 @@ Visual perception for UAV landing and wall targets. Two independent chains: C++ 
 | subscribe | `/vision/control` | `uav_vision_msgs/VisionControl` | 50Hz desired front/down camera state; consumed by camera nodes, not recognition nodes |
 | subscribe | `/vision/down/image_raw` | `sensor_msgs/Image` | Landing tag camera (1280x720 MJPG @ 30Hz) |
 | subscribe | `/vision/front/image_raw` | `sensor_msgs/Image` | Target classification camera |
-| publish | `/vision/landing/offset` | `uav_vision_msgs/LandingOffset` | Pixel-space landing deviation, `valid` = all 5 tags present |
+| publish | `/vision/landing/offset` | `uav_vision_msgs/LandingOffset` | Pixel-space landing deviation from the mean center of every accepted visible tag |
 | publish | `/vision/target/result` | `uav_vision_msgs/TargetMatchArray` | Classification result with fused score + corners |
 | publish | `/vision/landing/debug_image` | `sensor_msgs/Image` | Tag bounding boxes + offset line overlay |
 | publish | `/vision/target/debug_image` | `sensor_msgs/Image` | Matched quad + annotated class overlay |
@@ -40,7 +40,7 @@ Visual perception for UAV landing and wall targets. Two independent chains: C++ 
 
 ## NOTES
 
-- **`LandingOffset.valid`** semantics: `true` only when all 5 tags (IDs 0-4) are detected simultaneously with margin >= 20.0. Returns NaN otherwise.
+- **`LandingOffset.valid`** semantics: `true` when at least one expected tag (ID 0-4) is detected and all visible expected tags pass the Hamming/margin checks. The estimator averages the accepted visible centers before temporal filtering; zero accepted tags returns NaN.
 - **Temporal voting**: 5-frame sliding window, requires min 3 consecutive consistent labels. `target_lost_frames=3` clears history on consecutive unknowns.
 - **Camera config**: 1280x720 MJPG @ 30Hz, manual exposure 150, gain 5 (see `config/camera_common.yaml` + `udev/99-uav-cameras.rules`). Camera nodes idempotently open/release capture from the repeated desired state; recognition nodes stay alive and process every arriving frame.
 - **Classification**: Canny edge → polygon quad → gray+HOG+color weighted match (0.5/0.3/0.2). 13 augmentation tuples for template matching.

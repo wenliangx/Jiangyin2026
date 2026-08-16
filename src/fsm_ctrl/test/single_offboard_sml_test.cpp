@@ -519,7 +519,8 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
 TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
   SetOffboardAndArmed();
   context.config.low_thrust = 0.031;
-  context.telemetry.position = {2.0, 3.0, 0.06};
+  context.telemetry.position =
+      {2.0, 3.0, context.config.landing_reference_z};
   sm.process_event(OnCommand6{});
   landing.result = false;
   sm.process_event(Tick{});
@@ -788,6 +789,110 @@ TEST(ClosedLoopLandingPlannerTest, LocksCurrentXyAndDescendsWhenAligned) {
   EXPECT_DOUBLE_EQ(1.5, horizon.front().position.x);
   EXPECT_DOUBLE_EQ(2.5, horizon.front().position.y);
   EXPECT_NEAR(1.96, horizon.front().position.z, 1e-12);
+}
+
+TEST(ClosedLoopLandingPlannerTest, FourAlignedTagsLockXyAndStartDescent) {
+  ClosedLoopLandingConfig config;
+  config.align_px_threshold = 50.0;
+  config.descent_rate = 0.2;
+  config.control_rate_hz = 10.0;
+  ClosedLoopLandingPlanner planner(config);
+  TelemetrySnapshot telemetry;
+  telemetry.position = {2.0, 3.0, 1.5};
+  planner.start(telemetry);
+  planner.updateObservation(
+      LandingObservation{true, 40.0, -30.0, 4, 5.0, 0.0});
+
+  std::vector<ReferencePoint> horizon;
+  ASSERT_TRUE(planner.prepare(5.1, telemetry, horizon));
+  EXPECT_TRUE(planner.descending());
+  EXPECT_FALSE(planner.adjusting());
+  EXPECT_DOUBLE_EQ(2.0, horizon.front().position.x);
+  EXPECT_DOUBLE_EQ(3.0, horizon.front().position.y);
+  EXPECT_NEAR(1.48, horizon.front().position.z, 1e-12);
+}
+
+TEST(ClosedLoopLandingPlannerTest,
+     PartialTagsAdjustButCannotStartBlindDescent) {
+  ClosedLoopLandingConfig config;
+  config.align_px_threshold = 50.0;
+  config.xy_step = 0.1;
+  config.adjust_duration_tag3 = 0.8;
+  ClosedLoopLandingPlanner planner(config);
+  TelemetrySnapshot telemetry;
+  telemetry.position = {1.0, 2.0, 1.5};
+  planner.start(telemetry);
+  planner.updateObservation(
+      LandingObservation{true, 80.0, 20.0, 3, 10.0, 0.0});
+
+  std::vector<ReferencePoint> horizon;
+  ASSERT_TRUE(planner.prepare(10.1, telemetry, horizon));
+  EXPECT_TRUE(planner.adjusting());
+  EXPECT_FALSE(planner.descending());
+  EXPECT_DOUBLE_EQ(1.1, horizon.front().position.x);
+  EXPECT_DOUBLE_EQ(2.0, horizon.front().position.y);
+}
+
+TEST(ClosedLoopLandingPlannerTest,
+     IgnoresVisionDuringAdjustmentAndRequiresANewFrameAfterward) {
+  ClosedLoopLandingConfig config;
+  config.align_px_threshold = 50.0;
+  config.xy_step = 0.1;
+  config.observation_timeout = 0.5;
+  config.adjust_duration_tag1 = 1.0;
+  ClosedLoopLandingPlanner planner(config);
+  TelemetrySnapshot telemetry;
+  telemetry.position = {1.0, 2.0, 1.5};
+  planner.start(telemetry);
+  planner.updateObservation(
+      LandingObservation{true, 80.0, 0.0, 1, 10.0, 0.0});
+
+  std::vector<ReferencePoint> horizon;
+  ASSERT_TRUE(planner.prepare(10.1, telemetry, horizon));
+  ASSERT_TRUE(planner.adjusting());
+  EXPECT_DOUBLE_EQ(1.1, horizon.front().position.x);
+
+  planner.updateObservation(
+      LandingObservation{true, 0.0, 0.0, 5, 10.5, 0.0});
+  telemetry.position = {1.08, 2.0, 1.5};
+  ASSERT_TRUE(planner.prepare(11.2, telemetry, horizon));
+  EXPECT_FALSE(planner.adjusting());
+  EXPECT_FALSE(planner.descending());
+  EXPECT_DOUBLE_EQ(1.1, horizon.front().position.x);
+
+  planner.updateObservation(
+      LandingObservation{true, 0.0, 0.0, 5, 11.25, 0.0});
+  ASSERT_TRUE(planner.prepare(11.3, telemetry, horizon));
+  EXPECT_TRUE(planner.descending());
+  EXPECT_DOUBLE_EQ(1.08, horizon.front().position.x);
+  EXPECT_DOUBLE_EQ(2.0, horizon.front().position.y);
+}
+
+TEST(ClosedLoopLandingPlannerTest, FewerTagsUseLongerAdjustmentTime) {
+  ClosedLoopLandingConfig config;
+  config.align_px_threshold = 50.0;
+  config.adjust_duration_tag1 = 1.2;
+  config.adjust_duration_tag5 = 0.4;
+  ClosedLoopLandingPlanner one_tag_planner(config);
+  ClosedLoopLandingPlanner five_tag_planner(config);
+  TelemetrySnapshot telemetry;
+  telemetry.position = {1.0, 2.0, 1.5};
+  one_tag_planner.start(telemetry);
+  five_tag_planner.start(telemetry);
+  one_tag_planner.updateObservation(
+      LandingObservation{true, 80.0, 0.0, 1, 20.0, 0.0});
+  five_tag_planner.updateObservation(
+      LandingObservation{true, 80.0, 0.0, 5, 20.0, 0.0});
+
+  std::vector<ReferencePoint> horizon;
+  ASSERT_TRUE(one_tag_planner.prepare(20.1, telemetry, horizon));
+  ASSERT_TRUE(five_tag_planner.prepare(20.1, telemetry, horizon));
+  ASSERT_TRUE(one_tag_planner.prepare(20.6, telemetry, horizon));
+  ASSERT_TRUE(five_tag_planner.prepare(20.6, telemetry, horizon));
+  EXPECT_TRUE(one_tag_planner.adjusting());
+  EXPECT_FALSE(five_tag_planner.adjusting());
+  EXPECT_FALSE(one_tag_planner.descending());
+  EXPECT_FALSE(five_tag_planner.descending());
 }
 
 TEST(ClosedLoopLandingPlannerTest, IgnoresStaleVisionAndKeepsRecordedHold) {
