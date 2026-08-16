@@ -60,9 +60,9 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" /> -->
 
-        <param name = "nmpc_mQ_py" type = "double" value = "160" />
-        <param name = "nmpc_mQ_px" type = "double" value = "160" />
-        <param name = "nmpc_mQ_pz" type = "double" value = "160" />
+        <param name = "nmpc_mQ_py" type = "double" value = "120" />
+        <param name = "nmpc_mQ_px" type = "double" value = "120" />
+        <param name = "nmpc_mQ_pz" type = "double" value = "120" />
         <param name = "nmpc_mQ_vx" type = "double" value = "1.0" />
         <param name = "nmpc_mQ_vy" type = "double" value = "1.0" />
         <param name = "nmpc_mQ_vz" type = "double" value = "1.0" />
@@ -75,7 +75,7 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
 
-        <param name = "nmpc_hover_thrust" type = "double"  value = "0.440" />
+        <param name = "nmpc_hover_thrust" type = "double"  value = "0.550" />
 
         <!-- MissionMachine/Super waypoint upload. Generate this file with:
              rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
@@ -125,13 +125,13 @@
         <param name = "nmpc_Rwz" type = "double" value = "0.3" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
 
-        <param name = "nmpc_Qposx" type = "double" value = "75.0" />
-        <param name = "nmpc_Qposy" type = "double" value = "75.0" />
-        <param name = "nmpc_Qposz" type = "double" value = "75.0" />
+        <param name = "nmpc_Qposx" type = "double" value = "55.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "70.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "70.0" />
 
-        <param name = "nmpc_Qvelx" type = "double" value = "2.0" />
+        <param name = "nmpc_Qvelx" type = "double" value = "4.0" />
         <param name = "nmpc_Qvely" type = "double" value = "2.0" />
-        <param name = "nmpc_Qvelz" type = "double" value = "1.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "2.0" />
 
         <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
         <param name = "nmpc_Qquaty" type = "double" value = "1.0" />

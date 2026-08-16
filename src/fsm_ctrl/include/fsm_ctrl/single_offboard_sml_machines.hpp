@@ -125,7 +125,7 @@ struct SegmentedMissionMachine {
 
 using MissionStateMachine = boost::sml::sm<MissionMachine>;
 using SegmentedMissionStateMachine = boost::sml::sm<SegmentedMissionMachine>;
-using ActiveMachine = SegmentedMissionMachine;
+using ActiveMachine = MissionMachine;
 using ActiveStateMachine = boost::sml::sm<ActiveMachine>;
 
 }  // namespace single_sml

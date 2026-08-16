@@ -22,6 +22,7 @@
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
 #include <ros/ros.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <super_msgs/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
 #include <uav_vision_msgs/VisionControl.h>
@@ -383,6 +384,16 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
         q_position, q_velocity, q_attitude, r_angular, r_thrust,
         hover_thrust));
 
+    // 锁存实际加载到的参数，供主循环的调试 topic 发布。
+    debug_params_ = {{q_pos_x, q_pos_y, q_pos_z, q_vel_x, q_vel_y, q_vel_z,
+                      q_quat_x, q_quat_y, q_quat_z, r_w_x, r_w_y, r_w_z,
+                      r_thrust, hover_thrust}};
+  }
+
+  // 调试 topic 的数据顺序：q_pos_x/y/z | q_vel_x/y/z | q_quat_x/y/z |
+  // r_w_x/y/z | r_thrust | hover_thrust。
+  const std::array<double, 14>& debugParams() const {
+    return debug_params_;
   }
 
   bool solveTrack(const smlfsm::TelemetrySnapshot& telemetry,
@@ -432,6 +443,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
+  std::array<double, 14> debug_params_{};  // 加载后的 NMPC 参数锁存，仅供调试 topic。
 };
 
 class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
@@ -954,6 +966,8 @@ class SingleOffboardNode {
                                    &SingleOffboardNode::landingCallback, this);
     rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
                              &SingleOffboardNode::rcCallback, this);
+    nmpc_params_debug_pub_ = node_.advertise<std_msgs::Float64MultiArray>(
+        "/nmpc_params_debug", 10);
   }
 
   // 节点主循环：先发布 100 个位置 setpoint warmup，再按 UDP cmd 驱动 FSM。
@@ -972,6 +986,7 @@ class SingleOffboardNode {
       const int command = mailbox_.latest();
       dispatcher_.update(command);
       machine_.process_event(smlfsm::Tick{});
+      publishNmpcParamsDebug();
       rate.sleep();
     }
   }
@@ -1001,6 +1016,15 @@ class SingleOffboardNode {
     int port = 12001;
     private_node_.param("udp_port", port, port);
     return port;
+  }
+
+  // 纯调试：发布实际加载的 NMPC 权重与悬停推力，无任何订阅者，
+  // 供 rostopic echo / rosbag 核对参数。data 顺序见 RosNmpcPort::debugParams。
+  void publishNmpcParamsDebug() {
+    std_msgs::Float64MultiArray message;
+    const std::array<double, 14>& params = nmpc_.debugParams();
+    message.data.assign(params.begin(), params.end());
+    nmpc_params_debug_pub_.publish(message);
   }
 
   // MAVROS 状态回调：更新飞控模式和解锁状态。
@@ -1075,6 +1099,7 @@ class SingleOffboardNode {
   ros::Subscriber super_planner_sub_;  // super planner 订阅。
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
+  ros::Publisher nmpc_params_debug_pub_;  // NMPC 参数调试 topic（无订阅者）。
 };
 
 }  // namespace
