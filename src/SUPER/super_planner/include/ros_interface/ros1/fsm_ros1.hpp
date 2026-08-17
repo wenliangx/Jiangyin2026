@@ -442,6 +442,11 @@ namespace fsm {
             getOneHeartBeatMsg(heartbeat, traj_finish_);
             getOnePositionCommand(pid_cmd_, traj_finish_);
             getSeriesPositionCommand(nmpc_cmd_, traj_finish_);
+            // Expose completion of the currently commanded SUPER trajectory
+            // on the same message that carries the NMPC horizon.  Downstream
+            // controllers can combine this planner-side signal with their own
+            // physical arrival tolerance instead of trusting either alone.
+            nmpc_cmd_.touch_goal = traj_finish_ ? 1 : 0;
             mpc_cmd_pub_.publish(heartbeat);
             cmd_pub.publish(pid_cmd_);
             nmpc_cmd_pub_.publish(nmpc_cmd_);

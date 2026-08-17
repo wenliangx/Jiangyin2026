@@ -732,6 +732,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_waypoint_upload_active_ = true;
     super_waypoint_upload_index_ = 0u;
     segment_arrived_ = false;
+    super_goal_reached_ = false;
     super_planner_valid_ = false;
   }
 
@@ -759,7 +760,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
     }
 
     const MissionPoint& last = super_segments_[segment_index].back();
-    if (!segment_arrived_ && reached(last.position, telemetry.position)) {
+    if (!segment_arrived_ && super_goal_reached_ &&
+        reached(last.position, telemetry.position)) {
       segment_arrived_ = true;
     }
     if (segment_arrived_) {
@@ -801,6 +803,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
       super_planner_.push_back(point);
       
     }
+    super_goal_reached_ = message.touch_goal != 0;
     super_planner_valid_ = true;
   }
 
@@ -912,6 +915,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   int next_super_waypoint_id_{0};  // 发布给 SUPER 的全局递增 id，不随重传归零。
   int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
   bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
+  bool super_goal_reached_{false}; // SUPER 是否报告当前轨迹已经完成。
   double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
   std::string waypoints_file_;     // mission super waypoint YAML 文件。

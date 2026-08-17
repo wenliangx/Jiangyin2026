@@ -319,6 +319,11 @@ latched publisher，作为相机节点晚启动时立即获取最后一份快照
 悬停后才有效；飞行途中的上升沿会被忽略。下一次自动切换前需要先出现一次
 无效识别结果。
 
+“当前段完成”使用双重确认：飞机与本段最后航点的三维距离不超过
+`mission_super_arrival_tolerance`，并且 `/super/flag_cmd` 中
+`touch_goal != 0`（SUPER 当前轨迹的 `traj_finish`）。两项必须同时成立，随后
+SML 才改用段末点定点 horizon 并允许悬停阶段的识别上升沿触发切段。
+
 两个相机节点的私有参数 `always_enabled` 用于脱离状态机单独调试：
 
 - `always_enabled=false`：服从 `/vision/control`；在尚未收到控制快照时默认关闭。
