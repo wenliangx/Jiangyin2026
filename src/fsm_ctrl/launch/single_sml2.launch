@@ -82,7 +82,7 @@
         <param name="mission_super_waypoints_file"
                value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
                type="string"/>
-        <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
+        <param name="mission_super_arrival_tolerance" value="0.6" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
 
         <!-- 视觉闭环降落。swap=false 时 dx->x、dy->y；swap=true 时

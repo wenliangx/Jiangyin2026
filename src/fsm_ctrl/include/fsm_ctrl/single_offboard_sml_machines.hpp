@@ -110,7 +110,7 @@ struct SegmentedMissionMachine {
             [SuperSegmentComplete{}] /
             ResetSuperTrack{} = state<SuperSegment3>,
         state<Landing> + event<Tick> /
-            (EnableDownCamera{}, 7-io7u{}),
+            (EnableDownCamera{}, TickLanding{}),
         state<Emergency> + event<Tick> /
             (DisableCameras{}, TickEmergency{}),
         state<SafeNoop> + event<Tick> / DisableCameras{},
