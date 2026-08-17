@@ -1,13 +1,14 @@
 <?xml version="1.0"?>
 
 <launch>
-     
-     <include file="$(find fsm_ctrl)/launch/px4_estimator.launch">
-     
+     <arg name="start_estimator" default="true" />
+     <arg name="lio_odom_topic" default="/Odometry" />
+
+     <include if="$(arg start_estimator)" file="$(find fsm_ctrl)/launch/px4_estimator.launch">
      </include>
      
-     <node pkg="fsm_ctrl" type="swarm_user_cmd" name="swarm_user_cmd" output="screen"> 
-     
+     <node pkg="fsm_ctrl" type="swarm_user_cmd" name="swarm_user_cmd" output="screen">
+          <param name="lio_odom_topic" value="$(arg lio_odom_topic)" />
      </node>
 
 </launch>

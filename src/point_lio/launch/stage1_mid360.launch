@@ -1,0 +1,37 @@
+<launch>
+  <arg name="publish_to_px4" default="true" />
+  <arg name="planner_topic" default="/Odometry" />
+  <arg name="mavros_rate_hz" default="20.0" />
+  <arg name="rviz" default="false" />
+
+  <node pkg="point_lio" type="pointlio_mapping" name="pointlio_mapping" output="screen">
+    <rosparam command="load" file="$(find point_lio)/config/mid360.yaml" />
+    <param name="use_imu_as_input" value="false" />
+    <param name="prop_at_freq_of_imu" value="true" />
+    <param name="check_satu" value="true" />
+    <param name="init_map_size" value="10" />
+    <param name="point_filter_num" value="1" />
+    <param name="space_down_sample" value="true" />
+    <param name="filter_size_surf" value="0.2" />
+    <param name="filter_size_map" value="0.2" />
+    <param name="ivox_nearby_type" value="6" />
+    <param name="runtime_pos_log_enable" value="false" />
+  </node>
+
+  <node pkg="point_lio" type="pointlio_mavros_bridge"
+        name="pointlio_mavros_bridge" output="screen">
+    <param name="input_topic" value="/point_lio/odometry" />
+    <param name="planner_topic" value="$(arg planner_topic)" />
+    <param name="mavros_topic" value="/mavros/odometry/out" />
+    <param name="mavros_frame_id" value="odom" />
+    <param name="mavros_child_frame_id" value="base_link" />
+    <param name="mavros_rate_hz" value="$(arg mavros_rate_hz)" />
+    <param name="stale_timeout_sec" value="0.25" />
+    <param name="publish_to_px4" value="$(arg publish_to_px4)" />
+  </node>
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="pointlio_rviz"
+          args="-d $(find point_lio)/rviz_cfg/loam_livox.rviz" />
+  </group>
+</launch>

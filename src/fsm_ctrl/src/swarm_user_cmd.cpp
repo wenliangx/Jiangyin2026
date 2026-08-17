@@ -13,8 +13,10 @@ using namespace std;
 
 
 static int cmd = -1;
-static Eigen::Vector3d pos_fcu, pos_vio;
-static Eigen::Vector3d euler_fcu, euler_vio;
+static Eigen::Vector3d pos_fcu = Eigen::Vector3d::Zero();
+static Eigen::Vector3d pos_vio = Eigen::Vector3d::Zero();
+static Eigen::Vector3d euler_fcu = Eigen::Vector3d::Zero();
+static Eigen::Vector3d euler_vio = Eigen::Vector3d::Zero();
 
 
 /**
@@ -32,13 +34,14 @@ void Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 
 /**
  * @brief  odometry subscriber callback
- * @param  msg: geometry_msgs::PoseStamped from odometry
+ * @param  msg: nav_msgs::Odometry from Point-LIO bridge
  * @return NULL
  */
-void Odom_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
+void Odom_Callback(const nav_msgs::Odometry::ConstPtr &msg)
 {
-    pos_vio = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
-    Eigen::Quaterniond q(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
+    pos_vio = Eigen::Vector3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
+    Eigen::Quaterniond q(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x,
+                         msg->pose.pose.orientation.y, msg->pose.pose.orientation.z);
     euler_vio = QuatToEuler(q);
 }
 
@@ -183,11 +186,13 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "swarm_user_cmd");
     ros::NodeHandle nh("~");
+    std::string lio_odom_topic;
+    nh.param<std::string>("lio_odom_topic", lio_odom_topic, "/Odometry");
 
     ros::Subscriber pose_suber = nh.subscribe<geometry_msgs::PoseStamped>
         ("/mavros/local_position/pose", 1, Pose_Callback);
-    ros::Subscriber odom_suber = nh.subscribe<geometry_msgs::PoseStamped>
-        ("/mavros/vision_pose/pose", 1, Odom_Callback);
+    ros::Subscriber odom_suber = nh.subscribe<nav_msgs::Odometry>
+        (lio_odom_topic, 1, Odom_Callback);
     
     new thread(&CmdListener);
     new thread(&UdpServer, "127.0.0.1", 12001, 1);
@@ -214,7 +219,7 @@ int main(int argc, char **argv)
         cout << "[FCU] x: " << pos_fcu(0) << "(m)   y: " << pos_fcu(1) << "(m)   z: " << pos_fcu(2)
              << "(m)   yaw: " << euler_fcu(2)*180.0/M_PI << "(deg)" << endl;
         cout << "\r" << "\x1B[0K";
-        cout << "[VIO] x: " << pos_vio(0) << "(m)   y: " << pos_vio(1) << "(m)   z: " << pos_vio(2)
+        cout << "[LIO] x: " << pos_vio(0) << "(m)   y: " << pos_vio(1) << "(m)   z: " << pos_vio(2)
              << "(m)   yaw: " << euler_vio(2)*180.0/M_PI << "(deg)" << endl;
         cout << "\r" << "\x1B[0K";
         cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>- User Info -<<<<<<<<<<<<<<<<<<<<<<<<<<<" << endl;

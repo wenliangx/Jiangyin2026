@@ -5,7 +5,7 @@
 	<node pkg="fsm_ctrl" type="px4_estimator" name="px4_estimator" output="screen">
 
 		<!-- 0: mocap  1: lidar  2: camera -->
-		<param name="vision_source" value="0" type="int"/>
+		<param name="vision_source" value="1" type="int"/>
 		
 		<remap from = "~odom"    to ="/Odometry"/>
 		<remap from = "pose"    to ="/vrpn_client_node/jy0/pose"/>

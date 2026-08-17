@@ -79,7 +79,7 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
 
-        <param name = "nmpc_hover_thrust" type = "double"  value = "0.400" />
+        <param name = "nmpc_hover_thrust" type = "double"  value = "0.440" />
 
         <!-- MissionMachine/Super waypoint upload. Generate this file with:
              rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
@@ -144,7 +144,7 @@
         <param name = "nmpc_Qquaty" type = "double" value = "2.0" />
         <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
         <param name = "nmpc_Rwx" type = "double" value = "0.45" />
-        <param name = "nmpc_Rwy" type = "double" value = "0.45" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.60" />
         <param name = "nmpc_Rwz" type = "double" value = "0.45" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.30" />
         <!-- simple NMPC 没有扰动状态；准静态段用有界 XY 参考积分消除稳差。 -->

@@ -63,7 +63,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES fsm
 #LIBRARIES motordriver
-   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs uav_vision_msgs
+   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp std_msgs tf message_runtime quadrotor_msgs super_msgs uav_vision_msgs
 #  DEPENDS system_lib
 )
 

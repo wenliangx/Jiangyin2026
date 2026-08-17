@@ -35,34 +35,13 @@ preprocess:
 
 # === 建图 & ESKF 参数 ===
 mapping:
-    # 输出世界系对齐模式：
-    #   auto     - 启动静止后，根据 ESKF 重力方向自动锁存 roll/pitch
-    #   fixed    - 使用下方固定 RPY，适合安装角已经准确测量的传感器
-    #   disabled - 不补偿，直接输出 RA-LIO 内部世界系
-    output_alignment_mode: fixed
-
-    # 固定输出补偿角 [roll, pitch, yaw]，单位为度，旋转顺序 Rz*Ry*Rx。
-    # 旧版 MID360 硬编码的实际合成变换等价于绕 Y 轴 +30°。
-    fixed_output_alignment_rpy_deg: [0.0, 30.0, 0.0]
-
-    # 重力基准只接受连续静止窗口。门限由历史实机 /livox/imu 启动段统计：
-    # 静止时 acc_std/|acc|≈0.014、gyro_std≈0.005rad/s；运动时可超过
-    # 0.04 和 0.025rad/s。窗口不合格会清零并重新累计，期间不发布里程计。
-    imu_init_min_duration: 2.0
-    imu_init_max_acc_std_ratio: 0.03
-    imu_init_max_gyr_std: 0.02
-    imu_init_max_mean_gyr: 0.08
-    # 防止传感器方向、轴符号或数据源错误时锁存荒谬的重力补偿。
-    # 当前机载 MID360 的实测安装倾角约31°。
-    max_gravity_alignment_tilt_deg: 60.0
-
-    acc_cov: 0.002                # 加速度计测量噪声协方差（每轴，m²/s⁴）
+    acc_cov: 0.02                # 加速度计测量噪声协方差（每轴，m²/s⁴）
                                  # 越大 → 越不信任加速度计 → 更新时更依赖LiDAR
-    gyr_cov: 0.002                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）
+    gyr_cov: 0.02                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）
                                  # 越大 → 越不信任陀螺仪 → 姿态更依赖LiDAR约束
-    b_acc_cov: 0.001            # 加速度计 bias 随机游走噪声协方差
+    b_acc_cov: 0.01            # 加速度计 bias 随机游走噪声协方差
                                  # 控制 bias 估计的变化速率
-    b_gyr_cov: 0.001            # 陀螺仪 bias 随机游走噪声协方差
+    b_gyr_cov: 0.01            # 陀螺仪 bias 随机游走噪声协方差
 
     fov_degree:    360           # LiDAR 视场角（度），用于局部地图范围判定
                                  # MID360 水平视场角为360°，设为360

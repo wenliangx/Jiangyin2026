@@ -1,12 +1,10 @@
 #include <cmath>
-#include <algorithm>
 #include <math.h>
 #include <deque>
 #include <mutex>
 #include <thread>
 #include <fstream>
 #include <csignal>
-#include <limits>
 #include <ros/ros.h>
 #include <Eigen/Eigen>
 #include <common_lib.h>
@@ -29,6 +27,8 @@
 #include "esekfom.hpp"
 
 
+#define MAX_INI_COUNT (20)  
+
 const bool time_list(PointType &x, PointType &y) {return (x.curvature < y.curvature);};
 
 
@@ -44,11 +44,6 @@ class ImuProcess
   
   void Reset(); 
   void set_param(const V3D &transl, const M3D &rot, const V3D &gyr, const V3D &acc, const V3D &gyr_bias, const V3D &acc_bias);
-  void set_initialization_param(double min_duration,
-                                double max_acc_std_ratio,
-                                double max_gyr_std,
-                                double max_mean_gyr);
-  bool initialization_complete() const { return !imu_need_init_; }
   Eigen::Matrix<double, 12, 12> Q;    
 
   void Process(const MeasureGroup &meas, esekfom::esekf &kf_state, PointCloudXYZI::Ptr &pcl_un_);
@@ -67,8 +62,7 @@ class ImuProcess
 
 
  private:
-  void IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state,
-                int &sample_count); //IMU初始化
+  void IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, int &N); //IMU初始化
   void UndistortPcl(const MeasureGroup &meas, esekfom::esekf &kf_state, PointCloudXYZI &pcl_in_out);//运动补偿
 
   PointCloudXYZI::Ptr cur_pcl_un_;        
@@ -78,26 +72,19 @@ class ImuProcess
   V3D Lidar_T_wrt_IMU;                    
   V3D mean_acc;                           //加速度均值,用于计算方差
   V3D mean_gyr;                           //角速度均值，用于计算方差
-  V3D init_acc_m2;                        //初始化窗口加速度 Welford M2
-  V3D init_gyr_m2;                        //初始化窗口角速度 Welford M2
   V3D angvel_last;                        //上一帧角速度
   V3D acc_s_last;                         //上一帧加速度
   double start_timestamp_;                //开始时间戳
   double last_lidar_end_time_;            //上一帧结束时间戳
-  int init_sample_count_ = 0;             //当前静止窗口的 IMU 样本数
-  double init_min_duration_ = 2.0;        //连续静止初始化时间（秒）
-  double init_max_acc_std_ratio_ = 0.03;  //加速度标准差/均值上限
-  double init_max_gyr_std_ = 0.02;        //角速度标准差上限（rad/s）
-  double init_max_mean_gyr_ = 0.08;       //平均角速度上限（rad/s）
+  int init_iter_num = 1;                  //初始化迭代次数
   bool b_first_frame_ = true;             
   bool imu_need_init_ = true;             
-
-  void ResetInitializationWindow();
 };
 
 ImuProcess::ImuProcess()
     : b_first_frame_(true), imu_need_init_(true), start_timestamp_(-1)
 {
+  init_iter_num = 1;                          
   Q = process_noise_cov();                 
   cov_acc = V3D(0.1, 0.1, 0.1);              
   cov_gyr = V3D(0.1, 0.1, 0.1);               
@@ -105,8 +92,6 @@ ImuProcess::ImuProcess()
   cov_bias_acc = V3D(0.0001, 0.0001, 0.0001); 
   mean_acc = V3D(0, 0, -1.0);
   mean_gyr = V3D(0, 0, 0);
-  init_acc_m2.setZero();
-  init_gyr_m2.setZero();
   angvel_last = Zero3d;                    
   Lidar_T_wrt_IMU = Zero3d;                
   Lidar_R_wrt_IMU = Eye3d;                  
@@ -118,24 +103,15 @@ ImuProcess::~ImuProcess() {}
 void ImuProcess::Reset()   
 {
   // ROS_WARN("Reset ImuProcess");
-  ResetInitializationWindow();
+  mean_acc = V3D(0, 0, -1.0);
+  mean_gyr = V3D(0, 0, 0);
   angvel_last = Zero3d;
   imu_need_init_ = true;                 
+  start_timestamp_ = -1;                
+  init_iter_num = 1;                       //初始化迭代次数
   IMUpose.clear();                         // imu位姿清空
   last_imu_.reset(new sensor_msgs::Imu()); //上一帧imu初始化
   cur_pcl_un_.reset(new PointCloudXYZI()); 
-}
-
-void ImuProcess::ResetInitializationWindow()
-{
-  mean_acc.setZero();
-  mean_gyr.setZero();
-  init_acc_m2.setZero();
-  init_gyr_m2.setZero();
-  cov_acc.setZero();
-  cov_gyr.setZero();
-  init_sample_count_ = 0;
-  start_timestamp_ = -1.0;
 }
 
 
@@ -149,20 +125,8 @@ void ImuProcess::set_param(const V3D &transl, const M3D &rot, const V3D &gyr, co
   cov_bias_acc = acc_bias;
 }
 
-void ImuProcess::set_initialization_param(double min_duration,
-                                          double max_acc_std_ratio,
-                                          double max_gyr_std,
-                                          double max_mean_gyr)
-{
-  init_min_duration_ = std::max(0.5, min_duration);
-  init_max_acc_std_ratio_ = std::max(1e-4, max_acc_std_ratio);
-  init_max_gyr_std_ = std::max(1e-4, max_gyr_std);
-  init_max_mean_gyr_ = std::max(1e-4, max_mean_gyr);
-}
 
-
-void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state,
-                          int &sample_count)
+void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state, int &N)
 {
 
   V3D cur_acc, cur_gyr;
@@ -170,7 +134,12 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state,
   if (b_first_frame_) //如果为第一帧IMU
   {
     Reset();    //重置IMU参数
+    N = 1;      //将迭代次数置1
     b_first_frame_ = false;
+    const auto &imu_acc = meas.imu.front()->linear_acceleration;    
+    const auto &gyr_acc = meas.imu.front()->angular_velocity;      
+    mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;             
+    mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;              
     first_lidar_time = meas.lidar_beg_time;                
   }
 
@@ -182,28 +151,13 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf &kf_state,
     cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
 
 
-    if (sample_count == 0)
-    {
-      mean_acc = cur_acc;
-      mean_gyr = cur_gyr;
-      start_timestamp_ = imu->header.stamp.toSec();
-      sample_count = 1;
-      continue;
-    }
+    mean_acc  += (cur_acc - mean_acc) / N;    
+    mean_gyr  += (cur_gyr - mean_gyr) / N;
+	
+    cov_acc = cov_acc * (N - 1.0) / N + (cur_acc - mean_acc).cwiseProduct(cur_acc - mean_acc)  / N;
+    cov_gyr = cov_gyr * (N - 1.0) / N + (cur_gyr - mean_gyr).cwiseProduct(cur_gyr - mean_gyr)  / N / N * (N-1);
 
-    ++sample_count;
-    const V3D acc_delta = cur_acc - mean_acc;
-    const V3D gyr_delta = cur_gyr - mean_gyr;
-    mean_acc += acc_delta / sample_count;
-    mean_gyr += gyr_delta / sample_count;
-    init_acc_m2 += acc_delta.cwiseProduct(cur_acc - mean_acc);
-    init_gyr_m2 += gyr_delta.cwiseProduct(cur_gyr - mean_gyr);
-  }
-
-  if (sample_count > 1)
-  {
-    cov_acc = init_acc_m2 / (sample_count - 1.0);
-    cov_gyr = init_gyr_m2 / (sample_count - 1.0);
+    N ++;
   }
 
   state_ikfom init_state = kf_state.get_x();        
@@ -405,56 +359,22 @@ void ImuProcess::Process(const MeasureGroup &meas, esekfom::esekf &kf_state, Poi
   if (imu_need_init_)   
   {
     // The very first lidar frame
-    IMU_init(meas, kf_state, init_sample_count_);  //累计连续静止窗口
+    IMU_init(meas, kf_state, init_iter_num);  //如果开头几帧  需要初始化IMU参数
 
     imu_need_init_ = true;
     
     last_imu_   = meas.imu.back();  
 
-    const double init_duration =
-        meas.imu.back()->header.stamp.toSec() - start_timestamp_;
-    if (init_duration >= init_min_duration_ && init_sample_count_ > 1)
+    state_ikfom imu_state = kf_state.get_x(); //此时可通过kf_state的get_x函数获得IMU的状态
+
+    if (init_iter_num > MAX_INI_COUNT)   //此时可认为IMU初始化已经完成
     {
-      const V3D acc_std = cov_acc.cwiseMax(0.0).cwiseSqrt();
-      const V3D gyr_std = cov_gyr.cwiseMax(0.0).cwiseSqrt();
-      const double acc_norm = mean_acc.norm();
-      const double acc_std_ratio =
-          acc_norm > 1e-6 ? acc_std.maxCoeff() / acc_norm
-                          : std::numeric_limits<double>::infinity();
-      const bool stationary =
-          mean_acc.allFinite() && mean_gyr.allFinite() &&
-          acc_std.allFinite() && gyr_std.allFinite() && acc_norm > 0.1 &&
-          acc_std_ratio <= init_max_acc_std_ratio_ &&
-          gyr_std.maxCoeff() <= init_max_gyr_std_ &&
-          mean_gyr.norm() <= init_max_mean_gyr_;
-
-      if (!stationary)
-      {
-        ROS_WARN("Reject IMU initialization window: duration=%.2fs, "
-                 "acc_std_ratio=%.4f (limit %.4f), gyr_std_max=%.4f "
-                 "(limit %.4f), mean_gyr_norm=%.4f (limit %.4f); "
-                 "keep the vehicle still and retry",
-                 init_duration, acc_std_ratio, init_max_acc_std_ratio_,
-                 gyr_std.maxCoeff(), init_max_gyr_std_, mean_gyr.norm(),
-                 init_max_mean_gyr_);
-        ResetInitializationWindow();
-        return;
-      }
-
-      const V3D init_acc_std = acc_std;
-      const V3D init_gyr_std = gyr_std;
+      cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
       imu_need_init_ = false;
 
       cov_acc = cov_acc_scale;
       cov_gyr = cov_gyr_scale;
-      ROS_INFO("IMU initialization accepted: duration=%.2fs, samples=%d, "
-               "mean_acc=[%.5f %.5f %.5f], acc_std=[%.5f %.5f %.5f], "
-               "acc_std_ratio=%.4f, mean_gyr_norm=%.4f, "
-               "gyr_std=[%.5f %.5f %.5f]",
-               init_duration, init_sample_count_, mean_acc.x(), mean_acc.y(),
-               mean_acc.z(), init_acc_std.x(), init_acc_std.y(),
-               init_acc_std.z(), acc_std_ratio, mean_gyr.norm(),
-               init_gyr_std.x(), init_gyr_std.y(), init_gyr_std.z());
+      ROS_INFO("IMU Initial Done");
     }
 
     return;

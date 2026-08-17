@@ -1,0 +1,73 @@
+common:
+    lid_topic: "/livox/lidar"
+    imu_topic: "/livox/imu"
+    con_frame: false
+    con_frame_num: 1
+    cut_frame: false
+    cut_frame_time_interval: 0.1
+    time_diff_lidar_to_imu: 0.0
+
+preprocess:
+    lidar_type: 1
+    scan_line: 4
+    # Physical MID360 frame rate. Livox CustomMsg provides per-point timestamps,
+    # so this is not the ROS driver's point-cloud packetization frequency.
+    scan_rate: 10
+    timestamp_unit: 3
+    blind: 0.4
+
+mapping:
+    imu_en: true
+    extrinsic_est_en: false
+    imu_time_inte: 0.005
+    # Matches the 10 Hz CustomMsg packet duration from msg_mid360.launch.
+    lidar_time_inte: 0.1
+    satu_acc: 3.0
+    satu_gyro: 35.0
+    acc_norm: 1.0
+    lidar_meas_cov: 0.01
+    acc_cov_output: 500.0
+    gyr_cov_output: 1000.0
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+    imu_meas_acc_cov: 0.1
+    imu_meas_omg_cov: 0.1
+    gyr_cov_input: 0.01
+    acc_cov_input: 0.1
+    vel_cov: 20.0
+    plane_thr: 0.1
+    match_s: 81.0
+    ivox_grid_resolution: 0.2
+    # Indoor flight profile. MID360 points beyond this are not useful for the
+    # local map and are more likely to be outliers or strong-reflection noise.
+    det_range: 50.0
+    fov_degree: 360.0
+    gravity: [0.0, 0.0, -9.810]
+    gravity_init: [0.0, 0.0, -9.810]
+    extrinsic_T: [-0.011, -0.02329, 0.04412]
+    extrinsic_R: [1.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0,
+                  0.0, 0.0, 1.0]
+
+odometry:
+    publish_odometry_without_downsample: true
+    publish_rate_hz: 20.0
+    publish_tf: false
+    topic: "/point_lio/odometry"
+    frame_id: "world"
+    child_frame_id: "base_link"
+    # MID360 is pitched +30 degrees around vehicle Y. This rotates IMU vectors
+    # into the aircraft FLU body frame before publishing pose and twist.
+    body_R_wrt_IMU: [0.8660254038, 0.0, 0.5,
+                     0.0,          1.0, 0.0,
+                    -0.5,          0.0, 0.8660254038]
+    body_T_wrt_IMU: [0.0, 0.0, 0.0]
+
+publish:
+    path_en: false
+    scan_publish_en: true
+    scan_bodyframe_pub_en: false
+
+pcd_save:
+    pcd_save_en: false
+    interval: -1
