@@ -3,9 +3,23 @@ result_topic: /vision/landing/offset
 debug_topic: /vision/landing/debug_image
 publish_debug_image: true
 
+pose:
+  topic: /mavros/local_position/pose
+  output_frame: uav_down_camera_level
+  max_age_seconds: 0.2
+  # Approximate focal length for attitude-only virtual image stabilization.
+  # Tune this while rocking roll/pitch until the WORLD arrow is most stable.
+  focal_length_px: 640.0
+  # Live-tunable camera-to-body rotation [roll, pitch, yaw] in degrees.
+  # The node polls this parameter at 5 Hz and applies Rz(yaw)*Ry(pitch)*Rx(roll)
+  # without a restart. Confirmed mounting: image +X -> body +Y,
+  # image +Y -> body +X, optical +Z -> body -Z.
+  camera_to_body_rpy_deg: [180.0, 0.0, 90.0]
+
 detector:
   tag_family: tag36h11
   expected_ids: [0, 1, 2, 3, 4]
+  center_id: 4
   threads: 2
   decimate: 1.0
   blur: 0.0
@@ -16,4 +30,5 @@ detector:
 filter:
   window: 5
   max_pixel_jump: 80.0
+  loss_frames: 5
   reset_frames: 3

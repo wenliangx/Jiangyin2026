@@ -5,13 +5,18 @@ frame_id: "world"
 segments:
   - name: "cmd3_segment_1"
     waypoints:
-      - {id: 0, x: 0.442544, y: 1.260746, z: 0.639739, mode: 2, is_map: 1, yaw: 0.468196, desired_speed: 0.000000}
-      - {id: 1, x: 1.991672, y: 2.088877, z: 0.697716, mode: 2, is_map: 1, yaw: 0.616878, desired_speed: 0.000000}
-      - {id: 2, x: 2.158190, y: 2.021180, z: 1.647711, mode: 2, is_map: 1, yaw: -2.637069, desired_speed: 0.000000}
+      - {id: 0, x: 0.809572, y: 0.108586, z: 1.274981, mode: 2, is_map: 1, yaw: -0.001567, desired_speed: 0.000000}
+      - {id: 1, x: 2.520715, y: -0.112170, z: 1.625050, mode: 2, is_map: 1, yaw: -0.100741, desired_speed: 0.000000}
+      - {id: 2, x: 3.481963, y: -0.113144, z: 1.547461, mode: 2, is_map: 1, yaw: -0.160755, desired_speed: 0.000000}
+      - {id: 3, x: 3.531317, y: -0.141748, z: 0.628374, mode: 2, is_map: 1, yaw: -0.143166, desired_speed: 0.000000}
+      - {id: 4, x: 5.427198, y: -1.083525, z: 0.961890, mode: 2, is_map: 1, yaw: -1.470014, desired_speed: 0.000000}
+      - {id: 5, x: 4.748307, y: -2.597945, z: 1.563766, mode: 2, is_map: 1, yaw: 2.645332, desired_speed: 0.000000}
+      - {id: 6, x: 2.507297, y: -1.776815, z: 1.495370, mode: 2, is_map: 1, yaw: -3.141215, desired_speed: 0.000000}
+      - {id: 7, x: 0.252607, y: -1.686723, z: 1.053872, mode: 2, is_map: 1, yaw: -0.102051, desired_speed: 0.000000}
   - name: "cmd4_segment_2"
-    waypoints:
-      - {id: 0, x: 0.196497, y: 1.157154, z: 1.557366, mode: 2, is_map: 1, yaw: -2.547814, desired_speed: 0.000000}
+    waypoints: 
+      - {id: 0, x: 0.252607, y: -1.686723, z: 1.053872, mode: 2, is_map: 1, yaw: -0.102051, desired_speed: 0.000000}
   - name: "cmd5_segment_3"
-    waypoints:
-      - {id: 0, x: -0.262129, y: -0.093146, z: 0.691457, mode: 2, is_map: 1, yaw: -3.124558, desired_speed: 0.000000}
-      - {id: 1, x: -0.179513, y: -0.042311, z: -0.015141, mode: 2, is_map: 1, yaw: -3.102425, desired_speed: 0.000000}
+    waypoints: 
+      - {id: 0, x: 0.252607, y: -1.686723, z: 1.053872, mode: 2, is_map: 1, yaw: -0.102051, desired_speed: 0.000000}
+

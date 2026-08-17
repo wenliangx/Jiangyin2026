@@ -32,11 +32,17 @@ struct ReferencePoint {
   Vec3 position;
   Vec3 velocity;
   Quaternion attitude;
+  // NMPC 输入前馈：SUPER 轨迹已根据 acceleration/jerk 计算出
+  // body-rate 和机体 Z 轴总加速度。静态参考默认为零角速度和重力。
+  Vec3 body_rate;
+  double total_acceleration{9.8015};
 };
 
 struct BodyRateThrust {
   Vec3 body_rate;
   double thrust{0.0};
+  // NMPC 内部为消除恒定模型偏差而施加的虚拟 XY 参考偏置，仅用于监视。
+  Vec3 reference_bias;
 };
 
 struct PositionSetpoint {

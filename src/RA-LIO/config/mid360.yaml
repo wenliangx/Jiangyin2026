@@ -35,6 +35,21 @@ preprocess:
 
 # === 建图 & ESKF 参数 ===
 mapping:
+    # 启动后根据 ESKF 估计的重力方向锁存输出世界系，使 /Odometry
+    # 的 Z 轴竖直。禁用时直接输出 RA-LIO 内部的初始 IMU 世界系。
+    gravity_align_output: true
+
+    # 重力基准只接受连续静止窗口。门限由历史实机 /livox/imu 启动段统计：
+    # 静止时 acc_std/|acc|≈0.014、gyro_std≈0.005rad/s；运动时可超过
+    # 0.04 和 0.025rad/s。窗口不合格会清零并重新累计，期间不发布里程计。
+    imu_init_min_duration: 2.0
+    imu_init_max_acc_std_ratio: 0.03
+    imu_init_max_gyr_std: 0.02
+    imu_init_max_mean_gyr: 0.08
+    # 防止传感器方向、轴符号或数据源错误时锁存荒谬的重力补偿。
+    # 当前机载 MID360 的实测安装倾角约31°。
+    max_gravity_alignment_tilt_deg: 60.0
+
     acc_cov: 0.002                # 加速度计测量噪声协方差（每轴，m²/s⁴）
                                  # 越大 → 越不信任加速度计 → 更新时更依赖LiDAR
     gyr_cov: 0.002                 # 陀螺仪测量噪声协方差（每轴，rad²/s²）

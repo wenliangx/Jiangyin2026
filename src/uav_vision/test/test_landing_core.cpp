@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <set>
@@ -16,6 +17,7 @@ extern "C" {
 
 #include "uav_vision/landing_offset_estimator.hpp"
 #include "uav_vision/landing_debug_overlay.hpp"
+#include "uav_vision/landing_frame_transformer.hpp"
 #include "uav_vision/landing_tag_detector.hpp"
 
 namespace uav_vision {
@@ -35,19 +37,21 @@ std::vector<TagObservation> fiveAt(double x, double y) {
   return {
       observation(0, x - 20, y - 20),
       observation(1, x + 20, y - 20),
-      observation(2, x, y),
+      observation(2, x + 20, y + 20),
       observation(3, x - 20, y + 20),
-      observation(4, x + 20, y + 20),
+      observation(4, x, y),
   };
 }
 
 EstimatorConfig estimatorConfig() {
   EstimatorConfig config;
   config.expected_ids = {0, 1, 2, 3, 4};
+  config.center_id = 4;
   config.max_hamming = 1;
   config.min_decision_margin = 20.0;
   config.filter_window = 3;
   config.max_pixel_jump = 50.0;
+  config.loss_frames = 5;
   config.reset_frames = 2;
   return config;
 }
@@ -95,6 +99,54 @@ TEST(LandingEstimator, AnyNonEmptySubsetIsAveraged) {
   EXPECT_EQ(subset.tag_ids, (std::vector<int>{0, 3}));
 }
 
+TEST(LandingEstimator, CenterTagDirectlyDefinesLandingCenter) {
+  LandingOffsetEstimator estimator(estimatorConfig());
+  const auto result = estimator.update(
+      640,
+      480,
+      {observation(0, 100, 100),
+       observation(3, 500, 400),
+       observation(4, 330, 245)});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_DOUBLE_EQ(result.center_x, 330.0);
+  EXPECT_DOUBLE_EQ(result.center_y, 245.0);
+  EXPECT_DOUBLE_EQ(result.dx, 10.0);
+  EXPECT_DOUBLE_EQ(result.dy, 5.0);
+  EXPECT_EQ(result.reason, "center_tag");
+}
+
+TEST(LandingEstimator, ThreeCornersUseLongestDiagonalMidpoint) {
+  LandingOffsetEstimator estimator(estimatorConfig());
+  const auto result = estimator.update(
+      640,
+      480,
+      {observation(0, 100, 100),
+       observation(1, 300, 100),
+       observation(2, 300, 300)});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_DOUBLE_EQ(result.center_x, 200.0);
+  EXPECT_DOUBLE_EQ(result.center_y, 200.0);
+  EXPECT_EQ(result.reason, "three_corner_midpoint");
+}
+
+TEST(LandingEstimator, FourCornersUseProjectiveDiagonalIntersection) {
+  LandingOffsetEstimator estimator(estimatorConfig());
+  const auto result = estimator.update(
+      640,
+      480,
+      {observation(0, 100, 100),
+       observation(1, 320, 80),
+       observation(2, 300, 300),
+       observation(3, 80, 320)});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.center_x, 200.0, 1e-9);
+  EXPECT_NEAR(result.center_y, 200.0, 1e-9);
+  EXPECT_EQ(result.reason, "four_corner_intersection");
+}
+
 TEST(LandingEstimator, InvalidFramesReturnNan) {
   LandingOffsetEstimator estimator(estimatorConfig());
   auto result = estimator.update(640, 480, {});
@@ -108,6 +160,40 @@ TEST(LandingEstimator, InvalidFramesReturnNan) {
   EXPECT_FALSE(result.valid);
   EXPECT_TRUE(std::isnan(result.center_x));
   EXPECT_EQ(result.tag_ids, (std::vector<int>{0, 1, 2, 3, 4}));
+}
+
+TEST(LandingEstimator, FiveConsecutiveMissingFramesCauseLoss) {
+  LandingOffsetEstimator estimator(estimatorConfig());
+  const auto detected = estimator.update(640, 480, fiveAt(300, 200));
+  ASSERT_TRUE(detected.valid);
+
+  for (int missing_frame = 1; missing_frame < 5; ++missing_frame) {
+    const auto held = estimator.update(640, 480, {});
+    ASSERT_TRUE(held.valid) << "missing frame " << missing_frame;
+    EXPECT_DOUBLE_EQ(held.center_x, 300.0);
+    EXPECT_DOUBLE_EQ(held.center_y, 200.0);
+    EXPECT_DOUBLE_EQ(held.dx, -20.0);
+    EXPECT_DOUBLE_EQ(held.dy, -40.0);
+    EXPECT_EQ(held.tag_ids, (std::vector<int>{0, 1, 2, 3, 4}));
+    EXPECT_EQ(
+        held.reason,
+        "missing_hold_" + std::to_string(missing_frame) + "_of_5");
+  }
+
+  const auto lost = estimator.update(640, 480, {});
+  EXPECT_FALSE(lost.valid);
+  EXPECT_TRUE(std::isnan(lost.center_x));
+  EXPECT_TRUE(std::isnan(lost.dx));
+  EXPECT_EQ(lost.reason, "missing_id");
+
+  const auto still_lost = estimator.update(640, 480, {});
+  EXPECT_FALSE(still_lost.valid);
+  EXPECT_TRUE(std::isnan(still_lost.dx));
+
+  const auto reacquired = estimator.update(640, 480, fiveAt(400, 300));
+  ASSERT_TRUE(reacquired.valid);
+  EXPECT_DOUBLE_EQ(reacquired.center_x, 400.0);
+  EXPECT_DOUBLE_EQ(reacquired.center_y, 300.0);
 }
 
 TEST(LandingEstimator, MedianAndJumpResetWork) {
@@ -125,6 +211,123 @@ TEST(LandingEstimator, MedianAndJumpResetWork) {
   const auto reset = estimator.update(640, 480, fiveAt(250, 250));
   ASSERT_TRUE(reset.valid);
   EXPECT_DOUBLE_EQ(reset.center_x, 250.0);
+}
+
+TEST(LandingFrameTransformer, IdentityAttitudeAndExtrinsicPreserveOffset) {
+  const std::array<double, 9> identity{{
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0,
+  }};
+  LandingFrameTransformer transformer(identity);
+  const auto result = transformer.cameraToLeveledImage(
+      12.0, -8.0, 640.0, AttitudeQuaternion{});
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_DOUBLE_EQ(result.x, 12.0);
+  EXPECT_DOUBLE_EQ(result.y, -8.0);
+}
+
+TEST(LandingFrameTransformer, RpyDegreesBuildCameraToBodyRotation) {
+  const auto matrix = cameraToBodyFromRpyDegrees(180.0, 0.0, -90.0);
+  const std::array<double, 9> expected{{
+      0.0, -1.0, 0.0,
+      -1.0, 0.0, 0.0,
+      0.0, 0.0, -1.0,
+  }};
+  for (std::size_t index = 0; index < matrix.size(); ++index) {
+    EXPECT_NEAR(matrix[index], expected[index], 1e-12);
+  }
+}
+
+TEST(LandingFrameTransformer, FusedYawPreservesImageAxisOffset) {
+  const std::array<double, 9> identity{{
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0,
+  }};
+  LandingFrameTransformer transformer(identity);
+  AttitudeQuaternion yaw_ninety;
+  yaw_ninety.w = std::sqrt(0.5);
+  yaw_ninety.z = std::sqrt(0.5);
+  const auto result = transformer.cameraToLeveledImage(
+      10.0, 4.0, 640.0, yaw_ninety);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.x, 10.0, 1e-12);
+  EXPECT_NEAR(result.y, 4.0, 1e-12);
+}
+
+TEST(LandingFrameTransformer, InvalidQuaternionIsRejected) {
+  const std::array<double, 9> identity{{
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0,
+  }};
+  LandingFrameTransformer transformer(identity);
+  AttitudeQuaternion invalid;
+  invalid.w = 0.0;
+  const auto result = transformer.cameraToLeveledImage(
+      10.0, 4.0, 640.0, invalid);
+
+  EXPECT_FALSE(result.valid);
+}
+
+TEST(LandingFrameTransformer, RollMotionKeepsStationaryRayStable) {
+  const std::array<double, 9> identity{{
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0,
+  }};
+  constexpr double focal_length_px = 640.0;
+  constexpr double roll = 0.15;
+  LandingFrameTransformer transformer(identity);
+  AttitudeQuaternion rolled;
+  rolled.w = std::cos(roll * 0.5);
+  rolled.x = std::sin(roll * 0.5);
+
+  // A fixed ray along world Z appears at +f*tan(roll) in the current image.
+  // Rotating the complete [dx/f, dy/f, 1] ray must recover zero world error.
+  const auto result = transformer.cameraToLeveledImage(
+      0.0,
+      focal_length_px * std::tan(roll),
+      focal_length_px,
+      rolled);
+
+  ASSERT_TRUE(result.valid);
+  EXPECT_NEAR(result.x, 0.0, 1e-9);
+  EXPECT_NEAR(result.y, 0.0, 1e-9);
+}
+
+TEST(LandingFrameTransformer, ObservedDownCameraAxesCorrectRollAndPitch) {
+  constexpr double focal_length_px = 640.0;
+  constexpr double angle = 0.15;
+  const auto down_camera = cameraToBodyFromRpyDegrees(180.0, 0.0, 90.0);
+  LandingFrameTransformer transformer(down_camera);
+
+  AttitudeQuaternion rolled;
+  rolled.w = std::cos(angle * 0.5);
+  rolled.x = std::sin(angle * 0.5);
+  const auto roll_result = transformer.cameraToLeveledImage(
+      -focal_length_px * std::tan(angle),
+      0.0,
+      focal_length_px,
+      rolled);
+  ASSERT_TRUE(roll_result.valid);
+  EXPECT_NEAR(roll_result.x, 0.0, 1e-9);
+  EXPECT_NEAR(roll_result.y, 0.0, 1e-9);
+
+  AttitudeQuaternion pitched;
+  pitched.w = std::cos(angle * 0.5);
+  pitched.y = std::sin(angle * 0.5);
+  const auto pitch_result = transformer.cameraToLeveledImage(
+      0.0,
+      focal_length_px * std::tan(angle),
+      focal_length_px,
+      pitched);
+  ASSERT_TRUE(pitch_result.valid);
+  EXPECT_NEAR(pitch_result.x, 0.0, 1e-9);
+  EXPECT_NEAR(pitch_result.y, 0.0, 1e-9);
 }
 
 TEST(LandingDetector, SyntheticFiveTagImageIsDetected) {

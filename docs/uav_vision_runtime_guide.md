@@ -13,10 +13,14 @@
    - 使用最近 5 帧投票，至少 3 帧一致后才发布有效类别。
 2. 下视相机降落区域识别
    - 识别 `tag36h11` 家族中 ID 为 `0、1、2、3、4` 的五个 AprilTag。
-   - 每帧只要识别到至少一个期望 Tag，就对本帧所有合格 Tag 的中心取平均。
+   - ID 4 是降落区中央 Tag；出现时直接使用它的二维像素中心。
+   - ID 4 不可见但四个角 Tag 可见时，使用投影四边形的对角线交点。
+   - 只有三个角 Tag 时，使用最长点对的中点作为二维仿射近似中心。
+   - 只有一到两个角 Tag 时，对可见 Tag 中心取平均作为兜底。
    - Tag ID 用于过滤非比赛标签，不要求五个标签同时出现。
-   - 对每帧得到的平均中心再进行最近 5 帧中值滤波。
-   - 输出降落区域中心相对图像中心的像素偏差。
+   - 对每帧得到的二维中心再进行最近 5 帧中值滤波。
+   - 已获得有效结果后允许连续漏检 4 帧，第 5 个连续空检测帧才判定识别失败。
+   - 使用 `/mavros/local_position/pose` 的融合姿态和可在线调节的相机安装外参，对像素偏差做姿态虚拟稳像后输出。
 
 两个相机节点通过 `/vision/control` 接收统一的期望状态。正式任务中由
 `fsm_ctrl` 的 SML 状态机在每个 Tick 按飞行阶段控制前视和下视相机采集。
@@ -358,10 +362,10 @@ int32[] tag_ids
 
 | 字段 | 含义 |
 |---|---|
-| `header` | 直接继承下视相机图像的时间戳和 `frame_id` |
-| `valid` | 本帧降落偏差是否可用；上层控制必须先判断该字段 |
-| `dx` | 降落中心相对图像中心的横向像素差，向右为正、向左为负 |
-| `dy` | 降落中心相对图像中心的纵向像素差，向下为正、向上为负 |
+| `header` | 时间戳继承下视图像；完成稳像时 `frame_id` 为 `uav_down_camera_level`，否则保留下视图像坐标系 |
+| `valid` | 当前降落偏差是否可用；短时漏检期间可能复用最近一次有效结果 |
+| `dx` | 保留图像 X 正负号、消除 roll/pitch 后的水平化偏差，尺度仍为像素 |
+| `dy` | 保留图像 Y 正负号、消除 roll/pitch 后的水平化偏差，尺度仍为像素 |
 | `center_x` | 滤波后的降落中心横坐标，单位为像素 |
 | `center_y` | 滤波后的降落中心纵坐标，单位为像素 |
 | `tag_count` | 当前识别到的期望 Tag ID 数量 |
@@ -384,20 +388,51 @@ dy = center_y - 360
 - AprilTag decision margin 不能低于配置阈值。
 - 与上一有效中心的跳变不能超过配置阈值。
 
-`valid=true` 时，正常应有：
+新识别结果 `valid=true` 时，正常应有：
 
 ```text
 1 <= tag_count <= 5
 tag_ids = 当前参与中心平均的期望 Tag ID
 ```
 
+已有有效定位后，如果当前帧没有识别到任何期望 Tag，则连续第 1～4 个空检测帧仍
+发布 `valid=true`，并复用最近一次滤波后的 `center_x/center_y/dx/dy`。这些保持帧的
+`tag_count/tag_ids` 复用最近一次有效检测，调试图状态为 `missing_hold_N_of_5`。连续第 5 帧为空时
+才发布 `valid=false`，同时清空旧中心。节点刚启动且从未得到有效定位时，空帧立即
+无效，不会生成虚假的保持结果。
+
 `valid=false` 时：
 
 - `dx`、`dy`、`center_x`、`center_y` 为 `NaN`，不可用于控制。
 - `tag_count` 和 `tag_ids` 仍用于说明本帧看到了哪些期望 ID。
-- 连续 3 帧无效后清空历史滤波状态。
+- 连续空检测第 5 帧清空保持中心；其他质量无效帧连续 3 帧后清空历史滤波状态。
 
-注意：输出是图像像素偏差，不是米、厘米、角度或机体系坐标，因此不需要相机标定和 Tag 实际边长。
+当前姿态稳像变换为：
+
+```text
+camera_ray = [pixel_dx / f, pixel_dy / f, 1]
+body_ray = R_body_camera * camera_ray
+level_body_ray = Rz(-fused_yaw) * R_world_body(q_fused) * body_ray
+level_camera_ray = transpose(R_body_camera) * level_body_ray
+level_dx = f * level_camera_ray.x / level_camera_ray.z
+level_dy = f * level_camera_ray.y / level_camera_ray.z
+```
+
+`f` 是 `pose/focal_length_px`，当前用 640 px 作为无正式内参时的近似焦距。
+`R_body_camera` 由 `pose/camera_to_body_rpy_deg: [roll, pitch, yaw]` 生成，角度单位为度，
+旋转顺序为 `Rz(yaw) * Ry(pitch) * Rx(roll)`；节点每 0.2 秒读取一次，因此修改后无需重启。
+现场已确认的正式值为 `[180,0,90]`，即图像 `+X -> 机体 +Y`、图像 `+Y -> 机体 +X`、
+光轴 `+Z -> 机体 -Z`。公式中的 `Rz(-fused_yaw)` 会保留飞机当前 yaw：只改变 yaw 时，
+水平化 dx/dy 与原始图像 dx/dy 相等。没有收到姿态、姿态超过 0.2 秒未更新或四元数非法
+时，节点继续发布原始像素偏差。该结果仍是像素尺度的姿态稳像量，不是米制地面位移，
+也不补偿飞机平移。
+
+下视调试图同时显示两条箭头：粗紫色箭头是图像坐标系的原始偏差，细青色箭头是
+保留 yaw 的水平化输出；没有可用位姿时，细箭头变为黄色并标记 `RAW fallback`。
+左上角还会显示融合姿态 R/P/Y、位姿延迟、输出坐标系数值、当前外参 R/P/Y 和
+`R_body_camera` 三行矩阵。网页顶部提供三个滑块和数值框，点击“应用外参”后直接写入
+ROS 参数，约 0.2 秒后观察青色箭头的变化；目标是晃动 roll/pitch 时紫色原始箭头可动，
+而青色输出尽量保持稳定。
 
 查看消息：
 

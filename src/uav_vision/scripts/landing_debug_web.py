@@ -3,6 +3,8 @@
 
 import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import math
 import threading
 import time
 
@@ -30,8 +32,92 @@ def resize_to_max_width(image, max_width):
     return cv2.resize(image, (max_width, height), interpolation=cv2.INTER_AREA)
 
 
-def build_index_html(page_title):
+def validate_extrinsic_rpy(value):
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ValueError("extrinsic RPY must contain three values")
+    result = [float(component) for component in value]
+    if not all(math.isfinite(component) for component in result):
+        raise ValueError("extrinsic RPY must be finite")
+    if any(abs(component) > 360.0 for component in result):
+        raise ValueError("extrinsic RPY must be within +/-360 degrees")
+    return result
+
+
+def build_index_html(page_title, enable_extrinsic_controls=False):
     safe_title = html.escape(str(page_title))
+    controls = ""
+    if enable_extrinsic_controls:
+        controls = """
+    <section class="controls">
+      <div class="controls-title">相机 → 机体外参（度）</div>
+      <div class="axis-grid">
+        <label for="roll-range">Roll</label>
+        <input id="roll-range" type="range" min="-180" max="180" step="0.5" value="0">
+        <input id="roll-number" type="number" min="-360" max="360" step="0.5" value="0">
+        <label for="pitch-range">Pitch</label>
+        <input id="pitch-range" type="range" min="-180" max="180" step="0.5" value="0">
+        <input id="pitch-number" type="number" min="-360" max="360" step="0.5" value="0">
+        <label for="yaw-range">Yaw</label>
+        <input id="yaw-range" type="range" min="-180" max="180" step="0.5" value="0">
+        <input id="yaw-number" type="number" min="-360" max="360" step="0.5" value="0">
+      </div>
+      <div class="buttons">
+        <button id="apply" type="button">应用外参</button>
+        <button id="down-default" type="button" class="secondary">正装下视 180, 0, 90</button>
+        <button id="identity" type="button" class="secondary">恢复 0, 0, 0</button>
+        <span id="status">正在读取当前参数…</span>
+      </div>
+      <div class="hint">旋转顺序：Rz(yaw) · Ry(pitch) · Rx(roll)；应用后约 0.2 秒生效。</div>
+    </section>
+    <script>
+      const axes = ['roll', 'pitch', 'yaw'];
+      function setValues(values) {
+        axes.forEach((axis, index) => {
+          document.getElementById(axis + '-range').value = values[index];
+          document.getElementById(axis + '-number').value = values[index];
+        });
+      }
+      function values() {
+        return axes.map(axis => Number(document.getElementById(axis + '-number').value));
+      }
+      axes.forEach(axis => {
+        const range = document.getElementById(axis + '-range');
+        const number = document.getElementById(axis + '-number');
+        range.addEventListener('input', () => { number.value = range.value; });
+        number.addEventListener('input', () => { range.value = number.value; });
+      });
+      async function readCurrent() {
+        const response = await fetch('/api/extrinsic', {cache: 'no-store'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '读取失败');
+        setValues(data.rpy_deg);
+        document.getElementById('status').textContent = '当前：' + data.rpy_deg.join(', ') + '°';
+      }
+      async function apply(valuesToApply) {
+        const status = document.getElementById('status');
+        status.textContent = '正在应用…';
+        const response = await fetch('/api/extrinsic', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({rpy_deg: valuesToApply})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '应用失败');
+        setValues(data.rpy_deg);
+        status.textContent = '已应用：' + data.rpy_deg.join(', ') + '°';
+      }
+      document.getElementById('apply').addEventListener('click', () => {
+        apply(values()).catch(error => { document.getElementById('status').textContent = error.message; });
+      });
+      document.getElementById('identity').addEventListener('click', () => {
+        apply([0, 0, 0]).catch(error => { document.getElementById('status').textContent = error.message; });
+      });
+      document.getElementById('down-default').addEventListener('click', () => {
+        apply([180, 0, 90]).catch(error => { document.getElementById('status').textContent = error.message; });
+      });
+      readCurrent().catch(error => { document.getElementById('status').textContent = error.message; });
+    </script>
+"""
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -43,11 +129,21 @@ def build_index_html(page_title):
     main {{ max-width: 1280px; margin: auto; padding: 12px; }}
     h1 {{ margin: 0 0 10px; font-size: 20px; font-weight: 500; }}
     img {{ display: block; width: 100%; height: auto; background: #000; }}
+    .controls {{ margin-bottom: 12px; padding: 12px; background: #20242a; border-radius: 6px; }}
+    .controls-title {{ margin-bottom: 8px; font-weight: 600; }}
+    .axis-grid {{ display: grid; grid-template-columns: 52px 1fr 92px; gap: 8px 10px; align-items: center; }}
+    .axis-grid input[type=number] {{ width: 80px; padding: 5px; color: #eee; background: #111; border: 1px solid #555; }}
+    .buttons {{ display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }}
+    button {{ padding: 7px 14px; cursor: pointer; color: #111; background: #5de1e6; border: 0; border-radius: 4px; font-weight: 600; }}
+    button.secondary {{ color: #eee; background: #555; }}
+    #status {{ color: #f5d76e; }}
+    .hint {{ margin-top: 8px; color: #aaa; font-size: 13px; }}
   </style>
 </head>
 <body>
   <main>
     <h1>{safe_title}</h1>
+{controls}
     <img src="/stream.mjpg" alt="ROS debug image stream">
   </main>
 </body>
@@ -72,10 +168,22 @@ class LatestJpegFrame:
 class DebugWebServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, frame_buffer, page_title, stream_fps):
+    def __init__(
+        self,
+        address,
+        frame_buffer,
+        page_title,
+        stream_fps,
+        enable_extrinsic_controls=False,
+        extrinsic_param="/landing_tag_node/pose/camera_to_body_rpy_deg",
+    ):
         super().__init__(address, DebugWebHandler)
         self.frame_buffer = frame_buffer
-        self.index_html = build_index_html(page_title)
+        self.enable_extrinsic_controls = bool(enable_extrinsic_controls)
+        self.extrinsic_param = str(extrinsic_param)
+        self.index_html = build_index_html(
+            page_title, self.enable_extrinsic_controls
+        )
         self.stream_period = 1.0 / stream_fps
 
 
@@ -94,10 +202,49 @@ class DebugWebHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(self.server.index_html)
             return
+        if self.path == "/api/extrinsic":
+            if not self.server.enable_extrinsic_controls:
+                self.send_error(404)
+                return
+            try:
+                value = validate_extrinsic_rpy(
+                    rospy.get_param(self.server.extrinsic_param, [0, 0, 0])
+                )
+                self._send_json(200, {"rpy_deg": value})
+            except (TypeError, ValueError) as error:
+                self._send_json(500, {"error": str(error)})
+            return
         if self.path != "/stream.mjpg":
             self.send_error(404)
             return
         self._serve_stream()
+
+    def do_POST(self):
+        if (
+            self.path != "/api/extrinsic"
+            or not self.server.enable_extrinsic_controls
+        ):
+            self.send_error(404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 4096:
+                raise ValueError("invalid request length")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            value = validate_extrinsic_rpy(payload.get("rpy_deg"))
+            rospy.set_param(self.server.extrinsic_param, value)
+            self._send_json(200, {"rpy_deg": value})
+        except (AttributeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self._send_json(400, {"error": str(error)})
+
+    def _send_json(self, status, payload):
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(encoded)
 
     def _serve_stream(self):
         self.send_response(200)
@@ -137,6 +284,13 @@ def main():
         rospy.get_param("~stream_fps", 30.0),
     )
     page_title = rospy.get_param("~page_title", "UAV Landing Debug")
+    enable_extrinsic_controls = bool(
+        rospy.get_param("~enable_extrinsic_controls", False)
+    )
+    extrinsic_param = rospy.get_param(
+        "~extrinsic_param",
+        "/landing_tag_node/pose/camera_to_body_rpy_deg",
+    )
 
     bridge = CvBridge()
     frames = LatestJpegFrame()
@@ -152,7 +306,12 @@ def main():
 
     rospy.Subscriber(image_topic, Image, image_callback, queue_size=1)
     server = DebugWebServer(
-        (host, port), frames, page_title, stream_fps
+        (host, port),
+        frames,
+        page_title,
+        stream_fps,
+        enable_extrinsic_controls,
+        extrinsic_param,
     )
     server.timeout = 0.2
     rospy.loginfo(

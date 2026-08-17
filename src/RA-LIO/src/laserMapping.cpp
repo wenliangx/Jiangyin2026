@@ -45,6 +45,7 @@
 #include "IMU_Processing.hpp"
 
 #include <cmath>
+#include <algorithm>
 #include <limits>
 
 
@@ -65,8 +66,10 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-double theta = 30;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
-double alpha = 180;                       // 横滚补偿角 Roll（度），用于输出显示补偿
+bool gravity_align_output = true;         // 将 RA-LIO 世界系的重力方向对齐到 ROS -Z
+bool output_alignment_initialized = false;
+Eigen::Matrix3d output_alignment = Eigen::Matrix3d::Identity();
+double max_gravity_alignment_tilt_deg = 60.0;
 
 // === 线程同步 ===
 mutex mtx_buffer;                         // 数据buffer互斥锁
@@ -331,24 +334,98 @@ void pointBodyToWorld(PointType const *const pi, PointType *const po)
     po->intensity = pi->intensity;
 }
 
-// === pointComp：带姿态补偿的坐标变换 ===
-// 用于发布时的姿态补偿：通过R_3 = diag(1,-1,-1)进行坐标系调整
-// 同时应用theta(俯仰)和alpha(横滚)补偿角度（用于倾斜安装的无人机）
-// 变换公式: p_w = R_3 * R_roll * R_pitch * [R * (R_ext * p_b + T_ext) + pos]
+// 在首次有效 ESKF 输出时锁存世界系重力对齐。RA-LIO 把启动时的
+// IMU 坐标系当作世界系，并将重力作为一个可倾斜的状态；PX4/ROS ENU
+// 则要求 Z 轴与重力对齐。对齐矩阵必须只计算一次，否则重力估计噪声会
+// 使整个输出世界系在飞行中晃动。
+bool initializeOutputAlignment()
+{
+    if (output_alignment_initialized) return true;
+
+    if (!gravity_align_output)
+    {
+        output_alignment.setIdentity();
+        output_alignment_initialized = true;
+        ROS_WARN("RA-LIO output gravity alignment is disabled");
+        return true;
+    }
+
+    const Eigen::Vector3d gravity = state_point.grav;
+    const double gravity_norm = gravity.norm();
+    if (!gravity.allFinite() || gravity_norm < 1.0)
+    {
+        ROS_ERROR_THROTTLE(1.0, "Cannot initialize output alignment: invalid gravity [%f %f %f]",
+                           gravity.x(), gravity.y(), gravity.z());
+        return false;
+    }
+
+    const Eigen::Vector3d old_up = -gravity / gravity_norm;
+    const double tilt_rad = std::acos(std::max(-1.0, std::min(1.0, old_up.z())));
+    const double tilt_deg = tilt_rad * 180.0 / PI;
+    if (!std::isfinite(tilt_deg) || tilt_deg > max_gravity_alignment_tilt_deg)
+    {
+        ROS_ERROR_THROTTLE(1.0,
+                           "Reject gravity alignment tilt %.2f deg (limit %.2f deg)",
+                           tilt_deg, max_gravity_alignment_tilt_deg);
+        return false;
+    }
+
+    // 重力只能确定 roll/pitch，不能确定 yaw。把旧世界系 X 轴投影到
+    // 新水平面来固定这个自由度，避免 FromTwoVectors 的最短旋转在
+    // roll、pitch 同时非零时偷偷引入偏航变化。
+    Eigen::Vector3d new_x_in_old =
+        Eigen::Vector3d::UnitX() - old_up.x() * old_up;
+    if (new_x_in_old.norm() < 1e-6)
+    {
+        new_x_in_old = Eigen::Vector3d::UnitY() - old_up.y() * old_up;
+    }
+    new_x_in_old.normalize();
+    const Eigen::Vector3d new_y_in_old =
+        old_up.cross(new_x_in_old).normalized();
+    Eigen::Matrix3d new_axes_in_old;
+    new_axes_in_old.col(0) = new_x_in_old;
+    new_axes_in_old.col(1) = new_y_in_old;
+    new_axes_in_old.col(2) = old_up;
+    output_alignment = new_axes_in_old.transpose();
+
+    const double orthogonality_error =
+        (output_alignment * output_alignment.transpose() -
+         Eigen::Matrix3d::Identity()).norm();
+    if (!output_alignment.allFinite() || orthogonality_error > 1e-8 ||
+        output_alignment.determinant() < 0.999999)
+    {
+        ROS_ERROR("Reject invalid gravity alignment matrix: orthogonality_error=%g, det=%g",
+                  orthogonality_error, output_alignment.determinant());
+        output_alignment.setIdentity();
+        return false;
+    }
+    const Eigen::Vector3d aligned_gravity = output_alignment * gravity;
+    const double gravity_alignment_error =
+        (aligned_gravity - Eigen::Vector3d(0.0, 0.0, -gravity_norm)).norm();
+    if (!aligned_gravity.allFinite() || gravity_alignment_error > 1e-6)
+    {
+        ROS_ERROR("Reject gravity alignment residual: error=%g, aligned_g=[%g %g %g]",
+                  gravity_alignment_error, aligned_gravity.x(),
+                  aligned_gravity.y(), aligned_gravity.z());
+        output_alignment.setIdentity();
+        return false;
+    }
+    output_alignment_initialized = true;
+
+    ROS_INFO("Locked RA-LIO gravity alignment: tilt=%.3f deg, "
+             "raw_g=[%.5f %.5f %.5f], aligned_g=[%.5f %.5f %.5f]",
+             tilt_deg,
+             gravity.x(), gravity.y(), gravity.z(), aligned_gravity.x(),
+             aligned_gravity.y(), aligned_gravity.z());
+    return true;
+}
+
+// === pointComp：将内部原始世界系点云转到重力对齐的输出世界系 ===
 void pointComp(PointType const *const pi1, PointType *const po1)
 {
-    // R_3 = diag(1, -1, -1) 坐标系方向调整（典型的ROS到视觉坐标系的转换）
-    Eigen::Matrix3d R_3;
-    R_3<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;
-
-    // 姿态补偿旋转矩阵（绕x轴 alpha角度，绕y轴 theta角度）
-    Eigen::Matrix3d R_compensate_roll = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate3 = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
     Eigen::Vector3d Pos_w(state_point.pos(0),  state_point.pos(1), state_point.pos(2));
-    Eigen::Vector3d Pos_compensate3= R_3*R_compensate_roll*R_compensate3* Pos_w;  // 补偿后的位置
-    Eigen::Matrix3d rot_comp = R_3*R_compensate_roll*R_compensate3*state_point.rot.matrix();  // 补偿后的旋转
+    Eigen::Vector3d Pos_compensate3 = output_alignment * Pos_w;
+    Eigen::Matrix3d rot_comp = output_alignment * state_point.rot.matrix();
 
     V3D p_body1(pi1->x, pi1->y, pi1->z);
     V3D p_global1(rot_comp * (state_point.offset_R_L_I.matrix() * p_body1 + state_point.offset_T_L_I) + Pos_compensate3);
@@ -629,8 +706,7 @@ void publish_map(const ros::Publisher &pubLaserCloudMap)
     pubLaserCloudMap.publish(laserCloudMap);
 }
 
-// === set_posestamp：设置里程计消息中的位置和姿态 ===
-// 包含姿态补偿：R_3 * R_roll * R_pitch 坐标系调整
+// === set_posestamp：设置重力对齐后的里程计位置和姿态 ===
 
 static bool set_quaternion_msg(const Eigen::Matrix3d &rot, geometry_msgs::Quaternion &orientation)
 {
@@ -654,28 +730,22 @@ static bool set_quaternion_msg(const Eigen::Matrix3d &rot, geometry_msgs::Quater
     return true;
 }
 
-// 位置补偿：pos_comp = R_3 * R_roll * R_pitch * pos
-// 姿态补偿：q_comp = R_3 * R_roll * R_pitch * R * (R_3 * R_roll * R_pitch)^{-1}
 template <typename T>
 void set_posestamp(T &out)
 {
-    Eigen::Matrix3d R_0;
-    R_0<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;  // ROS -> 自定义坐标系的旋转矩阵
-
-    Eigen::Matrix3d R_compensate_roll1 = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-
     Eigen::Vector3d Pos_(state_point.pos(0),  state_point.pos(1), state_point.pos(2));
-    Eigen::Vector3d Pos_compensate= R_0*R_compensate_roll1*R_compensate* Pos_;
+    Eigen::Vector3d Pos_compensate = output_alignment * Pos_;
 
     out.pose.position.x = Pos_compensate(0);
     out.pose.position.y = Pos_compensate(1);
     out.pose.position.z = Pos_compensate(2);
 
-    // 姿态补偿：将原始姿态通过坐标变换矩阵进行旋转
-    set_quaternion_msg(R_0*R_compensate_roll1*R_compensate*state_point.rot.matrix()*(R_0*R_compensate_roll1*R_compensate).inverse(),
+    // RA-LIO 的 state.rot 表示当前倾斜安装的传感器系到启动传感器系。
+    // 左乘 C 把世界系拉平；右乘 C^T 把发布的 child 从传感器系改成
+    // 启动时拉平的机体系，因此静止启动时为单位姿态。只左乘会把约31°
+    // 的传感器安装倾角错误地当成飞机真实 pitch 送给 PX4。
+    set_quaternion_msg(output_alignment * state_point.rot.matrix() *
+                           output_alignment.transpose(),
                        out.pose.orientation);
 }
 
@@ -684,31 +754,26 @@ void set_posestamp(T &out)
 template <typename T>
 void set_twiststamp(T &twi)
 {
-    Eigen::Matrix3d R_1;
-    R_1<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;
-
-    Eigen::Matrix3d R_compensate_roll2 = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate1 = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-
     Eigen::Vector3d Vel_(state_point.vel(0),  state_point.vel(1), state_point.vel(2));
-    Eigen::Vector3d Vel_compensate= R_1*R_compensate_roll2*R_compensate1* Vel_;
+    Eigen::Vector3d Vel_compensate = output_alignment * Vel_;
 
     twi.twist.linear.x = Vel_compensate(0);
     twi.twist.linear.y = Vel_compensate(1);
     twi.twist.linear.z = Vel_compensate(2);
 }
 
-// === set_pathstamp：设置路径消息中的位姿（不带姿态补偿，直接使用原始状态） ===
+// === set_pathstamp：设置与 /Odometry 相同基底的路径位姿 ===
 template <typename T>
 void set_pathstamp(T &out)
 {
-    out.pose.position.x = state_point.pos(0);
-    out.pose.position.y = state_point.pos(1);
-    out.pose.position.z = state_point.pos(2);
+    const Eigen::Vector3d position = output_alignment * state_point.pos;
+    out.pose.position.x = position.x();
+    out.pose.position.y = position.y();
+    out.pose.position.z = position.z();
 
-    set_quaternion_msg(state_point.rot.matrix(), out.pose.orientation);
+    set_quaternion_msg(output_alignment * state_point.rot.matrix() *
+                           output_alignment.transpose(),
+                       out.pose.orientation);
 }
 
 // === publish_odometry：发布里程计Odometry消息 ===
@@ -802,23 +867,9 @@ static void visualization_speed(const ros::Publisher &marker_pub) {
   marker.color.b = 1.0f;
   marker.color.a = 1.0;
 
-  // 应用姿态补偿（13.5647°俯仰补偿，针对特定安装角度）
-  Eigen::Matrix3d R_compensate =
-      Eigen::AngleAxisd(30 * PI / 180.0, Eigen::Vector3d(0, 1, 0))
-          .toRotationMatrix();
-  Eigen::Vector3d Pos_(odomAftMapped.pose.pose.position.x,
-                       odomAftMapped.pose.pose.position.y,
-                       odomAftMapped.pose.pose.position.z);
-  Eigen::Vector3d Pos_compensate = R_compensate * Pos_;
-  Eigen::Matrix3d Atti_compensate = R_compensate * kf.get_x().rot.matrix();
-
-  // 设置marker的位置和姿态
-  marker.pose.position.x = Pos_compensate(0);
-  marker.pose.position.y = Pos_compensate(1);
-  marker.pose.position.z = Pos_compensate(2);
-
-  Atti_compensate = Atti_compensate.transpose();
-  set_quaternion_msg(Atti_compensate, marker.pose.orientation);
+  // /Odometry 已经使用锁存的重力对齐基底，marker 直接复用，
+  // 避免再次施加旧的30°硬编码补偿。
+  marker.pose = odomAftMapped.pose.pose;
 
   marker_pub.publish(marker);
 }
@@ -830,6 +881,10 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "laserMapping");  // 初始化ROS节点
     ros::NodeHandle nh;
+    double imu_init_min_duration = 2.0;
+    double imu_init_max_acc_std_ratio = 0.03;
+    double imu_init_max_gyr_std = 0.02;
+    double imu_init_max_mean_gyr = 0.08;
 
     // === 加载配置参数 ===
     nh.param<bool>("publish/path_en", path_en, true);
@@ -861,6 +916,16 @@ int main(int argc, char **argv)
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
+    nh.param<bool>("mapping/gravity_align_output", gravity_align_output, true);
+    nh.param<double>("mapping/imu_init_min_duration", imu_init_min_duration, 2.0);
+    nh.param<double>("mapping/imu_init_max_acc_std_ratio",
+                     imu_init_max_acc_std_ratio, 0.03);
+    nh.param<double>("mapping/imu_init_max_gyr_std",
+                     imu_init_max_gyr_std, 0.02);
+    nh.param<double>("mapping/imu_init_max_mean_gyr",
+                     imu_init_max_mean_gyr, 0.08);
+    nh.param<double>("mapping/max_gravity_alignment_tilt_deg",
+                     max_gravity_alignment_tilt_deg, 60.0);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
@@ -893,6 +958,9 @@ int main(int argc, char **argv)
     // 设置IMU处理模块参数：外参、噪声协方差
     p_imu1->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, acc_cov),
                       V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+    p_imu1->set_initialization_param(
+        imu_init_min_duration, imu_init_max_acc_std_ratio,
+        imu_init_max_gyr_std, imu_init_max_mean_gyr);
 
     // 注册信号处理器（Ctrl+C安全退出）
     signal(SIGINT, SigHandle);
@@ -989,16 +1057,18 @@ int main(int argc, char **argv)
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot.matrix() * state_point.offset_T_L_I;
 
-            // --- 姿态补偿角度计算 ---
-            // 基于估计的重力向量计算俯仰(pitch)和横滚(roll)补偿角
-            // theta = -atan(g_x / g_z);
-            // alpha = -atan(g_y / g_z);
-            // theta = -atan(kf.get_x().grav(0)/kf.get_x().grav(2))*180.0/PI;
-            // alpha = -atan(kf.get_x().grav(1)/kf.get_x().grav(2)) *180.0/PI;
-
-            std::printf(" theta: %.4f \n", theta);
-            std::printf(" alpha: %.4f \n", alpha);
-            std::printf("6\n");
+            // 首次有效状态后锁存重力对齐，之后整个航程不再改变世界基底。
+            if (!p_imu1->initialization_complete())
+            {
+                ROS_ERROR_THROTTLE(1.0,
+                                   "Refuse RA-LIO output before stationary IMU initialization");
+                continue;
+            }
+            if (!initializeOutputAlignment())
+            {
+                ROS_ERROR_THROTTLE(1.0, "Skip RA-LIO output until gravity alignment is valid");
+                continue;
+            }
 
             // --- 步骤9：发布里程计 ---
             publish_odometry(pubOdomAftMapped);

@@ -22,7 +22,7 @@ struct ClosedLoopLandingConfig {
   double adjust_duration_tag3{0.8};
   double adjust_duration_tag4{0.6};
   double adjust_duration_tag5{0.4};
-  bool swap_xy{false};
+  bool swap_xy{true};
   double x_sign{1.0};
   double y_sign{1.0};
   double descent_rate{0.15};

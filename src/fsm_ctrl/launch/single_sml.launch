@@ -91,7 +91,7 @@
 
         <!-- cmd5 视觉闭环降落：一次观测只生成一次调整，调整期间忽略视觉。 -->
         <param name="landing_valid_timeout" value="0.25" type="double"/>
-        <param name="landing_align_px_threshold" value="50.0" type="double"/>
+        <param name="landing_align_px_threshold" value="150.0" type="double"/>
         <param name="landing_xy_step" value="0.03" type="double"/>
         <param name="landing_lock_min_tag_count" value="4" type="int"/>
         <!-- 标签越少，给飞机调整并稳定的时间越长。 -->
@@ -100,7 +100,7 @@
         <param name="landing_adjust_duration_tag3" value="0.8" type="double"/>
         <param name="landing_adjust_duration_tag4" value="0.6" type="double"/>
         <param name="landing_adjust_duration_tag5" value="0.4" type="double"/>
-        <param name="landing_descent_rate" value="0.15" type="double"/>
+        <param name="landing_descent_rate" value="0.25" type="double"/>
         <param name="landing_min_z" value="0.03" type="double"/>
 
         <!-- For NMPC -->
@@ -132,22 +132,26 @@
         <param name = "nmpc_Rwz" type = "double" value = "0.3" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
 
-        <param name = "nmpc_Qposx" type = "double" value = "160.0" />
-        <param name = "nmpc_Qposy" type = "double" value = "140.0" />
-        <param name = "nmpc_Qposz" type = "double" value = "160.0" />
-
-        <param name = "nmpc_Qvelx" type = "double" value = "4.0" />
+        <param name = "nmpc_Qposx" type = "double" value = "150.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "150.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "75.0" />
+        <param name = "nmpc_Qvelx" type = "double" value = "4.0" /> 
         <param name = "nmpc_Qvely" type = "double" value = "4.0" />
-        <param name = "nmpc_Qvelz" type = "double" value = "1.5" /> 
-
-        <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
-        <param name = "nmpc_Qquaty" type = "double" value = "1.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "2.0" />
+        <param name = "nmpc_Qquatx" type = "double" value = "2.0" />
+        <param name = "nmpc_Qquaty" type = "double" value = "2.0" />
         <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
-
-        <param name = "nmpc_Rwx" type = "double" value = "0.45" />
-        <param name = "nmpc_Rwy" type = "double" value = "0.75" />
+        <param name = "nmpc_Rwx" type = "double" value = "0.9" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.9" />
         <param name = "nmpc_Rwz" type = "double" value = "0.45" />
         <param name = "nmpc_RtotalF" type = "double" value = "0.15" />
+        <!-- simple NMPC 没有扰动状态；准静态段用有界 XY 参考积分消除稳差。 -->
+        <param name = "nmpc_xy_integral_gain" type = "double" value = "0.20" />
+        <param name = "nmpc_xy_integral_limit" type = "double" value = "0.20" />
+        <param name = "nmpc_xy_integral_deadband" type = "double" value = "0.003" />
+        <param name = "nmpc_xy_integral_hold_reference_velocity" type = "double" value = "0.05" />
+        <param name = "nmpc_xy_integral_hold_horizon_spread" type = "double" value = "0.02" />
+        <param name = "nmpc_xy_integral_max_feedback_velocity" type = "double" value = "0.20" />
 
         <!-- ========== Trajectory Generator (internal, no ego-planner needed) ========== -->
         <!-- Set use_traj_gen=true to enable.  Works with cmd=5 when ego-planner is not running. -->

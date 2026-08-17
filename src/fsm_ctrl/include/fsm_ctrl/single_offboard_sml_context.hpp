@@ -51,7 +51,9 @@ struct Context {
     return std::isfinite(command.body_rate.x) &&
            std::isfinite(command.body_rate.y) &&
            std::isfinite(command.body_rate.z) &&
-           std::isfinite(command.thrust);
+           std::isfinite(command.thrust) &&
+           std::isfinite(command.reference_bias.x) &&
+           std::isfinite(command.reference_bias.y);
   }
 
   Clock& clock;

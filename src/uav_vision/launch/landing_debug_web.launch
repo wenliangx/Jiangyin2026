@@ -6,6 +6,9 @@
   <arg name="max_width" default="0"/>
   <arg name="stream_fps" default="30.0"/>
   <arg name="page_title" default="UAV Landing Debug"/>
+  <arg name="enable_extrinsic_controls" default="true"/>
+  <arg name="extrinsic_param"
+       default="/landing_tag_node/pose/camera_to_body_rpy_deg"/>
 
   <node pkg="uav_vision"
         type="landing_debug_web.py"
@@ -18,5 +21,8 @@
     <param name="max_width" value="$(arg max_width)"/>
     <param name="stream_fps" value="$(arg stream_fps)"/>
     <param name="page_title" value="$(arg page_title)"/>
+    <param name="enable_extrinsic_controls"
+           value="$(arg enable_extrinsic_controls)"/>
+    <param name="extrinsic_param" value="$(arg extrinsic_param)"/>
   </node>
 </launch>

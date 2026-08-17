@@ -1,5 +1,6 @@
 #include <fsm_ctrl/single_offboard_sml.hpp>
 #include <fsm_ctrl/single_offboard_sml_dispatch.hpp>
+#include <fsm_ctrl/single_offboard_sml_integrator.hpp>
 #include <fsm_ctrl/NMPC_Controller.hpp>
 #include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
@@ -63,6 +64,44 @@ constexpr double kInterval = 1.0 / kRateHz;
 constexpr std::size_t kHorizonPoints = 9;
 // 精降调试 horizon 点数。
 constexpr std::size_t kLandingHorizonPoints = 6;
+constexpr double kGravityAcceleration = 9.8015;
+
+// SUPER 消息中的 attitude 是由 Eigen XYZ 欧拉角分解得到，而控制侧
+// EulerToQuat 使用常规 ZYX 重建，在同时存在倾角和 yaw 时两者不等价。
+// 直接从平坦输出 acceleration+yaw 重建机体坐标系，与 SUPER 生成
+// angular_velocity/thrust 时使用的几何映射保持一致。
+bool superAttitudeReference(const super_msgs::PositionCommand& command,
+                            smlfsm::Quaternion& output) {
+  const Eigen::Vector3d total_acceleration(
+      command.acceleration.x, command.acceleration.y,
+      command.acceleration.z + kGravityAcceleration);
+  const double acceleration_norm = total_acceleration.norm();
+  if (!total_acceleration.allFinite() ||
+      !std::isfinite(command.yaw) || acceleration_norm < 1e-6) {
+    return false;
+  }
+
+  const Eigen::Vector3d body_z = total_acceleration / acceleration_norm;
+  const Eigen::Vector3d heading(std::cos(command.yaw),
+                                std::sin(command.yaw), 0.0);
+  Eigen::Vector3d body_y = body_z.cross(heading);
+  const double body_y_norm = body_y.norm();
+  if (!body_y.allFinite() || body_y_norm < 1e-6) {
+    return false;
+  }
+  body_y /= body_y_norm;
+  const Eigen::Vector3d body_x = body_y.cross(body_z);
+
+  Eigen::Matrix3d rotation;
+  rotation.col(0) = body_x;
+  rotation.col(1) = body_y;
+  rotation.col(2) = body_z;
+  Eigen::Quaterniond attitude(rotation);
+  attitude.normalize();
+  output = {attitude.w(), attitude.x(), attitude.y(), attitude.z()};
+  return std::isfinite(output.w) && std::isfinite(output.x) &&
+         std::isfinite(output.y) && std::isfinite(output.z);
+}
 
 // Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
@@ -304,6 +343,21 @@ class RosSetpointPort final : public smlfsm::SetpointPort {
       message.vel_ref[index].y = monitor.references[index].velocity.y;
       message.vel_ref[index].z = monitor.references[index].velocity.z;
     }
+    const std::size_t input_count =
+        std::min<std::size_t>(monitor.references.size(), 8);
+    for (std::size_t index = 0; index < input_count; ++index) {
+      message.body_rate_ref[index].x =
+          monitor.references[index].body_rate.x;
+      message.body_rate_ref[index].y =
+          monitor.references[index].body_rate.y;
+      message.body_rate_ref[index].z =
+          monitor.references[index].body_rate.z;
+      message.total_acceleration_ref[index] =
+          monitor.references[index].total_acceleration;
+    }
+    message.xy_integral_bias.x = monitor.target.reference_bias.x;
+    message.xy_integral_bias.y = monitor.target.reference_bias.y;
+    message.xy_integral_bias.z = 0.0;
     message.pos_fdb.x = monitor.feedback.position.x;
     message.pos_fdb.y = monitor.feedback.position.y;
     message.pos_fdb.z = monitor.feedback.position.z;
@@ -359,6 +413,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     double q_quat_x = 1.0, q_quat_y = 1.0, q_quat_z = 1.0;
     double r_w_x = 1.0, r_w_y = 1.0, r_w_z = 1.0;
     double r_thrust = 1.0, hover_thrust = 0.196;
+    smlfsm::HorizontalIntegralConfig xy_integral_config;
     private_node.param("nmpc_Qposx", q_pos_x, q_pos_x);
     private_node.param("nmpc_Qposy", q_pos_y, q_pos_y);
     private_node.param("nmpc_Qposz", q_pos_z, q_pos_z);
@@ -373,6 +428,23 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     private_node.param("nmpc_Rwz", r_w_z, r_w_z);
     private_node.param("nmpc_RtotalF", r_thrust, r_thrust);
     private_node.param("nmpc_hover_thrust", hover_thrust, hover_thrust);
+    private_node.param("nmpc_xy_integral_gain", xy_integral_config.gain,
+                       xy_integral_config.gain);
+    private_node.param("nmpc_xy_integral_limit", xy_integral_config.limit,
+                       xy_integral_config.limit);
+    private_node.param("nmpc_xy_integral_deadband",
+                       xy_integral_config.deadband,
+                       xy_integral_config.deadband);
+    private_node.param("nmpc_xy_integral_hold_reference_velocity",
+                       xy_integral_config.hold_reference_velocity,
+                       xy_integral_config.hold_reference_velocity);
+    private_node.param("nmpc_xy_integral_hold_horizon_spread",
+                       xy_integral_config.hold_horizon_spread,
+                       xy_integral_config.hold_horizon_spread);
+    private_node.param("nmpc_xy_integral_max_feedback_velocity",
+                       xy_integral_config.max_feedback_velocity,
+                       xy_integral_config.max_feedback_velocity);
+    xy_integrator_.configure(xy_integral_config);
 
     // 控制器固定构造参数，提取为具名常量，保证与参数镜像 topic 一致。
     constexpr std::array<double, 2> kAccZLimit{{0.0, 15.0}};
@@ -409,6 +481,15 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     params_msg_.r_w_z = r_w_z;
     params_msg_.r_acc_z = r_thrust;
     params_msg_.hover_thrust = hover_thrust;
+    params_msg_.xy_integral_gain = xy_integral_config.gain;
+    params_msg_.xy_integral_limit = xy_integral_config.limit;
+    params_msg_.xy_integral_deadband = xy_integral_config.deadband;
+    params_msg_.xy_integral_hold_reference_velocity =
+        xy_integral_config.hold_reference_velocity;
+    params_msg_.xy_integral_hold_horizon_spread =
+        xy_integral_config.hold_horizon_spread;
+    params_msg_.xy_integral_max_feedback_velocity =
+        xy_integral_config.max_feedback_velocity;
     params_msg_.ctrl_t = kInterval;
     params_msg_.acc_z_limit_low = kAccZLimit[0];
     params_msg_.acc_z_limit_high = kAccZLimit[1];
@@ -444,6 +525,14 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
       return false;
     }
 
+    const smlfsm::Vec3 reference_bias = xy_integrator_.update(
+        ros::Time::now().toSec(), telemetry, horizon);
+    ROS_INFO_THROTTLE(
+        1.0, "NMPC XY integral bias=[%.4f %.4f], raw error=[%.4f %.4f]",
+        reference_bias.x, reference_bias.y,
+        horizon.front().position.x - telemetry.position.x,
+        horizon.front().position.y - telemetry.position.y);
+
     const std::vector<double> current{
         telemetry.position.x, telemetry.position.y, telemetry.position.z,
         telemetry.velocity.x, telemetry.velocity.y, telemetry.velocity.z,
@@ -455,13 +544,17 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
       const auto& point = horizon[std::min(index, horizon.size() - 1)];
       std::cout<<"x:"<<point.position.x<<", y:"<<point.position.y<<"\n";
       desired.insert(desired.end(),
-                     {point.position.x, point.position.y, point.position.z,
+                     {point.position.x + reference_bias.x,
+                      point.position.y + reference_bias.y, point.position.z,
                       point.velocity.x, point.velocity.y, point.velocity.z,
                       point.attitude.w, point.attitude.x, point.attitude.y,
                       point.attitude.z});
     }
     for (std::size_t index = 0; index + 1 < kHorizonPoints; ++index) {
-      desired.insert(desired.end(), {0.0, 0.0, 0.0, 9.8015});
+      const auto& point = horizon[std::min(index, horizon.size() - 1)];
+      desired.insert(desired.end(),
+                     {point.body_rate.x, point.body_rate.y,
+                      point.body_rate.z, point.total_acceleration});
     }
     try {
       controller_->optimal_solution(current, desired);
@@ -472,10 +565,12 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     const Eigen::Vector3d angular = controller_->getwCommand();
     command.body_rate = {angular.x(), angular.y(), angular.z()};
     command.thrust = controller_->getAcc_zCommand();
+    command.reference_bias = reference_bias;
     return smlfsm::Context::finite(command);
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
+  smlfsm::HorizontalReferenceIntegrator xy_integrator_;
   ros::Publisher params_pub_;          // /nmpc_params 参数镜像观察 topic。
   ros::Timer params_timer_;            // 参数镜像 1Hz 重发定时器。
   fsm_ctrl::nmpc_params params_msg_;   // 已加载 NMPC 参数的镜像消息。
@@ -777,27 +872,51 @@ class RosMissionPort final : public smlfsm::MissionPort {
 
   // 接收 super planner 的轨迹输出。
   void updateSuperPlanner(const super_msgs::Flag& message) {
-    super_planner_.clear();
+    std::vector<smlfsm::ReferencePoint> candidate;
+    candidate.reserve(kHorizonPoints);
     for (std::size_t index = 0; index < kHorizonPoints; ++index) {
+      const auto& command = message.cmd[index];
       smlfsm::ReferencePoint point;
-      point.position = {message.cmd[index].position.x,
-                        message.cmd[index].position.y,
-                        message.cmd[index].position.z};
-      point.velocity = {message.cmd[index].velocity.x,
-                        message.cmd[index].velocity.y,
-                        message.cmd[index].velocity.z};
-      // 将 yaw 归一化到 [-π, π]，避免 super planner 输出的越界 yaw
-      // （如 230°）导致四元数表示歧义和 NMPC 优化跳变。
-      double yaw = message.cmd[index].yaw;
-      yaw = std::fmod(yaw + M_PI, 2.0 * M_PI);
-      if (yaw < 0.0) {
-        yaw += 2.0 * M_PI;
+      point.position = {command.position.x, command.position.y,
+                        command.position.z};
+      point.velocity = {command.velocity.x, command.velocity.y,
+                        command.velocity.z};
+
+      // SUPER 已经用 acceleration/jerk/yaw/yaw_dot 通过平坦性映射
+      // 计算出完整 RPY、机体角速度和 aT=||g+a||，这里不再
+      // 将 roll/pitch 和动态输入丢弃为静态悬停值。
+      const bool attitude_valid = superAttitudeReference(command,
+                                                          point.attitude);
+      point.body_rate = {command.angular_velocity.x,
+                         command.angular_velocity.y,
+                         command.angular_velocity.z};
+      point.total_acceleration = command.thrust.z;
+
+      const bool finite =
+          std::isfinite(point.position.x) &&
+          std::isfinite(point.position.y) &&
+          std::isfinite(point.position.z) &&
+          std::isfinite(point.velocity.x) &&
+          std::isfinite(point.velocity.y) &&
+          std::isfinite(point.velocity.z) &&
+          attitude_valid && std::isfinite(point.attitude.w) &&
+          std::isfinite(point.attitude.x) &&
+          std::isfinite(point.attitude.y) &&
+          std::isfinite(point.attitude.z) &&
+          std::isfinite(point.body_rate.x) &&
+          std::isfinite(point.body_rate.y) &&
+          std::isfinite(point.body_rate.z) &&
+          std::isfinite(point.total_acceleration) &&
+          point.total_acceleration > 0.0;
+      if (!finite) {
+        ROS_WARN_THROTTLE(
+            1.0, "Ignoring invalid SUPER feedforward at horizon index %zu",
+            index);
+        return;
       }
-      yaw -= M_PI;
-      point.attitude = {std::cos(yaw * 0.5), 0.0, 0.0, std::sin(yaw * 0.5)};
-      super_planner_.push_back(point);
-      
+      candidate.push_back(point);
     }
+    super_planner_.swap(candidate);
     super_planner_valid_ = true;
   }
 

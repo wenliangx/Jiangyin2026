@@ -6,6 +6,7 @@
 
 #include <fsm_ctrl/single_offboard_sml.hpp>
 #include <fsm_ctrl/single_offboard_sml_dispatch.hpp>
+#include <fsm_ctrl/single_offboard_sml_integrator.hpp>
 
 namespace {
 using namespace fsm_ctrl::single_sml;
@@ -388,6 +389,8 @@ TEST_F(Fixture, MissionSuperUsesMissionReferenceAndNmpcMonitor) {
   mission.super_points = {ReferencePoint{}};
   mission.super_points[0].position = {16.0, 26.0, 36.0};
   mission.super_points[0].velocity = {6.0, 12.0, 18.0};
+  mission.super_points[0].body_rate = {0.11, 0.22, 0.33};
+  mission.super_points[0].total_acceleration = 10.4;
   nmpc.track_output = BodyRateThrust{{0.6, 1.2, 1.8}, 0.46};
 
   machine.process_event(OnCommand3{});
@@ -400,6 +403,10 @@ TEST_F(Fixture, MissionSuperUsesMissionReferenceAndNmpcMonitor) {
   ASSERT_EQ(1u, nmpc.last_horizon.size());
   EXPECT_DOUBLE_EQ(16.0, nmpc.last_horizon[0].position.x);
   EXPECT_DOUBLE_EQ(12.0, nmpc.last_horizon[0].velocity.y);
+  EXPECT_DOUBLE_EQ(0.11, nmpc.last_horizon[0].body_rate.x);
+  EXPECT_DOUBLE_EQ(0.22, nmpc.last_horizon[0].body_rate.y);
+  EXPECT_DOUBLE_EQ(0.33, nmpc.last_horizon[0].body_rate.z);
+  EXPECT_DOUBLE_EQ(10.4, nmpc.last_horizon[0].total_acceleration);
   ASSERT_EQ(1u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.6, setpoint.body_rates[0].body_rate.x);
   EXPECT_DOUBLE_EQ(1.2, setpoint.body_rates[0].body_rate.y);
@@ -411,9 +418,28 @@ TEST_F(Fixture, MissionSuperUsesMissionReferenceAndNmpcMonitor) {
   EXPECT_DOUBLE_EQ(16.0, setpoint.reference_positions[0].x);
   ASSERT_EQ(1u, setpoint.monitors.size());
   EXPECT_DOUBLE_EQ(16.0, setpoint.monitors[0].references[0].position.x);
+  EXPECT_DOUBLE_EQ(0.22,
+                   setpoint.monitors[0].references[0].body_rate.y);
+  EXPECT_DOUBLE_EQ(
+      10.4, setpoint.monitors[0].references[0].total_acceleration);
   EXPECT_DOUBLE_EQ(1.0, setpoint.monitors[0].feedback.position.x);
   EXPECT_DOUBLE_EQ(4.0, setpoint.monitors[0].feedback.velocity.x);
   EXPECT_DOUBLE_EQ(0.46, setpoint.monitors[0].target.thrust);
+}
+
+TEST_F(Fixture, FixedHoverUsesZeroBodyRateAndGravityFeedforward) {
+  SetOffboardAndArmed();
+  sm.process_event(OnCommand2{});
+  sm.process_event(Tick{});
+
+  ASSERT_EQ(1, nmpc.track_calls);
+  ASSERT_EQ(10u, nmpc.last_horizon.size());
+  for (const auto& reference : nmpc.last_horizon) {
+    EXPECT_DOUBLE_EQ(0.0, reference.body_rate.x);
+    EXPECT_DOUBLE_EQ(0.0, reference.body_rate.y);
+    EXPECT_DOUBLE_EQ(0.0, reference.body_rate.z);
+    EXPECT_DOUBLE_EQ(9.8015, reference.total_acceleration);
+  }
 }
 
 TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -927,6 +953,55 @@ TEST_F(Fixture, EmergencyPublishesIdentityAttitudeAndLegacyThrust) {
   EXPECT_TRUE(autopilot.calls.empty());
   EXPECT_TRUE(setpoint.positions.empty());
   EXPECT_TRUE(setpoint.body_rates.empty());
+}
+
+TEST(HorizontalReferenceIntegratorTest,
+     LearnsHoldBiasFreezesDuringMotionAndResetsWhenDisarmed) {
+  HorizontalReferenceIntegrator integrator;
+  TelemetrySnapshot telemetry;
+  telemetry.armed = true;
+  telemetry.position = {-0.10, -0.08, 0.6};
+  std::vector<ReferencePoint> horizon(9);
+  for (auto& point : horizon) point.position = {0.0, 0.0, 0.6};
+
+  integrator.update(0.0, telemetry, horizon);
+  for (int index = 1; index <= 250; ++index) {
+    integrator.update(index * 0.02, telemetry, horizon);
+  }
+  EXPECT_NEAR(0.097, integrator.bias().x, 1e-9);
+  EXPECT_NEAR(0.077, integrator.bias().y, 1e-9);
+
+  for (auto& point : horizon) point.velocity.x = 0.2;
+  const Vec3 learned = integrator.bias();
+  integrator.update(5.02, telemetry, horizon);
+  EXPECT_DOUBLE_EQ(learned.x, integrator.bias().x);
+  EXPECT_DOUBLE_EQ(learned.y, integrator.bias().y);
+
+  telemetry.armed = false;
+  integrator.update(5.04, telemetry, horizon);
+  EXPECT_DOUBLE_EQ(0.0, integrator.bias().x);
+  EXPECT_DOUBLE_EQ(0.0, integrator.bias().y);
+}
+
+TEST(HorizontalReferenceIntegratorTest, ClampsBiasAndRejectsLongUpdateGap) {
+  HorizontalIntegralConfig config;
+  config.gain = 1.0;
+  config.limit = 0.05;
+  HorizontalReferenceIntegrator integrator(config);
+  TelemetrySnapshot telemetry;
+  telemetry.armed = true;
+  telemetry.position = {-1.0, 1.0, 0.6};
+  std::vector<ReferencePoint> horizon(9);
+  for (auto& point : horizon) point.position.z = 0.6;
+
+  integrator.update(0.0, telemetry, horizon);
+  integrator.update(0.1, telemetry, horizon);
+  EXPECT_DOUBLE_EQ(0.05, integrator.bias().x);
+  EXPECT_DOUBLE_EQ(-0.05, integrator.bias().y);
+
+  integrator.update(1.0, telemetry, horizon);
+  EXPECT_DOUBLE_EQ(0.0, integrator.bias().x);
+  EXPECT_DOUBLE_EQ(0.0, integrator.bias().y);
 }
 
 }  // namespace

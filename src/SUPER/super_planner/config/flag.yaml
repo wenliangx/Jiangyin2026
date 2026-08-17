@@ -30,7 +30,7 @@ super_planner:
   planning_horizon: 7.0
   sensing_horizon: -1
   receding_dis: 0.2
-  robot_r: 0.1
+  robot_r: 0.2
   yaw_dot_max: 3.0
   # Yaw mode: 1 heading to velocity, 2 heading to goal
   yaw_mode: 1

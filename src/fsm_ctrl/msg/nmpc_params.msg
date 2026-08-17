@@ -14,6 +14,12 @@ float64 r_w_y
 float64 r_w_z
 float64 r_acc_z        # nmpc_RtotalF，推力项 R 权重
 float64 hover_thrust
+float64 xy_integral_gain
+float64 xy_integral_limit
+float64 xy_integral_deadband
+float64 xy_integral_hold_reference_velocity
+float64 xy_integral_hold_horizon_spread
+float64 xy_integral_max_feedback_velocity
 float64 ctrl_t         # 控制周期 kInterval
 float64 acc_z_limit_low
 float64 acc_z_limit_high

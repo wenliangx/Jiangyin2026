@@ -1,5 +1,8 @@
 geometry_msgs/Vector3[9] pos_ref 
 geometry_msgs/Vector3[9] vel_ref 
+geometry_msgs/Vector3[8] body_rate_ref
+float64[8] total_acceleration_ref
+geometry_msgs/Vector3 xy_integral_bias
 geometry_msgs/Vector3 pos_fdb
 geometry_msgs/Vector3 vel_fdb
 geometry_msgs/Quaternion attitude_fdb
