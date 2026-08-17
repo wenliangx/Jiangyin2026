@@ -14,9 +14,9 @@ namespace single_sml {
 
 struct ClosedLoopLandingConfig {
   double observation_timeout{0.25};
-  double align_px_threshold{50.0};
+  double align_px_threshold{150.0};
   double xy_step{0.03};
-  int lock_min_tag_count{4};
+  int lock_min_tag_count{3};
   double adjust_duration_tag1{1.2};
   double adjust_duration_tag2{1.0};
   double adjust_duration_tag3{0.8};
@@ -26,7 +26,7 @@ struct ClosedLoopLandingConfig {
   double x_sign{1.0};
   double y_sign{1.0};
   double descent_rate{0.15};
-  double min_z{0.03};
+  double min_z{0.01};
   double control_rate_hz{50.0};
   std::size_t horizon_points{6};
 };

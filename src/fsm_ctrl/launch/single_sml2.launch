@@ -1,0 +1,153 @@
+<?xml version="1.0"?>
+
+<launch>
+
+    <arg name="start_mavros" default="true"/>
+    <arg name="fcu_url" default="/dev/ttyACM0:921600"/>
+
+    <include if="$(arg start_mavros)" file="$(find mavros)/launch/px4.launch">
+       
+       <arg name="fcu_url" value="$(arg fcu_url)" />
+    
+    </include>
+    
+    <node pkg="fsm_ctrl" type="single_offboard_sml" name="single_offboard_fsm" output="screen">
+       
+        <remap from = "~odom"        to ="/camera/odom/sample"/>
+
+        <param name="kp_x" value="2.0" type="double"/>
+        <param name="kp_y" value="2.0" type="double"/>
+        <param name="kp_z" value="4.0" type="double"/>
+        <param name="kp_yaw" value="0.0" type="double"/>
+
+        <param name="kpi_x" value="0.2" type="double"/>
+        <param name="kpi_y" value="0.2" type="double"/>
+        <param name="kpi_z" value="0.4" type="double"/>
+        <param name="kpi_yaw" value="0.0" type="double"/>
+
+        <param name="kpd_x" value="0.0" type="double"/>
+        <param name="kpd_y" value="0.0" type="double"/>
+        <param name="kpd_z" value="0.0" type="double"/>
+        <param name="kpd_yaw" value="0.0" type="double"/>
+
+        <param name="kv_x" value="4.0" type="double"/>
+        <param name="kv_y" value="4.0" type="double"/>
+        <param name="kv_z" value="6.0" type="double"/>
+        <param name="kv_yaw" value="0.0" type="double"/>
+
+        <param name="kvi_x" value="0.0" type="double"/>
+        <param name="kvi_y" value="0.0" type="double"/>
+        <param name="kvi_z" value="0.0" type="double"/>
+        <param name="kvi_yaw" value="0.0" type="double"/>
+
+        <param name="kvd_x" value="4.0" type="double"/>
+        <param name="kvd_y" value="4.0" type="double"/>
+        <param name="kvd_z" value="20.0" type="double"/>
+        <param name="kvd_yaw" value="0.0" type="double"/>
+
+        <!-- <param name = "nmpc_mQ_py" type = "double" value = "20" />
+        <param name = "nmpc_mQ_px" type = "double" value = "20" />
+        <param name = "nmpc_mQ_pz" type = "double" value = "50" />
+        <param name = "nmpc_mQ_vx" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_vy" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_vz" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_q1" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_q2" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_q3" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_q4" type = "double" value = "1.0" />
+        <param name = "nmpc_mR_a_BZ" type = "double"  value = "0.1" />
+        <param name = "nmpc_mR_roll" type = "double"  value = "0.1" />
+        <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
+        <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" /> -->
+
+        <param name = "nmpc_mQ_py" type = "double" value = "120" />
+        <param name = "nmpc_mQ_px" type = "double" value = "120" />
+        <param name = "nmpc_mQ_pz" type = "double" value = "120" />
+        <param name = "nmpc_mQ_vx" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_vy" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_vz" type = "double" value = "1.0" />
+        <param name = "nmpc_mQ_q1" type = "double" value = "3.0" />
+        <param name = "nmpc_mQ_q2" type = "double" value = "3.0" />
+        <param name = "nmpc_mQ_q3" type = "double" value = "3.0" />
+        <param name = "nmpc_mQ_q4" type = "double" value = "3.0" />
+        <param name = "nmpc_mR_a_BZ" type = "double"  value = "0.1" />
+        <param name = "nmpc_mR_roll" type = "double"  value = "0.1" />
+        <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
+        <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
+
+        <param name = "nmpc_hover_thrust" type = "double"  value = "0.550" />
+
+        <!-- MissionMachine/Super waypoint upload. Generate this file with:
+             rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
+        <param name="mission_super_waypoints_file"
+               value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
+               type="string"/>
+        <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
+        <param name="vision_control_topic" value="/vision/control" type="string"/>
+
+        <!-- 视觉闭环降落。swap=false 时 dx->x、dy->y；swap=true 时
+             dy->x、dx->y。x_sign/y_sign 分别用于翻转飞行坐标轴方向。 -->
+        <param name="landing_valid_timeout" value="0.25" type="double"/>
+        <param name="landing_align_px_threshold" value="150.0" type="double"/>
+        <param name="landing_xy_step" value="0.03" type="double"/>
+        <param name="landing_lock_min_tag_count" value="3" type="int"/>
+        <param name="landing_adjust_duration_tag1" value="1.0" type="double"/>
+        <param name="landing_adjust_duration_tag2" value="0.8" type="double"/>
+        <param name="landing_adjust_duration_tag3" value="0.6" type="double"/>
+        <param name="landing_adjust_duration_tag4" value="0.4" type="double"/>
+        <param name="landing_adjust_duration_tag5" value="0.2" type="double"/>
+        <param name="landing_swap_xy" value="true" type="bool"/>
+        <param name="landing_x_sign" value="1.0" type="double"/>
+        <param name="landing_y_sign" value="1.0" type="double"/>
+        <param name="landing_descent_rate" value="0.15" type="double"/>
+        <param name="landing_min_z" value="0.03" type="double"/>
+
+        <!-- For NMPC -->
+        <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "40.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "40.0" />
+        <param name = "nmpc_Qvelx" type = "double" value = "1.0" />
+        <param name = "nmpc_Qvely" type = "double" value = "1.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquatx" type = "double" value = "10.0" />
+        <param name = "nmpc_Qquaty" type = "double" value = "10.0" />
+        <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
+        <param name = "nmpc_Rwx" type = "double" value = "0.1" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.1" />
+        <param name = "nmpc_Rwz" type = "double" value = "0.1" />
+        <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
+
+        <!-- <param name = "nmpc_Qposx" type = "double" value = "30.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "50.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "50.0" />
+        <param name = "nmpc_Qvelx" type = "double" value = "1.0" /> 
+        <param name = "nmpc_Qvely" type = "double" value = "1.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquaty" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
+        <param name = "nmpc_Rwx" type = "double" value = "0.3" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.3" />
+        <param name = "nmpc_Rwz" type = "double" value = "0.3" />
+        <param name = "nmpc_RtotalF" type = "double" value = "0.1" /> -->
+
+        <param name = "nmpc_Qposx" type = "double" value = "55.0" />
+        <param name = "nmpc_Qposy" type = "double" value = "70.0" />
+        <param name = "nmpc_Qposz" type = "double" value = "70.0" />
+
+        <param name = "nmpc_Qvelx" type = "double" value = "4.0" />
+        <param name = "nmpc_Qvely" type = "double" value = "2.0" />
+        <param name = "nmpc_Qvelz" type = "double" value = "2.0" />
+
+        <param name = "nmpc_Qquatx" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquaty" type = "double" value = "1.0" />
+        <param name = "nmpc_Qquatz" type = "double" value = "10.0" />
+
+        <param name = "nmpc_Rwx" type = "double" value = "0.45" />
+        <param name = "nmpc_Rwy" type = "double" value = "0.80" />
+        <param name = "nmpc_Rwz" type = "double" value = "0.45" />
+        <param name = "nmpc_RtotalF" type = "double" value = "0.15" />
+
+    </node>
+
+</launch>
