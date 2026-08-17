@@ -16,7 +16,7 @@ struct ClosedLoopLandingConfig {
   double observation_timeout{0.25};
   double align_px_threshold{150.0};
   double xy_step{0.03};
-  int lock_min_tag_count{3};
+  int lock_min_tag_count{1};
   double adjust_duration_tag1{1.2};
   double adjust_duration_tag2{1.0};
   double adjust_duration_tag3{0.8};

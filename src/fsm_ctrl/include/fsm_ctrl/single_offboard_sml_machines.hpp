@@ -110,9 +110,9 @@ struct SegmentedMissionMachine {
             [SuperSegmentComplete{}] /
             ResetSuperTrack{} = state<SuperSegment3>,
         state<Landing> + event<Tick> /
-            (EnableDownCamera{}, TickLanding{}),
+            (EnableDownCamera{}, TickClosedLoopLanding{}),
         state<Emergency> + event<Tick> /
-            (DisableCameras{}, TickEmergency{}),
+            (DisableCameras{}, TickLanding{}),
         state<SafeNoop> + event<Tick> / DisableCameras{},
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(Idle),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(ArmOnly),

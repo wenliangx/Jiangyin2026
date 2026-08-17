@@ -95,7 +95,7 @@ struct TickArmOnly {
 struct TickLowerHover {
   void operator()(Context& context) const {
     context.ensureOffboardArm();
-    const Vec3 target{0.0, 0.0, 0.7};
+    const Vec3 target{0.0, 0.0, 0.5};
     publishTrackCommand(context, fixedPositionHorizon(target));
   }
 };
