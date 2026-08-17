@@ -88,6 +88,7 @@
                type="string"/>
         <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
+        <param name="target_recognition_topic" value="/vision/target/result" type="string"/>
 
         <!-- cmd5 视觉闭环降落：一次观测只生成一次调整，调整期间忽略视觉。 -->
         <param name="landing_valid_timeout" value="0.25" type="double"/>

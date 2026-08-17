@@ -103,6 +103,12 @@ struct SegmentedMissionMachine {
             (EnableBothCameras{}, TickSuperSegment2{}),
         state<SuperSegment3> + event<Tick> /
             (EnableDownCamera{}, TickClosedLoopLanding{}),
+        state<SuperSegment1> + event<OnTargetRecognized>
+            [SuperSegmentComplete{}] /
+            ResetSuperTrack{} = state<SuperSegment2>,
+        state<SuperSegment2> + event<OnTargetRecognized>
+            [SuperSegmentComplete{}] /
+            ResetSuperTrack{} = state<SuperSegment3>,
         state<Landing> + event<Tick> /
             (EnableDownCamera{}, TickLanding{}),
         state<Emergency> + event<Tick> /

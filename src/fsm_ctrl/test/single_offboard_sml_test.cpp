@@ -103,6 +103,7 @@ class FakeMission final : public MissionPort {
     output = super_points;
     return super_result;
   }
+  bool isSuperSegmentComplete() const override { return segment_complete; }
   int resets{0};
   int super_calls{0};
   int segment_calls{0};
@@ -110,6 +111,7 @@ class FakeMission final : public MissionPort {
   double last_time{0.0};
   TelemetrySnapshot last_telemetry;
   bool super_result{true};
+  bool segment_complete{false};
   std::vector<ReferencePoint> super_points{ReferencePoint{}};
   std::vector<int> selected_commands;
 };
@@ -255,13 +257,27 @@ TEST_F(Fixture, ActiveDispatcherSuppressesRepeatedCommands) {
   EXPECT_TRUE(dispatcher.update(std::numeric_limits<int>::min()));
   EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_FALSE(dispatcher.update(std::numeric_limits<int>::min()));
-  EXPECT_TRUE(dispatcher.update(5));
+  EXPECT_TRUE(dispatcher.update(3));
   EXPECT_EQ(1, mission.resets);
-  EXPECT_FALSE(dispatcher.update(5));
+  EXPECT_FALSE(dispatcher.update(3));
   EXPECT_EQ(1, mission.resets);
   EXPECT_TRUE(dispatcher.update(0));
-  EXPECT_TRUE(dispatcher.update(5));
+  EXPECT_TRUE(dispatcher.update(3));
   EXPECT_EQ(2, mission.resets);
+}
+
+TEST_F(Fixture, RecognitionEventsAdvanceSuperSegments) {
+  sm.process_event(OnCommand3{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
+  sm.process_event(OnTargetRecognized{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
+  mission.segment_complete = true;
+  sm.process_event(OnTargetRecognized{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+  mission.segment_complete = true;
+  sm.process_event(OnTargetRecognized{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  EXPECT_EQ(3, mission.resets);
 }
 
 TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoFlightOutput) {
