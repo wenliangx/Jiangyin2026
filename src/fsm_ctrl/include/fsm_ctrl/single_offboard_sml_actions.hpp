@@ -155,6 +155,12 @@ struct ResetSuperTrack {
   }
 };
 
+struct SuperSegmentComplete {
+  bool operator()(const Context& context) const {
+    return context.mission.isSuperSegmentComplete();
+  }
+};
+
 struct ResetLanding {
   void operator()(Context& context) const {
     context.landing_reached = false;

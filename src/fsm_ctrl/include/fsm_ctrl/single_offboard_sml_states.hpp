@@ -26,6 +26,7 @@ struct OnCommand7 {};
 struct OnCommand8 {};
 struct OnCommand9 {};
 struct OnUnsupportedCommand {};
+struct OnTargetRecognized {};
 struct Tick {};
 
 }  // namespace single_sml

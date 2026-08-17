@@ -299,9 +299,9 @@ latched publisher，作为相机节点晚启动时立即获取最后一份快照
 |---:|---|---|---|
 | `0` | `Idle` | 关 | 关 |
 | `1` | `ArmOnly` | 关 | 关 |
-| `2` | `NmpcHover` | 关 | 关 |
-| `3` | `SuperSegment1` | 开 | 关 |
-| `4` | `SuperSegment2` | 开 | 关 |
+| `2` | `NmpcHover` | 关 | 开 |
+| `3` | `SuperSegment1` | 开 | 开 |
+| `4` | `SuperSegment2` | 开 | 开 |
 | `5` | `SuperSegment3` | 关 | 开 |
 | `6` | `Landing` | 关 | 开 |
 | `7`、`8`、不支持的命令 | `SafeNoop` | 关 | 关 |
@@ -310,6 +310,14 @@ latched publisher，作为相机节点晚启动时立即获取最后一份快照
 除表中明确开启的状态外，两路相机均关闭。状态机退出前视任务阶段时必须把
 `front_camera_enabled` 置为 `false`；退出下视任务阶段时同理，不能依赖接收端
 自行推断上一个状态。
+
+分段任务还订阅 `/vision/target/result`。段 1→2 和段 2→3 使用“识别成功或
+手动命令”的 OR 逻辑：对应的 `cmd4`、`cmd5` 可以随时手动切换；收到
+`TargetMatchArray.valid=true` 且 `matches` 非空的稳定识别结果也会自动切换。
+自动切换只响应 `valid=false→true` 的上升沿，避免识别节点连续发布有效结果时
+从段 1 连续跳过段 2。并且该上升沿只有在当前 SUPER 段已经到达末点、进入
+悬停后才有效；飞行途中的上升沿会被忽略。下一次自动切换前需要先出现一次
+无效识别结果。
 
 两个相机节点的私有参数 `always_enabled` 用于脱离状态机单独调试：
 

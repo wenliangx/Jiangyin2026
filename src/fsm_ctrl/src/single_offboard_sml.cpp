@@ -26,6 +26,7 @@
 #include <ros/ros.h>
 #include <super_msgs/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
+#include <uav_vision_msgs/TargetMatchArray.h>
 #include <uav_vision_msgs/VisionControl.h>
 #include <yaml-cpp/yaml.h>
 
@@ -775,6 +776,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
     return true;
   }
 
+  bool isSuperSegmentComplete() const override { return segment_arrived_; }
+
   // 接收 super planner 的轨迹输出。
   void updateSuperPlanner(const super_msgs::Flag& message) {
     super_planner_.clear();
@@ -1019,6 +1022,11 @@ class SingleOffboardNode {
                         landing_topic);
     landing_sub_ = node_.subscribe(landing_topic, 10,
                                    &SingleOffboardNode::landingCallback, this);
+    std::string target_topic = "/vision/target/result";
+    private_node_.param("target_recognition_topic", target_topic,
+                        target_topic);
+    target_sub_ = node_.subscribe(target_topic, 10,
+                                  &SingleOffboardNode::targetCallback, this);
     rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
                              &SingleOffboardNode::rcCallback, this);
   }
@@ -1117,6 +1125,27 @@ class SingleOffboardNode {
     observation.age = ros::Time::now().toSec() - observation.stamp;
     landing_.updateObservation(observation);
   }
+
+  void targetCallback(
+      const uav_vision_msgs::TargetMatchArray::ConstPtr& message) {
+    const bool valid = message->valid && !message->matches.empty();
+    if (!valid) {
+      target_result_valid_ = false;
+      return;
+    }
+    if (target_result_valid_) {
+      return;
+    }
+    target_result_valid_ = true;
+    ROS_INFO_THROTTLE(1.0, "Stable target recognized: %s",
+                      message->matches.front().label.c_str());
+    if (mission_.isSuperSegmentComplete()) {
+      machine_.process_event(smlfsm::OnTargetRecognized{});
+    } else {
+      ROS_INFO_THROTTLE(1.0,
+                        "Ignoring target recognition before SUPER hover");
+    }
+  }
   // RC 回调当前只做短数组保护，保留旧 topic 契约。
   void rcCallback(const mavros_msgs::RCIn::ConstPtr& message) {
     if (message->channels.size() <= 10) {
@@ -1142,7 +1171,9 @@ class SingleOffboardNode {
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_;  // 基础状态订阅。
   ros::Subscriber super_planner_sub_;  // super planner 订阅。
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
+  ros::Subscriber target_sub_;   // 前视稳定目标识别结果订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
+  bool target_result_valid_{false};  // 只在识别有效性的上升沿触发一次。
 };
 
 }  // namespace

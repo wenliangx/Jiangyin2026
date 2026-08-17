@@ -84,6 +84,7 @@
                type="string"/>
         <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
+        <param name="target_recognition_topic" value="/vision/target/result" type="string"/>
 
         <!-- 视觉闭环降落。swap=false 时 dx->x、dy->y；swap=true 时
              dy->x、dx->y。x_sign/y_sign 分别用于翻转飞行坐标轴方向。 -->
