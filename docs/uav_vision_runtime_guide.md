@@ -309,7 +309,8 @@ latched publisher，作为相机节点晚启动时立即获取最后一份快照
 | `4` | `SuperSegment2` | 开 | 开 |
 | `5` | `SuperSegment3` | 关 | 开 |
 | `6` | `Landing` | 关 | 开 |
-| `7`、`8`、不支持的命令 | `SafeNoop` | 关 | 关 |
+| `7` | `Px4Hover` | 关 | 关 |
+| `8`、不支持的命令 | `SafeNoop` | 关 | 关 |
 | `9` | `Emergency` | 关 | 关 |
 
 除表中明确开启的状态外，两路相机均关闭。状态机退出前视任务阶段时必须把

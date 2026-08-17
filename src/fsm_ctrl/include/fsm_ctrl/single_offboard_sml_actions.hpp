@@ -66,6 +66,9 @@ inline std::vector<ReferencePoint> fixedPositionHorizon(const Vec3& position) {
   return horizon;
 }
 
+// NMPC 和 PX4 悬停使用同一个固定位置目标，便于在两种控制器之间切换对比。
+inline Vec3 lowerHoverTarget() { return Vec3{0.0, 0.0, 0.6}; }
+
 inline void publishLowThrust(Context& context) {
   context.setpoint.publishBodyRateThrust(
       BodyRateThrust{Vec3{}, context.config.low_thrust});
@@ -95,8 +98,15 @@ struct TickArmOnly {
 struct TickLowerHover {
   void operator()(Context& context) const {
     context.ensureOffboardArm();
-    const Vec3 target{0.0, 0.0, 0.6};
-    publishTrackCommand(context, fixedPositionHorizon(target));
+    publishTrackCommand(context, fixedPositionHorizon(lowerHoverTarget()));
+  }
+};
+
+struct TickPx4Hover {
+  void operator()(Context& context) const {
+    context.ensureOffboardArm();
+    context.setpoint.publishPosition(
+        PositionSetpoint{lowerHoverTarget(), 0.0});
   }
 };
 struct TickHighHover {

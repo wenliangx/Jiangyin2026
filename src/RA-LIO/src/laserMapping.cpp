@@ -66,7 +66,8 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-bool gravity_align_output = true;         // 将 RA-LIO 世界系的重力方向对齐到 ROS -Z
+string output_alignment_mode = "auto";   // auto / fixed / disabled
+vector<double> fixed_output_alignment_rpy_deg = {0.0, 30.0, 0.0};
 bool output_alignment_initialized = false;
 Eigen::Matrix3d output_alignment = Eigen::Matrix3d::Identity();
 double max_gravity_alignment_tilt_deg = 60.0;
@@ -342,12 +343,72 @@ bool initializeOutputAlignment()
 {
     if (output_alignment_initialized) return true;
 
-    if (!gravity_align_output)
+    if (output_alignment_mode == "disabled" || output_alignment_mode == "off" ||
+        output_alignment_mode == "none")
     {
         output_alignment.setIdentity();
         output_alignment_initialized = true;
-        ROS_WARN("RA-LIO output gravity alignment is disabled");
+        ROS_WARN("RA-LIO output alignment is disabled");
         return true;
+    }
+
+    if (output_alignment_mode == "fixed")
+    {
+        if (fixed_output_alignment_rpy_deg.size() != 3 ||
+            !std::all_of(fixed_output_alignment_rpy_deg.begin(),
+                         fixed_output_alignment_rpy_deg.end(),
+                         [](double value) { return std::isfinite(value); }))
+        {
+            ROS_ERROR_THROTTLE(
+                1.0,
+                "mapping/fixed_output_alignment_rpy_deg must contain three finite values");
+            return false;
+        }
+
+        const double roll_rad = fixed_output_alignment_rpy_deg[0] * PI / 180.0;
+        const double pitch_rad = fixed_output_alignment_rpy_deg[1] * PI / 180.0;
+        const double yaw_rad = fixed_output_alignment_rpy_deg[2] * PI / 180.0;
+        output_alignment =
+            Eigen::AngleAxisd(yaw_rad, Eigen::Vector3d::UnitZ()).toRotationMatrix() *
+            Eigen::AngleAxisd(pitch_rad, Eigen::Vector3d::UnitY()).toRotationMatrix() *
+            Eigen::AngleAxisd(roll_rad, Eigen::Vector3d::UnitX()).toRotationMatrix();
+
+        const double fixed_tilt_deg =
+            std::acos(std::max(-1.0, std::min(1.0, output_alignment(2, 2)))) *
+            180.0 / PI;
+        const double orthogonality_error =
+            (output_alignment * output_alignment.transpose() -
+             Eigen::Matrix3d::Identity()).norm();
+        if (!output_alignment.allFinite() ||
+            fixed_tilt_deg > max_gravity_alignment_tilt_deg ||
+            orthogonality_error > 1e-8 ||
+            output_alignment.determinant() < 0.999999)
+        {
+            ROS_ERROR_THROTTLE(
+                1.0,
+                "Reject fixed output alignment: tilt=%.2f deg, limit=%.2f deg, "
+                "orthogonality_error=%g, det=%g",
+                fixed_tilt_deg, max_gravity_alignment_tilt_deg,
+                orthogonality_error, output_alignment.determinant());
+            output_alignment.setIdentity();
+            return false;
+        }
+
+        output_alignment_initialized = true;
+        ROS_INFO("Locked fixed RA-LIO output alignment: roll=%.3f, pitch=%.3f, "
+                 "yaw=%.3f deg",
+                 fixed_output_alignment_rpy_deg[0],
+                 fixed_output_alignment_rpy_deg[1],
+                 fixed_output_alignment_rpy_deg[2]);
+        return true;
+    }
+
+    if (output_alignment_mode != "auto" && output_alignment_mode != "gravity")
+    {
+        ROS_ERROR_THROTTLE(1.0,
+                           "Invalid mapping/output_alignment_mode '%s'; use auto, fixed, or disabled",
+                           output_alignment_mode.c_str());
+        return false;
     }
 
     const Eigen::Vector3d gravity = state_point.grav;
@@ -916,7 +977,17 @@ int main(int argc, char **argv)
     nh.param<int>("point_filter_num", p_pre->point_filter_num, 2);
     nh.param<bool>("feature_extract_enable", p_pre->feature_enabled, false);
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
-    nh.param<bool>("mapping/gravity_align_output", gravity_align_output, true);
+    // output_alignment_mode supersedes the legacy gravity_align_output boolean.
+    // Keeping the fallback lets older configuration files retain their behavior.
+    bool legacy_gravity_align_output = true;
+    nh.param<bool>("mapping/gravity_align_output",
+                   legacy_gravity_align_output, true);
+    output_alignment_mode = legacy_gravity_align_output ? "auto" : "disabled";
+    nh.param<string>("mapping/output_alignment_mode",
+                     output_alignment_mode, output_alignment_mode);
+    nh.param<vector<double>>("mapping/fixed_output_alignment_rpy_deg",
+                             fixed_output_alignment_rpy_deg,
+                             fixed_output_alignment_rpy_deg);
     nh.param<double>("mapping/imu_init_min_duration", imu_init_min_duration, 2.0);
     nh.param<double>("mapping/imu_init_max_acc_std_ratio",
                      imu_init_max_acc_std_ratio, 0.03);

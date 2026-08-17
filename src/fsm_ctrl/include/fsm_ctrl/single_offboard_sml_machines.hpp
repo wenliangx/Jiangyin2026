@@ -28,7 +28,7 @@ namespace single_sml {
   boost::sml::state<source_state> + boost::sml::event<OnCommand6> =           \
       boost::sml::state<SafeNoop>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnCommand7> =           \
-      boost::sml::state<SafeNoop>,                                            \
+      boost::sml::state<Px4Hover>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnCommand8> =           \
       boost::sml::state<SafeNoop>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand> = \
@@ -56,7 +56,7 @@ namespace single_sml {
   boost::sml::state<source_state> + boost::sml::event<OnCommand9> =           \
       boost::sml::state<Emergency>,                                           \
   boost::sml::state<source_state> + boost::sml::event<OnCommand7> =           \
-      boost::sml::state<SafeNoop>,                                            \
+      boost::sml::state<Px4Hover>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnCommand8> =           \
       boost::sml::state<SafeNoop>,                                            \
   boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand> = \
@@ -71,6 +71,8 @@ struct MissionMachine {
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
             (DisableCameras{}, TickLowerHover{}),
+        state<Px4Hover> + event<Tick> /
+            (DisableCameras{}, TickPx4Hover{}),
         state<SuperTrack> + event<Tick> /
             (EnableFrontCamera{}, TickSuperTrack{}),
         state<Landing> + event<Tick> /
@@ -81,6 +83,7 @@ struct MissionMachine {
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(Idle),
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(ArmOnly),
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(NmpcHover),
+        FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(Px4Hover),
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(SuperTrack),
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(Landing),
         FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(Emergency),
@@ -97,12 +100,14 @@ struct SegmentedMissionMachine {
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
             (EnableDownCamera{}, TickLowerHover{}),
+        state<Px4Hover> + event<Tick> /
+            (DisableCameras{}, TickPx4Hover{}),
         state<SuperSegment1> + event<Tick> /
             (EnableBothCameras{}, TickSuperSegment1{}),
         state<SuperSegment2> + event<Tick> /
             (EnableBothCameras{}, TickSuperSegment2{}),
         state<SuperSegment3> + event<Tick> /
-            (EnableDownCamera{}, TickClosedLoopLanding{}),
+            (EnableDownCamera{}, TickSuperSegment3{}),
         state<SuperSegment1> + event<OnTargetRecognized>
             [SuperSegmentComplete{}] /
             ResetSuperTrack{} = state<SuperSegment2>,
@@ -117,6 +122,7 @@ struct SegmentedMissionMachine {
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(Idle),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(ArmOnly),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(NmpcHover),
+        FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(Px4Hover),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(SuperSegment1),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(SuperSegment2),
         FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(SuperSegment3),

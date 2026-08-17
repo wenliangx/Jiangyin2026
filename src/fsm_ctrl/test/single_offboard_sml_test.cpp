@@ -228,7 +228,7 @@ TEST_F(Fixture, ActiveMachineMapsCommandsToSegmentedMissionStates) {
   EXPECT_TRUE(dispatcher.update(9));
   EXPECT_TRUE(sm.is(boost::sml::state<Emergency>));
   EXPECT_TRUE(dispatcher.update(7));
-  EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
+  EXPECT_TRUE(sm.is(boost::sml::state<Px4Hover>));
   EXPECT_TRUE(dispatcher.update(8));
   EXPECT_TRUE(sm.is(boost::sml::state<SafeNoop>));
   EXPECT_TRUE(dispatcher.update(42));
@@ -307,7 +307,7 @@ TEST_F(Fixture, ArmOnlyTickPublishesLowThrust) {
 }
 
 TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
-  for (const int command : {1, 2, 3, 4, 5, 6}) {
+  for (const int command : {1, 2, 3, 4, 5, 6, 7}) {
     SCOPED_TRACE(command);
     ClearOutputs();
     context.telemetry.mode = "MANUAL";
@@ -323,7 +323,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
     EXPECT_EQ("offboard", autopilot.calls[0]);
   }
 
-  for (const int command : {0, 7, 8, 9}) {
+  for (const int command : {0, 8, 9}) {
     SCOPED_TRACE(command);
     ClearOutputs();
     context.telemetry.mode = "MANUAL";
@@ -340,7 +340,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
 }
 
 TEST_F(Fixture, ActiveOffboardStatesDoNotRequestServicesWhenAlreadyReady) {
-  for (const int command : {1, 2, 3, 4, 5, 6}) {
+  for (const int command : {1, 2, 3, 4, 5, 6, 7}) {
     SCOPED_TRACE(command);
     ClearOutputs();
     SetOffboardAndArmed();
@@ -456,6 +456,23 @@ TEST_F(Fixture, FixedHoverUsesZeroBodyRateAndGravityFeedforward) {
     EXPECT_DOUBLE_EQ(0.0, reference.body_rate.z);
     EXPECT_DOUBLE_EQ(9.8015, reference.total_acceleration);
   }
+}
+
+TEST_F(Fixture, Px4HoverPublishesSameFixedTargetWithoutNmpc) {
+  SetOffboardAndArmed();
+  sm.process_event(OnCommand7{});
+  sm.process_event(Tick{});
+
+  ASSERT_EQ(1u, setpoint.positions.size());
+  EXPECT_DOUBLE_EQ(0.0, setpoint.positions[0].position.x);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.positions[0].position.y);
+  EXPECT_DOUBLE_EQ(0.6, setpoint.positions[0].position.z);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.positions[0].yaw);
+  EXPECT_EQ(0, nmpc.track_calls);
+  EXPECT_TRUE(setpoint.body_rates.empty());
+  EXPECT_TRUE(setpoint.attitudes.empty());
+  EXPECT_TRUE(setpoint.monitors.empty());
+  ExpectLatestCameraControl(false, false);
 }
 
 TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -650,6 +667,9 @@ TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {
 
   EXPECT_TRUE(dispatcher.update(5));
   EXPECT_TRUE(machine.is(boost::sml::state<SafeNoop>));
+
+  EXPECT_TRUE(dispatcher.update(7));
+  EXPECT_TRUE(machine.is(boost::sml::state<Px4Hover>));
 }
 
 TEST_F(Fixture, SegmentedMissionMachineMapsCommandsToSegmentsAndLanding) {
@@ -678,6 +698,9 @@ TEST_F(Fixture, SegmentedMissionMachineMapsCommandsToSegmentsAndLanding) {
   EXPECT_TRUE(dispatcher.update(6));
   EXPECT_TRUE(machine.is(boost::sml::state<Landing>));
   EXPECT_EQ(1, landing.resets);
+
+  EXPECT_TRUE(dispatcher.update(7));
+  EXPECT_TRUE(machine.is(boost::sml::state<Px4Hover>));
 }
 
 TEST_F(Fixture, SegmentedMissionPublishesCameraStateOnEveryTick) {
