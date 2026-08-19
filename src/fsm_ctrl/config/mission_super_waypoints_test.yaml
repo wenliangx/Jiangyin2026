@@ -5,12 +5,10 @@ frame_id: "world"
 segments:
   - name: "cmd3_segment_1"
     waypoints:
-      - {id: 0, x: 1.626286, y: -0.720195, z: 0.897105, mode: 2, is_map: 1, yaw: 1.588371, desired_speed: 0.000000}
+      - {id: 0, x: 1.255729, y: 0.816144, z: 0.002925, mode: 2, is_map: 1, yaw: 0.126554, desired_speed: 0.000000}
+      - {id: 1, x: 1.204341, y: 1.776063, z: 0.007074, mode: 2, is_map: 1, yaw: 1.580613, desired_speed: 0.000000}
+      - {id: 2, x: 0.010554, y: 1.330522, z: -0.000267, mode: 2, is_map: 1, yaw: -3.051462, desired_speed: 0.000000}
   - name: "cmd4_segment_2"
-    waypoints: 
-      - {id: 0, x: 2.789984, y: 0.125990, z: 1.067540, mode: 2, is_map: 1, yaw: 2.945361, desired_speed: 0.000000}
-      - {id: 1, x: 1.693458, y: 1.237434, z: 1.046806, mode: 2, is_map: 1, yaw: -1.698230, desired_speed: 0.000000}
+    waypoints: []
   - name: "cmd5_segment_3"
-    waypoints: 
-      - {id: 0, x: 0.327046, y: 0.153163, z: 0.888233, mode: 2, is_map: 1, yaw: -1.132040, desired_speed: 0.000000}
-      - {id: 1, x: 1.579308, y: -1.064747, z: 1.113209, mode: 2, is_map: 1, yaw: 0.071927, desired_speed: 0.000000}
+    waypoints: []
