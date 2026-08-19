@@ -1,0 +1,27 @@
+odom_topic: /Odometry
+cloud_topic: /cloud_registered
+global_odom_topic: /Odometry_map
+map_cloud_topic: /map_building_cloud
+state_topic: /map_frame_manager/state
+ready_topic: /map_frame_manager/ready
+
+map_frame: map
+local_frame: world
+body_frame: body
+
+# The vehicle must be stationary and face the desired map +X direction.
+auto_lock_origin: true
+stability_duration: 3.0
+stability_timeout: 30.0
+max_linear_speed: 0.05
+max_angular_speed: 0.03
+max_position_stddev: 0.03
+max_yaw_stddev: 0.0174533
+minimum_cloud_frames: 20
+
+map_leaf_size: 0.10
+compact_every_frames: 50
+map_output_directory: /tmp/jiangyin_map
+map_name: competition_map
+save_on_shutdown: true
+minimum_save_points: 1000

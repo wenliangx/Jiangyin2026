@@ -1,0 +1,19 @@
+<launch>
+  <arg name="output_directory" default="/tmp/jiangyin_map" />
+  <arg name="map_name" default="competition_map" />
+  <arg name="rviz" default="false" />
+  <arg name="use_sim_time" default="false" />
+
+  <include file="$(find ra_lio)/launch/mapping_mid360.launch">
+    <arg name="rviz" value="$(arg rviz)" />
+    <arg name="use_sim_time" value="$(arg use_sim_time)" />
+  </include>
+  <include file="$(find map_frame_manager)/launch/create_map.launch">
+    <arg name="output_directory" value="$(arg output_directory)" />
+    <arg name="map_name" value="$(arg map_name)" />
+    <arg name="odom_topic" value="/Odometry" />
+    <arg name="cloud_topic" value="/cloud_registered" />
+    <arg name="local_frame" value="world" />
+    <arg name="body_frame" value="body" />
+  </include>
+</launch>

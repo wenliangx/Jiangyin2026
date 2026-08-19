@@ -1,0 +1,18 @@
+<launch>
+  <!-- Point-LIO itself is started by sml-core-machine. -->
+  <arg name="map_file" />
+  <arg name="odom_topic" default="/aft_mapped_to_init" />
+  <arg name="cloud_topic" default="/cloud_registered" />
+  <arg name="local_frame" default="camera_init" />
+  <arg name="body_frame" default="body" />
+  <arg name="auto_initialize" default="true" />
+
+  <include file="$(find map_frame_manager)/launch/relocalize.launch">
+    <arg name="map_file" value="$(arg map_file)" />
+    <arg name="odom_topic" value="$(arg odom_topic)" />
+    <arg name="cloud_topic" value="$(arg cloud_topic)" />
+    <arg name="local_frame" value="$(arg local_frame)" />
+    <arg name="body_frame" value="$(arg body_frame)" />
+    <arg name="auto_initialize" value="$(arg auto_initialize)" />
+  </include>
+</launch>

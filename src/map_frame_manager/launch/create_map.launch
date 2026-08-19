@@ -1,0 +1,19 @@
+<launch>
+  <arg name="odom_topic" default="/Odometry" />
+  <arg name="cloud_topic" default="/cloud_registered" />
+  <arg name="local_frame" default="world" />
+  <arg name="body_frame" default="body" />
+  <arg name="output_directory" default="/tmp/jiangyin_map" />
+  <arg name="map_name" default="competition_map" />
+
+  <node pkg="map_frame_manager" type="map_origin_recorder_node"
+        name="map_frame_manager" output="screen" required="true">
+    <rosparam command="load" file="$(find map_frame_manager)/config/create_map.yaml" />
+    <param name="odom_topic" value="$(arg odom_topic)" />
+    <param name="cloud_topic" value="$(arg cloud_topic)" />
+    <param name="local_frame" value="$(arg local_frame)" />
+    <param name="body_frame" value="$(arg body_frame)" />
+    <param name="map_output_directory" value="$(arg output_directory)" />
+    <param name="map_name" value="$(arg map_name)" />
+  </node>
+</launch>

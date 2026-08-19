@@ -1,0 +1,18 @@
+<launch>
+  <!-- Start Point-LIO separately; replace defaults with sml-core-machine topics. -->
+  <arg name="odom_topic" default="/aft_mapped_to_init" />
+  <arg name="cloud_topic" default="/cloud_registered" />
+  <arg name="local_frame" default="camera_init" />
+  <arg name="body_frame" default="body" />
+  <arg name="output_directory" default="/tmp/jiangyin_map" />
+  <arg name="map_name" default="competition_map" />
+
+  <include file="$(find map_frame_manager)/launch/create_map.launch">
+    <arg name="odom_topic" value="$(arg odom_topic)" />
+    <arg name="cloud_topic" value="$(arg cloud_topic)" />
+    <arg name="local_frame" value="$(arg local_frame)" />
+    <arg name="body_frame" value="$(arg body_frame)" />
+    <arg name="output_directory" value="$(arg output_directory)" />
+    <arg name="map_name" value="$(arg map_name)" />
+  </include>
+</launch>

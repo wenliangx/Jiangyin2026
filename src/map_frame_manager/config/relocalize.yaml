@@ -1,0 +1,38 @@
+# Historical PCD. Points in the file are interpreted in a `pcd` frame first.
+map_file: ""
+
+# T_map_pcd = [x, y, z, roll, pitch, yaw], angles in radians.
+# Use this to move the competition origin and define the positive axis directions
+# without modifying the PCD file itself.
+map_transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+map_frame: map
+local_frame: world
+body_frame: body
+odom_topic: /Odometry
+cloud_topic: /cloud_registered
+initial_pose_topic: /initialpose
+global_odom_topic: /Odometry_map
+map_topic: /prior_map
+aligned_topic: /relocalization/aligned_cloud
+status_topic: /relocalization/initialized
+state_topic: /map_frame_manager/state
+fitness_topic: /map_frame_manager/fitness
+
+# false: wait for an RViz "2D Pose Estimate" message (recommended).
+# true: use initial_pose below as T_map_body automatically.
+auto_initialize: false
+initial_pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+map_leaf_size: 0.20
+scan_leaf_size: 0.15
+target_crop_radius: 30.0
+accumulate_frames: 8
+ndt_resolution: 1.0
+ndt_step_size: 0.1
+ndt_max_iterations: 40
+icp_max_correspondence: 0.8
+icp_max_iterations: 40
+max_fitness_score: 0.30
+max_translation_correction: 5.0
+max_yaw_correction: 0.785398
