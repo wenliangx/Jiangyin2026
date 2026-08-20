@@ -1,0 +1,13 @@
+<launch>
+  <arg name="input_pcd" />
+  <arg name="output_directory" default="/tmp/jiangyin_map" />
+  <arg name="map_name" default="competition_map" />
+
+  <node pkg="map_frame_manager" type="map_pcd_processor_node"
+        name="map_pcd_processor" output="screen">
+    <rosparam command="load" file="$(find map_frame_manager)/config/process_map.yaml" />
+    <param name="input_pcd" value="$(arg input_pcd)" />
+    <param name="output_directory" value="$(arg output_directory)" />
+    <param name="map_name" value="$(arg map_name)" />
+  </node>
+</launch>

@@ -38,6 +38,8 @@ namespace mission_planner {
         int cmd_type;
         double start_program_delay;
         string path_pub_topic, goal_pub_topic, odom_topic, waypoints_file_name,flag_goal_pub_topic,flag_state_pub_topic;
+        string relocalization_ready_topic;
+        bool require_relocalization_ready;
 
         vec_E<Vec3f> waypoints;
         vector<double> switch_dis_vec;
@@ -106,6 +108,9 @@ namespace mission_planner {
             loader.LoadParam("flag_goal_pub_topic", flag_goal_pub_topic, string("/planner/flag_goal"));
             loader.LoadParam("flag_state_pub_topic", flag_state_pub_topic, string("/planner/flag_state"));
             loader.LoadParam("odom_topic", odom_topic, string("/lidar_slam/odom"));
+            loader.LoadParam("require_relocalization_ready", require_relocalization_ready, false);
+            loader.LoadParam("relocalization_ready_topic", relocalization_ready_topic,
+                             string("/relocalization/initialized"));
 //            loader.LoadParam("path_pub_topic", path_pub_topic, string("/planner/path_cmd"));
 //            loader.LoadParam("waypoints_file_name", waypoints_file_name, string("a_working_waypoints.txt"));
 

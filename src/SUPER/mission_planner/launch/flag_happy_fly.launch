@@ -1,10 +1,14 @@
 <launch>
+    <arg name="static_map_file" default="" />
+    <arg name="require_relocalization_ready" default="false" />
+    <arg name="relocalization_ready_topic" default="/relocalization/initialized" />
    
     <node pkg="super_planner" name="fsm_node" type="fsm_node" output="screen">
         <!--     1. use absolute path -->
         <!--         <param name="config_path" value="" type="string"></param> -->
         <!--     2. use file name in super_planner/config/... -->
         <param name="config_name" value="flag.yaml" type="string"></param>
+        <param name="static_map_file" value="$(arg static_map_file)" type="string" />
     </node>
    
     <node pkg="mission_planner" name="flag_waypoint_mission" type="flag_waypoint_mission" output="screen">
@@ -12,6 +16,10 @@
         <!--         <param name="config_path" value="" type="string"></param> -->
         <!--     2. use file name in super_planner/config/... -->
         <param name="data_name" value="flag_test.txt" type="string"></param>
+        <param name="require_relocalization_ready"
+               value="$(arg require_relocalization_ready)" type="bool" />
+        <param name="relocalization_ready_topic"
+               value="$(arg relocalization_ready_topic)" type="string" />
     </node>
 
     <!--     click_demo_high_speed.launch -->

@@ -1,5 +1,8 @@
 # 永久地图创建与重定位运行指南
 
+手举建图、人员轨迹清理、CloudCompare 复核和 SUPER 静态底图的完整流程见
+`docs/competition_map_workflow.md`。
+
 ## 1. 构建
 
 `map_frame_manager` 是标准 catkin 包：

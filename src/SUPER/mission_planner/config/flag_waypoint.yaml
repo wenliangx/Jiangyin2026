@@ -2,6 +2,8 @@ goal_pub_topic: "/planning/click_goal"
 flag_goal_pub_topic: "/super/flag_goal"
 flag_state_pub_topic: "/super/flag_state"
 odom_topic: "/Odometry"
+require_relocalization_ready: false
+relocalization_ready_topic: "/relocalization/initialized"
 # odom_topic: "/lidar_slam/odom"
 # odom_topic: "/mavros/local_position/odom"
 

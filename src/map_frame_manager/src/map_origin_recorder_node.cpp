@@ -11,10 +11,12 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <boost/filesystem.hpp>
 #include <Eigen/Geometry>
 #include <nav_msgs/Odometry.h>
+#include <pcl/common/point_tests.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
@@ -75,7 +77,8 @@ geometry_msgs::Pose matrixPose(const Eigen::Matrix4f& transform) {
 
 class MapOriginRecorder {
  public:
-  MapOriginRecorder() : nh_(), pnh_("~"), accumulated_(new Cloud) {
+  MapOriginRecorder()
+      : nh_(), pnh_("~"), accumulated_(new Cloud), raw_accumulated_(new Cloud) {
     loadParameters();
     state_pub_ = nh_.advertise<std_msgs::String>(state_topic_, 1, true);
     ready_pub_ = nh_.advertise<std_msgs::Bool>(ready_topic_, 1, true);
@@ -124,6 +127,19 @@ class MapOriginRecorder {
     pnh_.param("minimum_save_points", minimum_save_points_, 1000);
     pnh_.param("compact_every_frames", compact_every_frames_, 50);
     pnh_.param("map_leaf_size", map_leaf_size_, 0.10);
+    pnh_.param("handheld_mapping", handheld_mapping_, false);
+    pnh_.param("operator_exclusion/enabled", operator_exclusion_enabled_, true);
+    pnh_.param("operator_exclusion/max_odom_age", operator_max_odom_age_, 0.20);
+    std::vector<double> exclusion_min{-0.8, -0.8, -2.0};
+    std::vector<double> exclusion_max{0.8, 0.8, -0.15};
+    pnh_.getParam("operator_exclusion/min", exclusion_min);
+    pnh_.getParam("operator_exclusion/max", exclusion_max);
+    if (exclusion_min.size() == 3 && exclusion_max.size() == 3) {
+      operator_min_ = Eigen::Vector3f(exclusion_min[0], exclusion_min[1], exclusion_min[2]);
+      operator_max_ = Eigen::Vector3f(exclusion_max[0], exclusion_max[1], exclusion_max[2]);
+    } else {
+      ROS_WARN("Invalid operator exclusion bounds; using defaults");
+    }
   }
 
   bool validFrame(const std::string& actual, const std::string& expected,
@@ -176,8 +192,34 @@ class MapOriginRecorder {
     std::lock_guard<std::mutex> lock(mutex_);
     ++cloud_frames_;
     if (!origin_locked_) return;
+    Cloud raw_transformed;
+    pcl::transformPointCloud(cloud, raw_transformed, map_from_local_);
+    *raw_accumulated_ += raw_transformed;
+
+    Cloud filtered_local;
+    const double odom_age = std::abs((msg->header.stamp - latest_odom_.header.stamp).toSec());
+    if (handheld_mapping_ && operator_exclusion_enabled_ &&
+        (!have_odom_ || odom_age > operator_max_odom_age_)) {
+      ROS_WARN_THROTTLE(2.0,
+                        "Skipping handheld working-map frame: odometry age %.3f s",
+                        odom_age);
+    } else if (handheld_mapping_ && operator_exclusion_enabled_) {
+      const Eigen::Matrix4f body_from_local = poseMatrix(latest_odom_.pose.pose).inverse();
+      filtered_local.reserve(cloud.size());
+      for (const Point& point : cloud.points) {
+        if (!pcl::isFinite(point)) continue;
+        const Eigen::Vector4f local(point.x, point.y, point.z, 1.0f);
+        const Eigen::Vector3f body = (body_from_local * local).head<3>();
+        const bool is_operator =
+            (body.array() >= operator_min_.array()).all() &&
+            (body.array() <= operator_max_.array()).all();
+        if (!is_operator) filtered_local.push_back(point);
+      }
+    } else {
+      filtered_local = cloud;
+    }
     Cloud transformed;
-    pcl::transformPointCloud(cloud, transformed, map_from_local_);
+    pcl::transformPointCloud(filtered_local, transformed, map_from_local_);
     *accumulated_ += transformed;
     if (compact_every_frames_ > 0 && cloud_frames_ % compact_every_frames_ == 0) {
       Cloud::Ptr compacted(new Cloud);
@@ -186,6 +228,10 @@ class MapOriginRecorder {
       voxel.setInputCloud(accumulated_);
       voxel.filter(*compacted);
       accumulated_.swap(compacted);
+      Cloud::Ptr raw_compacted(new Cloud);
+      voxel.setInputCloud(raw_accumulated_);
+      voxel.filter(*raw_compacted);
+      raw_accumulated_.swap(raw_compacted);
     }
     saved_ = false;
     setStateLocked("MAPPING", true);
@@ -319,6 +365,8 @@ class MapOriginRecorder {
     const std::string base = output_directory_ + "/" + map_name_;
     const std::string pcd_tmp = base + ".pcd.tmp";
     const std::string pcd_path = base + ".pcd";
+    const std::string raw_pcd_tmp = base + "_raw.pcd.tmp";
+    const std::string raw_pcd_path = base + "_raw.pcd";
     const std::string yaml_tmp = base + ".yaml.tmp";
     const std::string yaml_path = base + ".yaml";
     if (pcl::io::savePCDFileBinary(pcd_tmp, filtered) != 0) {
@@ -328,6 +376,15 @@ class MapOriginRecorder {
     }
     if (std::rename(pcd_tmp.c_str(), pcd_path.c_str()) != 0) {
       *message = "PCD atomic rename failed";
+      setStateLocked("FAILED_SAVE", false);
+      return false;
+    }
+    Cloud raw_filtered;
+    voxel.setInputCloud(raw_accumulated_);
+    voxel.filter(raw_filtered);
+    if (pcl::io::savePCDFileBinary(raw_pcd_tmp, raw_filtered) != 0 ||
+        std::rename(raw_pcd_tmp.c_str(), raw_pcd_path.c_str()) != 0) {
+      *message = "Raw PCD write failed";
       setStateLocked("FAILED_SAVE", false);
       return false;
     }
@@ -343,7 +400,9 @@ class MapOriginRecorder {
          << "format_version: 1\n"
          << "map_id: " << map_name_ << "\n"
          << "pcd_file: " << map_name_ << ".pcd\n"
+         << "raw_pcd_file: " << map_name_ << "_raw.pcd\n"
          << "point_count: " << filtered.size() << "\n"
+         << "raw_point_count: " << raw_filtered.size() << "\n"
          << "frame_convention: ENU\n"
          << "origin_definition: initial_vehicle_position_and_heading\n"
          << "map_frame: " << map_frame_ << "\n"
@@ -354,7 +413,14 @@ class MapOriginRecorder {
          << ", " << transform.position.z << "]\n"
          << "  quaternion: [" << transform.orientation.x << ", " << transform.orientation.y
          << ", " << transform.orientation.z << ", " << transform.orientation.w << "]\n"
-         << "map_leaf_size: " << map_leaf_size_ << "\n";
+         << "map_leaf_size: " << map_leaf_size_ << "\n"
+         << "handheld_mapping: " << (handheld_mapping_ ? "true" : "false") << "\n"
+         << "operator_exclusion_enabled: "
+         << ((handheld_mapping_ && operator_exclusion_enabled_) ? "true" : "false") << "\n"
+         << "operator_exclusion_min: [" << operator_min_.x() << ", "
+         << operator_min_.y() << ", " << operator_min_.z() << "]\n"
+         << "operator_exclusion_max: [" << operator_max_.x() << ", "
+         << operator_max_.y() << ", " << operator_max_.z() << "]\n";
     yaml.close();
     if (!yaml || std::rename(yaml_tmp.c_str(), yaml_path.c_str()) != 0) {
       *message = "Metadata finalize failed";
@@ -377,6 +443,7 @@ class MapOriginRecorder {
     cloud_frames_ = 0;
     samples_.clear();
     accumulated_->clear();
+    raw_accumulated_->clear();
     start_time_ = ros::Time::now();
     setStateLocked("WAITING_FOR_LIO", false);
     ROS_WARN_STREAM("Map origin reset: " << reason);
@@ -407,6 +474,7 @@ class MapOriginRecorder {
   std::mutex mutex_;
   std::deque<PoseSample> samples_;
   Cloud::Ptr accumulated_;
+  Cloud::Ptr raw_accumulated_;
   nav_msgs::Odometry latest_odom_;
   Eigen::Matrix4f map_from_local_ = Eigen::Matrix4f::Identity();
   ros::Time start_time_;
@@ -414,11 +482,15 @@ class MapOriginRecorder {
   std::string state_topic_, ready_topic_, map_frame_, local_frame_, body_frame_;
   std::string output_directory_, map_name_, state_;
   bool auto_lock_origin_ = true, save_on_shutdown_ = true;
+  bool handheld_mapping_ = false, operator_exclusion_enabled_ = true;
   bool have_odom_ = false, origin_locked_ = false, saved_ = false, ready_ = false;
   double stability_duration_ = 3.0, stability_timeout_ = 30.0;
   double max_linear_speed_ = 0.05, max_angular_speed_ = 0.03;
   double max_position_stddev_ = 0.03, max_yaw_stddev_ = 0.0174533;
   double map_leaf_size_ = 0.10;
+  double operator_max_odom_age_ = 0.20;
+  Eigen::Vector3f operator_min_{-0.8f, -0.8f, -2.0f};
+  Eigen::Vector3f operator_max_{0.8f, 0.8f, -0.15f};
   int minimum_cloud_frames_ = 20, minimum_save_points_ = 1000, cloud_frames_ = 0;
   int compact_every_frames_ = 50;
 };

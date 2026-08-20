@@ -294,6 +294,12 @@ namespace rog_map {
 
         ROGMapROS(const ros::NodeHandle& nh, const std::string& cfg_path) :nh_(nh){
             cfg_ = rog_map::Config(cfg_path);
+            std::string static_map_file;
+            if (nh_.getParam("static_map_file", static_map_file) && !static_map_file.empty()) {
+                cfg_.load_pcd_en = true;
+                cfg_.pcd_name = static_map_file;
+                ROS_INFO_STREAM("[ROGMap] Static map override: " << cfg_.pcd_name);
+            }
             init();
             /// Initialize visualization module
             if (cfg_.visualization_en) {

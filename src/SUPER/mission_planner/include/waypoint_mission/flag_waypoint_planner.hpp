@@ -12,6 +12,7 @@
 #include "super_msgs/PositionCommand.h"
 #include "super_msgs/Flag.h"
 #include "mavros_msgs/RCIn.h"
+#include "std_msgs/Bool.h"
 #include "Eigen/Core"
 #include "utils/eigen_alias.hpp"
 #include "utils/color_msg_utils.hpp"
@@ -34,10 +35,18 @@ namespace mission_planner {
         bool new_goal{true};
         double odom_rcv_time{0};
         ros::Publisher goal_pub_, path_pub_, mkr_pub_,flag_goal_pub_,flag_state_pub_;
-        ros::Subscriber click_sub_, mavros_sub_, odom_sub_, flag_sub_;
+        ros::Subscriber click_sub_, mavros_sub_, odom_sub_, flag_sub_, relocalization_ready_sub_;
         ros::Timer goal_pub_timer_;
         double system_start_time{0};
         bool trigger_once{false};
+        bool relocalization_ready{false};
+
+        void RelocalizationReadyCallback(const std_msgs::BoolConstPtr &msg) {
+            relocalization_ready = msg->data;
+            if (!relocalization_ready) {
+                ROS_WARN_THROTTLE(2.0, "[MISSION] Relocalization is not ready; holding goals");
+            }
+        }
 
 
         void OdomCallback(const nav_msgs::OdometryConstPtr &msg) {
@@ -128,6 +137,9 @@ namespace mission_planner {
 
             if(cfg_.waypoints.size()==0)
                 return;
+            if (cfg_.require_relocalization_ready && !relocalization_ready) {
+                return;
+            }
             // std::cout<<"[MISSION DEBUG]first point:"<<cfg_.waypoints[0]<<std::endl;
             // std::cout<<"[MISSION DEBUG]waypoints size: "<<cfg_.waypoints.size()<<"and  wyapoint count: "<<waypoint_counter<<std::endl;
             // if (cfg_.start_trigger_type == 2 && ! trigger_once) {
@@ -230,6 +242,10 @@ namespace mission_planner {
                 cout << " -- [MissionPlanner] Load data by file name: " << data_path << endl;
             }
             cfg_ = MissionConfig(cfg_path);
+            nh_.param("require_relocalization_ready", cfg_.require_relocalization_ready,
+                      cfg_.require_relocalization_ready);
+            nh_.param("relocalization_ready_topic", cfg_.relocalization_ready_topic,
+                      cfg_.relocalization_ready_topic);
 
             // cfg_.LoadWaypoint(data_path);
 
@@ -251,6 +267,15 @@ namespace mission_planner {
             flag_goal_pub_ = nh_.advertise<super_msgs::Flag>(cfg_.flag_goal_pub_topic, 10);
             flag_state_pub_ = nh_.advertise<super_msgs::Flag>(cfg_.flag_state_pub_topic, 10);
             flag_sub_ = nh_.subscribe("/super/flag_waypoint", 100, &WaypointPlanner::FlagCallback, this);
+            if (cfg_.require_relocalization_ready) {
+                relocalization_ready_sub_ = nh_.subscribe(
+                    cfg_.relocalization_ready_topic, 1,
+                    &WaypointPlanner::RelocalizationReadyCallback, this);
+                ROS_INFO_STREAM("[MISSION] Waiting for relocalization readiness on "
+                                << cfg_.relocalization_ready_topic);
+            } else {
+                relocalization_ready = true;
+            }
 
         }
 
