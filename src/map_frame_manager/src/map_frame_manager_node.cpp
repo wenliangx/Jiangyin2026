@@ -19,6 +19,7 @@
 
 #include <Eigen/Geometry>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/crop_box.h>
@@ -118,6 +119,7 @@ class MapRelocalization {
     status_pub_ = nh_.advertise<std_msgs::Bool>(status_topic_, 1, true);
     state_pub_ = nh_.advertise<std_msgs::String>(state_topic_, 1, true);
     fitness_pub_ = nh_.advertise<std_msgs::Float64>(fitness_topic_, 1, true);
+    transform_pub_ = nh_.advertise<geometry_msgs::TransformStamped>(transform_topic_, 1, true);
     odom_sub_ = nh_.subscribe(odom_topic_, 50, &MapRelocalization::odomCallback, this);
     cloud_sub_ = nh_.subscribe(cloud_topic_, 10, &MapRelocalization::cloudCallback, this);
     initial_pose_sub_ = nh_.subscribe(initial_pose_topic_, 1,
@@ -151,6 +153,8 @@ class MapRelocalization {
     pnh_.param<std::string>("status_topic", status_topic_, "/relocalization/initialized");
     pnh_.param<std::string>("state_topic", state_topic_, "/map_frame_manager/state");
     pnh_.param<std::string>("fitness_topic", fitness_topic_, "/map_frame_manager/fitness");
+    pnh_.param<std::string>("transform_topic", transform_topic_,
+                            "/relocalization/world_from_lio_local");
     pnh_.param("map_leaf_size", map_leaf_size_, 0.20);
     pnh_.param("scan_leaf_size", scan_leaf_size_, 0.15);
     pnh_.param("target_crop_radius", target_crop_radius_, 30.0);
@@ -382,6 +386,7 @@ class MapRelocalization {
       map_from_world_ = result;
       initialized_ = true;
       accumulated_.clear();
+      publishRelocalizationTransformLocked(stamp);
       publishGlobalOdomLocked(latest_odom_);
     }
     sensor_msgs::PointCloud2 aligned_msg;
@@ -449,11 +454,24 @@ class MapRelocalization {
         tf_map_world, local.header.stamp, map_frame_, local_frame_));
   }
 
+  void publishRelocalizationTransformLocked(const ros::Time& stamp) {
+    geometry_msgs::TransformStamped msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = map_frame_;
+    msg.child_frame_id = local_frame_;
+    const geometry_msgs::Pose pose = matrixPose(map_from_world_);
+    msg.transform.translation.x = pose.position.x;
+    msg.transform.translation.y = pose.position.y;
+    msg.transform.translation.z = pose.position.z;
+    msg.transform.rotation = pose.orientation;
+    transform_pub_.publish(msg);
+  }
+
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
   ros::Subscriber odom_sub_, cloud_sub_, initial_pose_sub_;
   ros::Publisher map_pub_, aligned_pub_, global_odom_pub_, original_odom_pub_;
-  ros::Publisher status_pub_, state_pub_, fitness_pub_;
+  ros::Publisher status_pub_, state_pub_, fitness_pub_, transform_pub_;
   ros::ServiceServer relocalize_srv_, reset_srv_;
   tf::TransformBroadcaster tf_broadcaster_;
   std::mutex mutex_;
@@ -470,6 +488,7 @@ class MapRelocalization {
   std::string odom_topic_, cloud_topic_, initial_pose_topic_, global_odom_topic_;
   std::string original_odom_topic_;
   std::string map_topic_, aligned_topic_, status_topic_, state_topic_, fitness_topic_;
+  std::string transform_topic_;
   double map_leaf_size_, scan_leaf_size_, target_crop_radius_, ndt_resolution_, ndt_step_size_;
   double icp_max_correspondence_, max_fitness_score_;
   double max_translation_correction_, max_yaw_correction_;

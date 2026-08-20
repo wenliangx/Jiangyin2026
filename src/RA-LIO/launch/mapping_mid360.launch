@@ -25,11 +25,13 @@
 	<!-- === 启动参数 === -->
 	<arg name="rviz" default="false" />         <!-- 是否启动 RViz 可视化（当前注释掉未使用） -->
 	<arg name="use_sim_time" default="false" /> <!-- 是否使用仿真时间（播放rosbag时设为true） -->
+	<arg name="global_output_en" default="false" />
 
 	<arg name="drone_odom_topic" default="/drone/odometry" />
 
 	<!-- === 从 YAML 文件加载参数 === -->
 	<rosparam command="load" file="$(find ra_lio)/config/mid360.yaml" />
+	<param name="relocalization/global_output_en" value="$(arg global_output_en)" />
 
 	<!-- === 额外参数（覆盖或补充 YAML 中的配置） === -->
 	<param name="feature_extract_enable" type="bool" value="0"/>

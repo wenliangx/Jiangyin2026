@@ -75,6 +75,15 @@ publish:
     scan_bodyframe_pub_en: true  # 是否额外发布 IMU坐标系(Body系)的点云
                                  # true: 同时发布 /cloud_registered_body 话题
 
+# === 已有地图重定位后的统一世界系输出 ===
+relocalization:
+    global_output_en: false      # 默认保持旧版 RA-LIO 行为
+    local_frame: lio_local       # IEKF/ikd-Tree 内部局部坐标系
+    global_frame: world          # 对外永久坐标系；不占用 map
+    transform_topic: /relocalization/world_from_lio_local
+    ready_topic: /relocalization/initialized
+    allow_transform_update_after_ready: false
+
 # === PCD 文件保存 ===
 pcd_save:
     pcd_save_en: false           # 是否保存点云到PCD文件

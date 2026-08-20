@@ -75,7 +75,9 @@ auto_initialize: true
 initial_pose: [x, y, z, roll, pitch, yaw]
 ```
 
-由本系统创建的 PCD 已经位于永久 `lio_global` 坐标，不再需要手动转换。
+由本系统创建的 PCD 已经位于永久场地坐标，不再需要手动转换。
+创建地图时该坐标在文件中记为 `lio_global`；重定位运行时，同一组
+坐标数值对外使用 `world` frame。
 `map` 坐标系不由本模块发布，可继续留给其他模块使用：
 
 ```yaml
@@ -90,7 +92,8 @@ roslaunch map_frame_manager relocalize_ra_lio.launch \
   rviz:=true
 ```
 
-若现有下游节点只能订阅 RA-LIO 原来的 `/Odometry`，可开启兼容开关：
+若要让现有控制、EGO 和 SUPER 直接使用重定位后的永久 `world`，开启统一全局
+输出开关：
 
 ```bash
 roslaunch map_frame_manager relocalize_ra_lio.launch \
@@ -98,10 +101,33 @@ roslaunch map_frame_manager relocalize_ra_lio.launch \
   publish_to_original_odom_topic:=true
 ```
 
-此时 wrapper 会把 RA-LIO 的原始局部里程计重映射到 `/Odometry_local`，再将其
-原样转发到 `/Odometry`。因此 `/Odometry` 仍是 `world -> body`，坐标轴、数值和
-连续性与原始 RA-LIO 一致。全局重定位结果始终单独发布到
-`/Odometry_lio_global`，不会覆盖原始坐标语义。
+此时 RA-LIO 的 IEKF 和 ikd-Tree 仍在 `lio_local` 内运行，并持续提供内部调试
+话题：
+
+```text
+/Odometry_local           lio_local -> body
+/cloud_registered_local   lio_local 点云
+/Laser_map_local          lio_local 地图
+/path_local               lio_local 路径
+```
+
+重定位成功并进入 `READY` 后，RA-LIO 发布层统一应用 `world -> lio_local`
+变换，对外提供：
+
+```text
+/Odometry                 world -> body
+/cloud_registered         world 点云
+/Laser_map                world 地图
+/path                     world 路径
+```
+
+因此现有下游话题名不需要修改，且里程计、点云和轨迹不会混用坐标系。`map`
+坐标系不由此流程占用。`/Odometry_lio_global` 作为 map_frame_manager 的独立校验
+输出保留，其数值应与公共 `/Odometry` 一致。
+
+全局输出模式下，RA-LIO 内置的 PCD 保存仍保存 `lio_local` 数值。
+需要可复用的永久地图时，继续使用 `map_frame_manager` 的
+`/map_frame_manager/save_map` 服务。
 
 Point-LIO：
 
@@ -128,10 +154,12 @@ roslaunch map_frame_manager relocalize_point_lio.launch \
 禁止让 `odom_topic` 与兼容输出话题相同；节点会主动拒绝这种配置，避免订阅自身
 输出形成反馈。
 
-节点积累点云后依次执行 NDT 和 ICP。成功输出：
+节点积累点云后依次执行 NDT 和 ICP。RA-LIO 全局输出模式成功后输出：
 
-- TF `lio_global -> local_frame`；
+- TF `world -> lio_local`；
+- `/Odometry` 与 `/cloud_registered`（永久 `world`）；
 - `/Odometry_lio_global`；
+- `/relocalization/world_from_lio_local`；
 - `/prior_map`；
 - `/relocalization/aligned_cloud`；
 - `/relocalization/initialized = true`；
@@ -162,13 +190,14 @@ registered cloud 必须真正转换到了 `local_frame`，不能只修改消息�
 
 ## 5. 飞控接入
 
-PX4 estimator 和现有局部控制链继续使用 `world` 系的 `/Odometry`。永久地图、
-永久航点或全局规划使用 `/Odometry_lio_global`：
+开启 RA-LIO 统一全局输出后，PX4 estimator、现有控制链、EGO 与 SUPER 可继续
+使用原话题 `/Odometry` 和 `/cloud_registered`，二者均为永久 `world`。必须在
+以下条件全部满足后才允许解锁：
 
 1. `/relocalization/initialized` 为 true；
 2. aligned cloud 与 prior map 重合；
-3. 飞机静止时 `/Odometry_lio_global` 没有跳变；
-4. `lio_global -> local_frame` 保持固定；
+3. 飞机静止时 `/Odometry` 与 `/Odometry_lio_global` 没有跳变；
+4. `world -> lio_local` 保持固定；
 5. 重复启动的位置和 yaw 满足精度要求。
 
 自动飞行必须由 ready 状态门控，任何 `WAITING`、`MATCHING` 或 `FAILED` 状态均

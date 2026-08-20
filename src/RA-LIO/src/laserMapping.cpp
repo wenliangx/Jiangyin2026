@@ -37,6 +37,9 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
 #include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <std_msgs/Bool.h>
+#include <pcl/common/transforms.h>
 
 #include <livox_ros_driver2/CustomMsg.h>
 #include "preprocess.h"
@@ -88,6 +91,17 @@ bool lidar_pushed, flg_first_scan = true, flg_exit = false, flg_EKF_inited;
 bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
 bool indoor_env = false;                  // 室内环境标志
 
+// Optional global-output layer. The estimator and ikd-Tree always stay in
+// lio_local; only published messages are transformed into the permanent world.
+bool global_output_en = false, global_output_ready = false;
+bool allow_global_transform_update = false, have_global_transform = false;
+bool global_transform_locked = false;
+string local_output_frame = "lio_local", global_output_frame = "world";
+string relocalization_transform_topic = "/relocalization/world_from_lio_local";
+string relocalization_ready_topic = "/relocalization/initialized";
+Eigen::Matrix4d global_from_local = Eigen::Matrix4d::Identity();
+mutex mtx_global_output;
+
 // === 数据和地图容器 ===
 vector<BoxPointType> cub_needrm;          // 需要从ikd-Tree中删除的局部地图区域
 vector<PointVector> Nearest_Points;       // 每个特征点的最近邻点集合
@@ -136,6 +150,74 @@ geometry_msgs::Point p1,p2;             // 线段的起点和终点（未使用�
 // === 预处理和IMU处理模块 ===
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu1(new ImuProcess());
+
+void relocalization_transform_cb(const geometry_msgs::TransformStamped::ConstPtr &msg)
+{
+    if (!global_output_en || msg->header.frame_id != global_output_frame ||
+        msg->child_frame_id != local_output_frame)
+    {
+        ROS_WARN_THROTTLE(2.0, "Ignoring relocalization transform %s -> %s; expected %s -> %s",
+                          msg->header.frame_id.c_str(), msg->child_frame_id.c_str(),
+                          global_output_frame.c_str(), local_output_frame.c_str());
+        return;
+    }
+    Eigen::Quaterniond q(msg->transform.rotation.w, msg->transform.rotation.x,
+                         msg->transform.rotation.y, msg->transform.rotation.z);
+    if (!std::isfinite(q.norm()) || q.norm() < 1e-12) return;
+    q.normalize();
+    std::lock_guard<mutex> lock(mtx_global_output);
+    if (global_transform_locked && !allow_global_transform_update)
+    {
+        ROS_WARN_THROTTLE(2.0, "Ignoring transform update after global output became ready");
+        return;
+    }
+    global_from_local.setIdentity();
+    global_from_local.block<3, 3>(0, 0) = q.toRotationMatrix();
+    global_from_local(0, 3) = msg->transform.translation.x;
+    global_from_local(1, 3) = msg->transform.translation.y;
+    global_from_local(2, 3) = msg->transform.translation.z;
+    have_global_transform = true;
+}
+
+void relocalization_ready_cb(const std_msgs::Bool::ConstPtr &msg)
+{
+    std::lock_guard<mutex> lock(mtx_global_output);
+    global_output_ready = msg->data && have_global_transform;
+    if (global_output_ready) global_transform_locked = true;
+}
+
+bool global_transform_snapshot(Eigen::Matrix4d &transform)
+{
+    std::lock_guard<mutex> lock(mtx_global_output);
+    if (!global_output_en || !global_output_ready || !have_global_transform) return false;
+    transform = global_from_local;
+    return true;
+}
+
+geometry_msgs::Pose transform_pose(const geometry_msgs::Pose &local,
+                                   const Eigen::Matrix4d &transform)
+{
+    Eigen::Quaterniond q_local(local.orientation.w, local.orientation.x,
+                               local.orientation.y, local.orientation.z);
+    q_local.normalize();
+    Eigen::Matrix4d local_pose = Eigen::Matrix4d::Identity();
+    local_pose.block<3, 3>(0, 0) = q_local.toRotationMatrix();
+    local_pose(0, 3) = local.position.x;
+    local_pose(1, 3) = local.position.y;
+    local_pose(2, 3) = local.position.z;
+    const Eigen::Matrix4d global_pose = transform * local_pose;
+    geometry_msgs::Pose result;
+    result.position.x = global_pose(0, 3);
+    result.position.y = global_pose(1, 3);
+    result.position.z = global_pose(2, 3);
+    Eigen::Quaterniond q_global(global_pose.block<3, 3>(0, 0));
+    q_global.normalize();
+    result.orientation.x = q_global.x();
+    result.orientation.y = q_global.y();
+    result.orientation.z = q_global.z();
+    result.orientation.w = q_global.w();
+    return result;
+}
 
 // === 信号处理函数 ===
 // 捕获Ctrl+C等终止信号，安全退出程序
@@ -534,7 +616,8 @@ void map_incremental()
 PointCloudXYZI::Ptr pcl_wait_pub(new PointCloudXYZI(500000, 1));  // 点云发布缓存
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());           // PCD保存缓存
 
-void publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
+void publish_frame_world(const ros::Publisher &pubLaserCloudLocal,
+                         const ros::Publisher &pubLaserCloudGlobal)
 {
     if (scan_pub_en)
     {
@@ -552,8 +635,18 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
         sensor_msgs::PointCloud2 laserCloudmsg;
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-        laserCloudmsg.header.frame_id = "world";
-        pubLaserCloudFull_.publish(laserCloudmsg);
+        laserCloudmsg.header.frame_id = global_output_en ? local_output_frame : "world";
+        pubLaserCloudLocal.publish(laserCloudmsg);
+        Eigen::Matrix4d transform;
+        if (global_transform_snapshot(transform))
+        {
+            PointCloudXYZI global_cloud;
+            pcl::transformPointCloud(*laserCloudWorld, global_cloud, transform.cast<float>());
+            pcl::toROSMsg(global_cloud, laserCloudmsg);
+            laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+            laserCloudmsg.header.frame_id = global_output_frame;
+            pubLaserCloudGlobal.publish(laserCloudmsg);
+        }
         publish_count -= PUBFRAME_PERIOD;
     }
 
@@ -620,13 +713,24 @@ void publish_frame_lidar(const ros::Publisher &pubLaserCloudFull_lidar)
 }
 
 // === publish_map：发布当前全局地图（ikd-Tree展平后的点云） ===
-void publish_map(const ros::Publisher &pubLaserCloudMap)
+void publish_map(const ros::Publisher &pubLaserCloudMapLocal,
+                 const ros::Publisher &pubLaserCloudMapGlobal)
 {
     sensor_msgs::PointCloud2 laserCloudMap;
     pcl::toROSMsg(*featsFromMap, laserCloudMap);
     laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
-    laserCloudMap.header.frame_id = "world";
-    pubLaserCloudMap.publish(laserCloudMap);
+    laserCloudMap.header.frame_id = global_output_en ? local_output_frame : "world";
+    pubLaserCloudMapLocal.publish(laserCloudMap);
+    Eigen::Matrix4d transform;
+    if (global_transform_snapshot(transform))
+    {
+        PointCloudXYZI global_map;
+        pcl::transformPointCloud(*featsFromMap, global_map, transform.cast<float>());
+        pcl::toROSMsg(global_map, laserCloudMap);
+        laserCloudMap.header.stamp = ros::Time().fromSec(lidar_end_time);
+        laserCloudMap.header.frame_id = global_output_frame;
+        pubLaserCloudMapGlobal.publish(laserCloudMap);
+    }
 }
 
 // === set_posestamp：设置里程计消息中的位置和姿态 ===
@@ -715,15 +819,14 @@ void set_pathstamp(T &out)
 // 功能：
 //   1. 发布Odometry消息（位置、姿态、线速度、协方差）
 //   2. 发布TF变换（world -> camera_init -> body 的坐标变换链）
-void publish_odometry(const ros::Publisher &pubOdomAftMapped)
+void publish_odometry(const ros::Publisher &pubOdomLocal,
+                      const ros::Publisher &pubOdomGlobal)
 {
-    odomAftMapped.header.frame_id = "world";
+    odomAftMapped.header.frame_id = global_output_en ? local_output_frame : "world";
     odomAftMapped.child_frame_id = "body";
     odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);
     set_posestamp(odomAftMapped.pose);      // 设置位置和姿态（带补偿）
     set_twiststamp(odomAftMapped.twist);    // 设置线速度（带补偿）
-
-    pubOdomAftMapped.publish(odomAftMapped);
 
     // --- 填充协方差矩阵 ---
     // 从EKF协方差P中提取位置和姿态的交叉协方差（6x6块）
@@ -737,6 +840,36 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
         odomAftMapped.pose.covariance[i * 6 + 3] = P(k, 0);
         odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
         odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
+    }
+    pubOdomLocal.publish(odomAftMapped);
+
+    Eigen::Matrix4d global_transform;
+    if (global_transform_snapshot(global_transform))
+    {
+        nav_msgs::Odometry global_odom = odomAftMapped;
+        global_odom.header.frame_id = global_output_frame;
+        global_odom.pose.pose = transform_pose(odomAftMapped.pose.pose, global_transform);
+        const Eigen::Matrix3d rotation = global_transform.block<3, 3>(0, 0);
+        Eigen::Matrix<double, 6, 6> covariance;
+        Eigen::Matrix<double, 6, 6> rotate_covariance =
+            Eigen::Matrix<double, 6, 6>::Zero();
+        for (int row = 0; row < 6; ++row)
+            for (int col = 0; col < 6; ++col)
+                covariance(row, col) = odomAftMapped.pose.covariance[row * 6 + col];
+        rotate_covariance.block<3, 3>(0, 0) = rotation;
+        rotate_covariance.block<3, 3>(3, 3) = rotation;
+        covariance = rotate_covariance * covariance * rotate_covariance.transpose();
+        for (int row = 0; row < 6; ++row)
+            for (int col = 0; col < 6; ++col)
+                global_odom.pose.covariance[row * 6 + col] = covariance(row, col);
+        Eigen::Vector3d velocity(odomAftMapped.twist.twist.linear.x,
+                                 odomAftMapped.twist.twist.linear.y,
+                                 odomAftMapped.twist.twist.linear.z);
+        velocity = rotation * velocity;
+        global_odom.twist.twist.linear.x = velocity.x();
+        global_odom.twist.twist.linear.y = velocity.y();
+        global_odom.twist.twist.linear.z = velocity.z();
+        pubOdomGlobal.publish(global_odom);
     }
 
     // --- 发布 body -> world 的TF变换 ---
@@ -759,16 +892,19 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
     transform.setOrigin(tf::Vector3(0, 0, 0));
     q.setW(1); q.setX(0); q.setY(0); q.setZ(0);
     transform.setRotation(q);
-    br_world.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "world", "camera_init"));
+    br_world.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp,
+                                                global_output_en ? local_output_frame : "world",
+                                                "camera_init"));
 }
 
 // === publish_path：发布运动轨迹Path ===
 // 每5帧发布一次（降低发布频率，避免rviz崩溃）
-void publish_path(const ros::Publisher pubPath)
+nav_msgs::Path global_path;
+void publish_path(const ros::Publisher &pubPathLocal, const ros::Publisher &pubPathGlobal)
 {
-    set_pathstamp(msg_body_pose);
+    msg_body_pose.pose = odomAftMapped.pose.pose;
     msg_body_pose.header.stamp = ros::Time().fromSec(lidar_end_time);
-    msg_body_pose.header.frame_id = "world";
+    msg_body_pose.header.frame_id = global_output_en ? local_output_frame : "world";
 
     static int jjj = 0;
     jjj++;
@@ -777,14 +913,26 @@ void publish_path(const ros::Publisher pubPath)
     {
         path.header.stamp = msg_body_pose.header.stamp;
         path.poses.push_back(msg_body_pose);
-        pubPath.publish(path);
+        path.header.frame_id = msg_body_pose.header.frame_id;
+        pubPathLocal.publish(path);
+        Eigen::Matrix4d transform;
+        if (global_transform_snapshot(transform))
+        {
+            geometry_msgs::PoseStamped global_pose = msg_body_pose;
+            global_pose.header.frame_id = global_output_frame;
+            global_pose.pose = transform_pose(msg_body_pose.pose, transform);
+            global_path.header = global_pose.header;
+            global_path.poses.push_back(global_pose);
+            pubPathGlobal.publish(global_path);
+        }
     }
 }
 
 // === Visualization_speed：发布速度向量可视化Marker ===
 // 在世界坐标系中显示一个箭头，表示当前运动方向
-static void visualization_speed(const ros::Publisher &marker_pub) {
-  marker.header.frame_id = "world";
+static void visualization_speed(const ros::Publisher &marker_local_pub,
+                                const ros::Publisher &marker_global_pub) {
+  marker.header.frame_id = global_output_en ? local_output_frame : "world";
   marker.header.stamp = ros::Time::now();
   marker.lifetime = ros::Duration();
 
@@ -820,7 +968,15 @@ static void visualization_speed(const ros::Publisher &marker_pub) {
   Atti_compensate = Atti_compensate.transpose();
   set_quaternion_msg(Atti_compensate, marker.pose.orientation);
 
-  marker_pub.publish(marker);
+  marker_local_pub.publish(marker);
+  Eigen::Matrix4d transform;
+  if (global_transform_snapshot(transform))
+  {
+      visualization_msgs::Marker global_marker = marker;
+      global_marker.header.frame_id = global_output_frame;
+      global_marker.pose = transform_pose(marker.pose, transform);
+      marker_global_pub.publish(global_marker);
+  }
 }
 
 // =================================================================
@@ -837,6 +993,15 @@ int main(int argc, char **argv)
     nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
     nh.param<bool>("publish/dense_publish_en", dense_pub_en, true);
     nh.param<bool>("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
+    nh.param<bool>("relocalization/global_output_en", global_output_en, false);
+    nh.param<bool>("relocalization/allow_transform_update_after_ready",
+                   allow_global_transform_update, false);
+    nh.param<string>("relocalization/local_frame", local_output_frame, "lio_local");
+    nh.param<string>("relocalization/global_frame", global_output_frame, "world");
+    nh.param<string>("relocalization/transform_topic", relocalization_transform_topic,
+                     "/relocalization/world_from_lio_local");
+    nh.param<string>("relocalization/ready_topic", relocalization_ready_topic,
+                     "/relocalization/initialized");
     nh.param<int>("max_iteration", NUM_MAX_ITERATIONS, 4);
     nh.param<string>("map_file_path", map_file_path, "");
     nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
@@ -876,15 +1041,42 @@ int main(int argc, char **argv)
     // 根据雷达类型选择不同的回调函数
     ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+    ros::Subscriber sub_relocalization_transform, sub_relocalization_ready;
+    if (global_output_en)
+    {
+        sub_relocalization_transform = nh.subscribe(relocalization_transform_topic, 1,
+                                                     relocalization_transform_cb);
+        sub_relocalization_ready = nh.subscribe(relocalization_ready_topic, 1,
+                                                 relocalization_ready_cb);
+    }
 
-    ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);          // 世界系去畸变点云
+    const string odom_local_topic = global_output_en ? "/Odometry_local" : "/Odometry";
+    const string cloud_local_topic = global_output_en ? "/cloud_registered_local" : "/cloud_registered";
+    const string map_local_topic = global_output_en ? "/Laser_map_local" : "/Laser_map";
+    const string path_local_topic = global_output_en ? "/path_local" : "/path";
+    ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>(cloud_local_topic, 100000);
+    ros::Publisher pubLaserCloudGlobal;
+    ros::Publisher pubLaserCloudMapGlobal;
+    ros::Publisher pubOdomGlobal;
+    ros::Publisher pubPathGlobal;
+    if (global_output_en)
+    {
+        pubLaserCloudGlobal = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
+        pubLaserCloudMapGlobal = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100000);
+        pubOdomGlobal = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);
+        pubPathGlobal = nh.advertise<nav_msgs::Path>("/path", 100000);
+    }
     ros::Publisher pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000); // Body(IMU)系点云
     ros::Publisher pubLaserCloudFull_lidar = nh.advertise<sensor_msgs::PointCloud2> ("/cloud_registered_lidar", 100000); // LiDAR系点云
     ros::Publisher pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100000);           // 有效特征点云
-    ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100000);                  // 全局地图
-    ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>("/Odometry", 100000);                         // 里程计
-    ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);                                          // 轨迹
-    ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>("/speed_vector", 10);                       // 速度可视化
+    ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>(map_local_topic, 100000);
+    ros::Publisher pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>(odom_local_topic, 100000);
+    ros::Publisher pubPath = nh.advertise<nav_msgs::Path>(path_local_topic, 100000);
+    const string marker_local_topic = global_output_en ? "/speed_vector_local" : "/speed_vector";
+    ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>(marker_local_topic, 10);
+    ros::Publisher marker_global_pub;
+    if (global_output_en)
+        marker_global_pub = nh.advertise<visualization_msgs::Marker>("/speed_vector", 10);
 
     // === 初始化外参和IMU处理参数 ===
     Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);    // 平移外参
@@ -1001,7 +1193,7 @@ int main(int argc, char **argv)
             std::printf("6\n");
 
             // --- 步骤9：发布里程计 ---
-            publish_odometry(pubOdomAftMapped);
+            publish_odometry(pubOdomAftMapped, pubOdomGlobal);
 
             // --- 步骤10：地图增量 ---
             // 将当前帧点云加入全局ikd-Tree地图
@@ -1009,7 +1201,7 @@ int main(int argc, char **argv)
             map_incremental();
 
             // --- 步骤11：发布路径 ---
-            if (path_en) publish_path(pubPath);
+            if (path_en) publish_path(pubPath, pubPathGlobal);
 
             // --- 步骤12：发布速度向量可视化 ---
             if(speed_vector_en)
@@ -1017,11 +1209,12 @@ int main(int argc, char **argv)
                 speed(0) = kf.get_x().vel(0);
                 speed(1) = kf.get_x().vel(1);
                 speed(2) = kf.get_x().vel(2);
-                visualization_speed(marker_pub);
+                visualization_speed(marker_pub, marker_global_pub);
             }
 
             // --- 步骤13：发布点云 ---
-            if (scan_pub_en || pcd_save_en) publish_frame_world(pubLaserCloudFull);
+            if (scan_pub_en || pcd_save_en)
+                publish_frame_world(pubLaserCloudFull, pubLaserCloudGlobal);
             if (scan_pub_en && scan_body_pub_en)
             {
                 publish_frame_body(pubLaserCloudFull_body);

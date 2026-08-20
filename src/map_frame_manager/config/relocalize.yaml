@@ -18,6 +18,7 @@ aligned_topic: /relocalization/aligned_cloud
 status_topic: /relocalization/initialized
 state_topic: /map_frame_manager/state
 fitness_topic: /map_frame_manager/fitness
+transform_topic: /relocalization/world_from_lio_local
 
 # false: wait for an RViz "2D Pose Estimate" message (recommended).
 # true: use initial_pose below as T_lio_global_body automatically.
