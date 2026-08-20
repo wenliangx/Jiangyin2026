@@ -3,7 +3,6 @@
   <arg name="start_mapping" default="true" />
   <arg name="rviz" default="false" />
   <arg name="use_sim_time" default="false" />
-  <arg name="auto_initialize" default="true" />
   <arg name="publish_to_original_odom_topic" default="false" />
 
   <include if="$(arg start_mapping)" file="$(find ra_lio)/launch/mapping_mid360.launch">
@@ -23,7 +22,6 @@
     <arg name="local_frame"
          value="$(eval 'lio_local' if arg('publish_to_original_odom_topic') else 'world')" />
     <arg name="body_frame" value="body" />
-    <arg name="auto_initialize" value="$(arg auto_initialize)" />
     <arg name="publish_to_original_odom_topic" value="false" />
   </include>
 

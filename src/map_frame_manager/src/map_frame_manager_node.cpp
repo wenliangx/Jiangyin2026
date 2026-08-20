@@ -1,34 +1,26 @@
 /**
  * @file map_frame_manager_node.cpp
- * @brief Align any LIO local frame with a prior PCD map.
- *
- * Frame convention:
- *   T_map_pcd   configurable transform applied once while loading the PCD
- *   T_map_world estimated by NDT followed by ICP
- *   T_map_body  = T_map_world * T_world_body
- *
- * /initialpose is interpreted as T_map_body and is converted to an initial
- * registration guess using the latest RA-LIO odometry.
+ * @brief Fixed-origin, yaw-only prior-map initialization for LIO.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include <Eigen/Geometry>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/crop_box.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <pcl/registration/icp.h>
-#include <pcl/registration/ndt.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -37,102 +29,75 @@
 #include <std_msgs/String.h>
 #include <std_srvs/Trigger.h>
 #include <tf/transform_broadcaster.h>
-#include <tf/transform_datatypes.h>
 
 namespace {
-
 using Point = pcl::PointXYZI;
 using Cloud = pcl::PointCloud<Point>;
+constexpr double PI = 3.14159265358979323846;
+
+double rad(double deg) { return deg * PI / 180.0; }
+double wrap(double yaw) { return std::atan2(std::sin(yaw), std::cos(yaw)); }
 
 Eigen::Matrix4f poseMatrix(const geometry_msgs::Pose& pose) {
-  Eigen::Quaternionf q(static_cast<float>(pose.orientation.w),
-                       static_cast<float>(pose.orientation.x),
-                       static_cast<float>(pose.orientation.y),
-                       static_cast<float>(pose.orientation.z));
+  Eigen::Quaternionf q(pose.orientation.w, pose.orientation.x,
+                       pose.orientation.y, pose.orientation.z);
   if (q.norm() < 1e-6f) q = Eigen::Quaternionf::Identity();
   q.normalize();
-  Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-  transform.block<3, 3>(0, 0) = q.toRotationMatrix();
-  transform(0, 3) = static_cast<float>(pose.position.x);
-  transform(1, 3) = static_cast<float>(pose.position.y);
-  transform(2, 3) = static_cast<float>(pose.position.z);
-  return transform;
+  Eigen::Matrix4f t = Eigen::Matrix4f::Identity();
+  t.block<3, 3>(0, 0) = q.toRotationMatrix();
+  t.block<3, 1>(0, 3) << pose.position.x, pose.position.y, pose.position.z;
+  return t;
 }
 
-geometry_msgs::Pose matrixPose(const Eigen::Matrix4f& transform) {
+geometry_msgs::Pose matrixPose(const Eigen::Matrix4f& t) {
   geometry_msgs::Pose pose;
-  pose.position.x = transform(0, 3);
-  pose.position.y = transform(1, 3);
-  pose.position.z = transform(2, 3);
-  Eigen::Quaternionf q(transform.block<3, 3>(0, 0));
+  pose.position.x = t(0, 3); pose.position.y = t(1, 3); pose.position.z = t(2, 3);
+  Eigen::Quaternionf q(t.block<3, 3>(0, 0));
   q.normalize();
-  pose.orientation.x = q.x();
-  pose.orientation.y = q.y();
-  pose.orientation.z = q.z();
-  pose.orientation.w = q.w();
+  pose.orientation.x = q.x(); pose.orientation.y = q.y();
+  pose.orientation.z = q.z(); pose.orientation.w = q.w();
   return pose;
 }
 
-Eigen::Matrix4f xyzRpy(double x, double y, double z, double roll, double pitch,
-                       double yaw) {
-  const Eigen::AngleAxisf rx(static_cast<float>(roll), Eigen::Vector3f::UnitX());
-  const Eigen::AngleAxisf ry(static_cast<float>(pitch), Eigen::Vector3f::UnitY());
-  const Eigen::AngleAxisf rz(static_cast<float>(yaw), Eigen::Vector3f::UnitZ());
-  Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-  transform.block<3, 3>(0, 0) = (rz * ry * rx).toRotationMatrix();
-  transform(0, 3) = static_cast<float>(x);
-  transform(1, 3) = static_cast<float>(y);
-  transform(2, 3) = static_cast<float>(z);
-  return transform;
-}
+struct YawScore {
+  double yaw = 0.0;
+  double cost = std::numeric_limits<double>::infinity();
+  double rmse = std::numeric_limits<double>::infinity();
+  double overlap = 0.0;
+};
 
-class MapRelocalization {
+class YawOnlyRelocalization {
  public:
-  MapRelocalization() : nh_(), pnh_("~"), prior_map_(new Cloud), initialized_(false),
-                        have_odom_(false), have_guess_(false), running_(false) {
+  YawOnlyRelocalization() : nh_(), pnh_("~"), map_(new Cloud) {
     loadParameters();
-    const std::string resolved_input = nh_.resolveName(odom_topic_);
-    const std::string resolved_global = nh_.resolveName(global_odom_topic_);
-    const std::string resolved_original = nh_.resolveName(original_odom_topic_);
-    if (resolved_input == resolved_global ||
-        (publish_to_original_odom_topic_ &&
-         (resolved_input == resolved_original || resolved_global == resolved_original))) {
-      ROS_FATAL_STREAM("Conflicting resolved odometry topics: input='" << resolved_input
-                       << "', global='" << resolved_global << "', compatibility='"
-                       << resolved_original << "'. Every active input/output must use a "
-                       << "different ROS topic.");
+    if (publish_original_ && nh_.resolveName(odom_topic_) == nh_.resolveName(original_topic_)) {
+      ROS_FATAL_STREAM("Yaw-only input and original output resolve to the same topic: "
+                       << nh_.resolveName(odom_topic_));
       ros::shutdown();
       return;
     }
     if (!loadMap()) {
-      ROS_FATAL_STREAM("Cannot start map relocalization with PCD: " << map_file_);
+      ROS_FATAL_STREAM("Cannot load fixed-origin map: " << map_file_);
       ros::shutdown();
       return;
     }
-
     map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(map_topic_, 1, true);
     aligned_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(aligned_topic_, 1);
-    global_odom_pub_ = nh_.advertise<nav_msgs::Odometry>(global_odom_topic_, 20);
-    if (publish_to_original_odom_topic_) {
-      original_odom_pub_ = nh_.advertise<nav_msgs::Odometry>(original_odom_topic_, 20);
-    }
+    odom_pub_ = nh_.advertise<nav_msgs::Odometry>(global_odom_topic_, 20);
+    if (publish_original_)
+      original_odom_pub_ = nh_.advertise<nav_msgs::Odometry>(original_topic_, 20);
     status_pub_ = nh_.advertise<std_msgs::Bool>(status_topic_, 1, true);
     state_pub_ = nh_.advertise<std_msgs::String>(state_topic_, 1, true);
     fitness_pub_ = nh_.advertise<std_msgs::Float64>(fitness_topic_, 1, true);
     transform_pub_ = nh_.advertise<geometry_msgs::TransformStamped>(transform_topic_, 1, true);
-    odom_sub_ = nh_.subscribe(odom_topic_, 50, &MapRelocalization::odomCallback, this);
-    cloud_sub_ = nh_.subscribe(cloud_topic_, 10, &MapRelocalization::cloudCallback, this);
-    initial_pose_sub_ = nh_.subscribe(initial_pose_topic_, 1,
-                                      &MapRelocalization::initialPoseCallback, this);
-    relocalize_srv_ = pnh_.advertiseService("relocalize", &MapRelocalization::relocalizeService,
-                                            this);
-    reset_srv_ = pnh_.advertiseService("reset", &MapRelocalization::resetService, this);
-
-    publishMap();
-    publishStatus(false);
-    publishState("WAITING_FOR_LIO");
-    ROS_INFO_STREAM("Prior map ready: " << prior_map_->size() << " points in frame '"
-                    << map_frame_ << "'. Waiting for configured automatic seed or /initialpose.");
+    odom_sub_ = nh_.subscribe(odom_topic_, 50, &YawOnlyRelocalization::odomCallback, this);
+    cloud_sub_ = nh_.subscribe(cloud_topic_, 10, &YawOnlyRelocalization::cloudCallback, this);
+    relocalize_srv_ = pnh_.advertiseService("relocalize",
+                                            &YawOnlyRelocalization::relocalizeService, this);
+    reset_srv_ = pnh_.advertiseService("reset", &YawOnlyRelocalization::resetService, this);
+    publishMap(); publishStatus(false); publishState("WAITING_FOR_LIO");
+    ROS_INFO_STREAM("Fixed-origin yaw map ready: " << map_->size() << " points in frame '"
+                    << map_frame_ << "'. Manual /initialpose is disabled.");
   }
 
  private:
@@ -143,11 +108,9 @@ class MapRelocalization {
     pnh_.param<std::string>("body_frame", body_frame_, "body");
     pnh_.param<std::string>("odom_topic", odom_topic_, "/Odometry");
     pnh_.param<std::string>("cloud_topic", cloud_topic_, "/cloud_registered");
-    pnh_.param<std::string>("initial_pose_topic", initial_pose_topic_, "/initialpose");
-    pnh_.param<std::string>("global_odom_topic", global_odom_topic_,
-                            "/Odometry_lio_global");
-    pnh_.param<std::string>("original_odom_topic", original_odom_topic_, "/Odometry");
-    pnh_.param("publish_to_original_odom_topic", publish_to_original_odom_topic_, false);
+    pnh_.param<std::string>("global_odom_topic", global_odom_topic_, "/Odometry_lio_global");
+    pnh_.param<std::string>("original_odom_topic", original_topic_, "/Odometry");
+    pnh_.param("publish_to_original_odom_topic", publish_original_, false);
     pnh_.param<std::string>("map_topic", map_topic_, "/prior_map");
     pnh_.param<std::string>("aligned_topic", aligned_topic_, "/relocalization/aligned_cloud");
     pnh_.param<std::string>("status_topic", status_topic_, "/relocalization/initialized");
@@ -155,353 +118,245 @@ class MapRelocalization {
     pnh_.param<std::string>("fitness_topic", fitness_topic_, "/map_frame_manager/fitness");
     pnh_.param<std::string>("transform_topic", transform_topic_,
                             "/relocalization/world_from_lio_local");
-    pnh_.param("map_leaf_size", map_leaf_size_, 0.20);
-    pnh_.param("scan_leaf_size", scan_leaf_size_, 0.15);
-    pnh_.param("target_crop_radius", target_crop_radius_, 30.0);
-    pnh_.param("accumulate_frames", accumulate_frames_, 8);
-    pnh_.param("ndt_resolution", ndt_resolution_, 1.0);
-    pnh_.param("ndt_step_size", ndt_step_size_, 0.1);
-    pnh_.param("ndt_max_iterations", ndt_max_iterations_, 40);
-    pnh_.param("icp_max_correspondence", icp_max_correspondence_, 0.8);
-    pnh_.param("icp_max_iterations", icp_max_iterations_, 40);
-    pnh_.param("max_fitness_score", max_fitness_score_, 0.30);
-    pnh_.param("max_translation_correction", max_translation_correction_, 5.0);
-    pnh_.param("max_yaw_correction", max_yaw_correction_, 0.785398);
-    pnh_.param("auto_initialize", auto_initialize_, false);
-
-    std::vector<double> origin;
-    pnh_.param<std::vector<double>>("map_transform", origin,
-                                   std::vector<double>{0, 0, 0, 0, 0, 0});
-    if (origin.size() != 6) {
-      ROS_WARN("~map_transform must be [x,y,z,roll,pitch,yaw]; using identity");
-      origin.assign(6, 0.0);
-    }
-    map_from_pcd_ = xyzRpy(origin[0], origin[1], origin[2], origin[3], origin[4],
-                           origin[5]);
-
-    std::vector<double> initial;
-    pnh_.param<std::vector<double>>("initial_pose", initial,
-                                   std::vector<double>{0, 0, 0, 0, 0, 0});
-    if (initial.size() == 6) {
-      configured_map_from_body_ = xyzRpy(initial[0], initial[1], initial[2], initial[3],
-                                         initial[4], initial[5]);
-    } else {
-      configured_map_from_body_ = Eigen::Matrix4f::Identity();
-    }
+    pnh_.param("map_leaf_size", map_leaf_, 0.08);
+    pnh_.param("scan_leaf_size", scan_leaf_, 0.08);
+    pnh_.param("origin_map_radius", origin_radius_, 15.0);
+    pnh_.param("accumulate_frames", frames_, 20);
+    pnh_.param("coarse_yaw_step_deg", coarse_step_, 2.0);
+    pnh_.param("fine_yaw_step_deg", fine_step_, 0.05);
+    pnh_.param("fine_yaw_window_deg", fine_window_, 2.0);
+    pnh_.param("max_correspondence_distance", max_corr_, 0.40);
+    pnh_.param("minimum_overlap_ratio", min_overlap_, 0.45);
+    pnh_.param("maximum_rmse", max_rmse_, 0.20);
+    pnh_.param("ambiguity_separation_deg", ambiguity_sep_, 15.0);
+    pnh_.param("minimum_score_margin", min_margin_, 0.02);
+    pnh_.param("overlap_penalty_weight", overlap_weight_, 0.50);
+    pnh_.param("required_consistent_results", required_results_, 3);
+    pnh_.param("maximum_yaw_consistency_deg", max_consistency_, 0.30);
+    pnh_.param("max_linear_speed", max_linear_speed_, 0.05);
+    pnh_.param("max_angular_speed", max_angular_speed_, 0.03);
   }
 
   bool loadMap() {
-    if (map_file_.empty()) {
-      ROS_ERROR("~map_file is empty");
+    if (map_file_.empty() || map_leaf_ <= 0 || scan_leaf_ <= 0 || frames_ < 1 ||
+        coarse_step_ <= 0 || fine_step_ <= 0 || fine_window_ <= 0 || max_corr_ <= 0)
       return false;
-    }
-    Cloud::Ptr raw(new Cloud);
+    Cloud::Ptr raw(new Cloud), cropped(new Cloud);
     if (pcl::io::loadPCDFile<Point>(map_file_, *raw) != 0 || raw->empty()) return false;
-    Cloud::Ptr transformed(new Cloud);
-    pcl::transformPointCloud(*raw, *transformed, map_from_pcd_);
+    pcl::CropBox<Point> crop;
+    crop.setInputCloud(raw);
+    const float r = origin_radius_;
+    crop.setMin(Eigen::Vector4f(-r, -r, -r, 1));
+    crop.setMax(Eigen::Vector4f(r, r, r, 1));
+    crop.filter(*cropped);
     pcl::VoxelGrid<Point> voxel;
-    voxel.setLeafSize(map_leaf_size_, map_leaf_size_, map_leaf_size_);
-    voxel.setInputCloud(transformed);
-    voxel.filter(*prior_map_);
-    return !prior_map_->empty();
+    voxel.setLeafSize(map_leaf_, map_leaf_, map_leaf_);
+    voxel.setInputCloud(cropped); voxel.filter(*map_);
+    if (map_->size() < 100) return false;
+    tree_.setInputCloud(map_);
+    return true;
   }
 
   void publishMap() {
     sensor_msgs::PointCloud2 msg;
-    pcl::toROSMsg(*prior_map_, msg);
-    msg.header.stamp = ros::Time::now();
-    msg.header.frame_id = map_frame_;
-    map_pub_.publish(msg);
+    pcl::toROSMsg(*map_, msg); msg.header.stamp = ros::Time::now();
+    msg.header.frame_id = map_frame_; map_pub_.publish(msg);
   }
-
-  void publishStatus(bool value) {
-    std_msgs::Bool status;
-    status.data = value;
-    status_pub_.publish(status);
-  }
-
   void publishState(const std::string& value) {
-    std_msgs::String state;
-    state.data = value;
-    state_pub_.publish(state);
+    std_msgs::String msg; msg.data = value; state_pub_.publish(msg);
+  }
+  void publishStatus(bool value) {
+    std_msgs::Bool msg; msg.data = value; status_pub_.publish(msg);
+  }
+  bool validFrame(const std::string& actual, const std::string& expected,
+                  const char* name) const {
+    if (actual.empty() || actual == expected) return true;
+    ROS_WARN_THROTTLE(2.0, "Ignoring %s in frame '%s'; expected '%s'", name,
+                      actual.c_str(), expected.c_str());
+    return false;
   }
 
   void odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-    if (!msg->header.frame_id.empty() && msg->header.frame_id != local_frame_) {
-      ROS_WARN_THROTTLE(2.0, "Ignoring odometry in frame '%s'; configured local frame is '%s'",
-                        msg->header.frame_id.c_str(), local_frame_.c_str());
-      return;
-    }
-    if (!msg->child_frame_id.empty() && msg->child_frame_id != body_frame_) {
-      ROS_WARN_THROTTLE(2.0, "Odometry child frame is '%s'; configured body frame is '%s'",
-                        msg->child_frame_id.c_str(), body_frame_.c_str());
-    }
-    // Compatibility output deliberately preserves the raw local pose and its
-    // world axes. Relocalization remains available through the global output
-    // and the lio_global -> world TF.
-    if (publish_to_original_odom_topic_) original_odom_pub_.publish(*msg);
+    if (!validFrame(msg->header.frame_id, local_frame_, "odometry")) return;
     std::lock_guard<std::mutex> lock(mutex_);
-    latest_odom_ = *msg;
-    world_from_body_ = poseMatrix(msg->pose.pose);
-    have_odom_ = true;
-    if (auto_initialize_ && !have_guess_) {
-      initial_map_from_body_ = configured_map_from_body_;
-      initial_map_from_world_guess_ = initial_map_from_body_ * world_from_body_.inverse();
-      have_guess_ = true;
-      publishState("COLLECTING_SCAN");
-    }
-    if (initialized_) publishGlobalOdomLocked(*msg);
-  }
-
-  void initialPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg) {
-    if (!msg->header.frame_id.empty() && msg->header.frame_id != map_frame_) {
-      ROS_WARN_STREAM("Ignoring /initialpose in frame '" << msg->header.frame_id
-                      << "'; expected '" << map_frame_ << "'");
-      return;
-    }
-    std::lock_guard<std::mutex> lock(mutex_);
-    initial_map_from_body_ = poseMatrix(msg->pose.pose);
-    if (!have_odom_) {
-      ROS_WARN("Received /initialpose before local odometry; send it again after odometry starts");
-      return;
-    }
-    initial_map_from_world_guess_ = initial_map_from_body_ * world_from_body_.inverse();
-    have_guess_ = true;
-    initialized_ = false;
-    accumulated_.clear();
-    publishStatus(false);
-    publishState("COLLECTING_SCAN");
-    ROS_INFO("Received relocalization seed; collecting scans");
+    latest_odom_ = *msg; local_from_body_ = poseMatrix(msg->pose.pose); have_odom_ = true;
+    if (initialized_) publishOdomLocked(*msg);
+    else if (!running_) publishState("COLLECTING_SCAN");
   }
 
   void cloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
-    if (!msg->header.frame_id.empty() && msg->header.frame_id != local_frame_) {
-      ROS_WARN_THROTTLE(2.0, "Ignoring registered cloud in frame '%s'; expected '%s'",
-                        msg->header.frame_id.c_str(), local_frame_.c_str());
-      return;
-    }
-    Cloud::Ptr cloud(new Cloud);
+    if (!validFrame(msg->header.frame_id, local_frame_, "registered cloud")) return;
+    Cloud::Ptr cloud(new Cloud), source(new Cloud);
     pcl::fromROSMsg(*msg, *cloud);
     if (cloud->empty()) return;
-
-    Eigen::Matrix4f guess;
-    Cloud::Ptr source(new Cloud);
+    Eigen::Vector3f anchor;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (!have_odom_ || !have_guess_ || initialized_ || running_) return;
-      accumulated_.push_back(cloud);
-      while (static_cast<int>(accumulated_.size()) > accumulate_frames_) accumulated_.pop_front();
-      if (static_cast<int>(accumulated_.size()) < accumulate_frames_) return;
-      for (const Cloud::Ptr& frame : accumulated_) *source += *frame;
-      // This guess was captured at the instant /initialpose arrived.  The
-      // accumulated source scans already remain fixed in RA-LIO's world frame.
-      guess = initial_map_from_world_guess_;
-      running_ = true;
-      publishState("MATCHING");
+      if (!have_odom_ || initialized_ || running_) return;
+      const auto& v = latest_odom_.twist.twist.linear;
+      const auto& w = latest_odom_.twist.twist.angular;
+      if (std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z) > max_linear_speed_ ||
+          std::sqrt(w.x*w.x + w.y*w.y + w.z*w.z) > max_angular_speed_) {
+        scans_.clear(); yaws_.clear(); publishState("WAITING_FOR_STABILITY"); return;
+      }
+      scans_.push_back(cloud);
+      while (static_cast<int>(scans_.size()) > frames_) scans_.pop_front();
+      if (static_cast<int>(scans_.size()) < frames_) return;
+      for (const Cloud::Ptr& scan : scans_) *source += *scan;
+      scans_.clear(); anchor = local_from_body_.block<3, 1>(0, 3);
+      running_ = true; publishState("MATCHING_YAW");
     }
-
-    const bool success = registerCloud(source, guess, msg->header.stamp);
-    std::lock_guard<std::mutex> lock(mutex_);
-    running_ = false;
-    if (!success) {
-      accumulated_.clear();
-      publishState("FAILED_RETRYING");
-    }
+    const YawScore result = estimateYaw(source, anchor);
+    finishEstimate(result, source, msg->header.stamp);
   }
 
-  bool registerCloud(const Cloud::Ptr& input, const Eigen::Matrix4f& guess,
-                     const ros::Time& stamp) {
+  YawScore score(const Cloud::ConstPtr& source, const Eigen::Vector3f& anchor,
+                 double yaw) const {
+    const float c = std::cos(yaw), s = std::sin(yaw), max_sq = max_corr_ * max_corr_;
+    double sum = 0; std::size_t inliers = 0;
+    std::vector<int> index(1); std::vector<float> distance(1);
+    for (const Point& p : source->points) {
+      const float x = p.x - anchor.x(), y = p.y - anchor.y();
+      Point q = p; q.x = c*x - s*y; q.y = s*x + c*y; q.z = p.z - anchor.z();
+      if (tree_.nearestKSearch(q, 1, index, distance) > 0 && distance[0] <= max_sq) {
+        sum += distance[0]; ++inliers;
+      }
+    }
+    YawScore out; out.yaw = wrap(yaw);
+    out.overlap = source->empty() ? 0.0 : static_cast<double>(inliers) / source->size();
+    if (inliers) out.rmse = std::sqrt(sum / inliers);
+    out.cost = out.rmse + overlap_weight_ * (1.0 - out.overlap);
+    return out;
+  }
+
+  YawScore estimateYaw(const Cloud::Ptr& raw, const Eigen::Vector3f& anchor) {
     Cloud::Ptr source(new Cloud);
-    pcl::VoxelGrid<Point> voxel;
-    voxel.setLeafSize(scan_leaf_size_, scan_leaf_size_, scan_leaf_size_);
-    voxel.setInputCloud(input);
-    voxel.filter(*source);
-    if (source->size() < 100) {
-      ROS_WARN("Relocalization source cloud has too few points");
-      return false;
+    pcl::VoxelGrid<Point> voxel; voxel.setLeafSize(scan_leaf_, scan_leaf_, scan_leaf_);
+    voxel.setInputCloud(raw); voxel.filter(*source);
+    if (source->size() < 100) return YawScore();
+    std::vector<YawScore> coarse;
+    for (double deg = -180; deg < 180; deg += coarse_step_)
+      coarse.push_back(score(source, anchor, rad(deg)));
+    std::sort(coarse.begin(), coarse.end(),
+              [](const YawScore& a, const YawScore& b) { return a.cost < b.cost; });
+    YawScore best = coarse.front(), second;
+    for (const YawScore& candidate : coarse) {
+      if (std::fabs(wrap(candidate.yaw - best.yaw)) >= rad(ambiguity_sep_)) {
+        second = candidate; break;
+      }
     }
-
-    Cloud::Ptr guessed_source(new Cloud);
-    pcl::transformPointCloud(*source, *guessed_source, guess);
-    Eigen::Vector3f center = Eigen::Vector3f::Zero();
-    for (const Point& point : guessed_source->points)
-      center += Eigen::Vector3f(point.x, point.y, point.z);
-    center /= static_cast<float>(guessed_source->size());
-    Cloud::Ptr target(new Cloud);
-    pcl::CropBox<Point> crop;
-    crop.setInputCloud(prior_map_);
-    const float radius = static_cast<float>(target_crop_radius_);
-    crop.setMin(Eigen::Vector4f(center.x() - radius, center.y() - radius,
-                               center.z() - radius, 1.0f));
-    crop.setMax(Eigen::Vector4f(center.x() + radius, center.y() + radius,
-                               center.z() + radius, 1.0f));
-    crop.filter(*target);
-    if (target->size() < 100) {
-      ROS_WARN("Relocalization target crop has too few points; check initial position");
-      return false;
+    const double coarse_yaw = best.yaw;
+    for (double offset = -fine_window_; offset <= fine_window_ + fine_step_/2;
+         offset += fine_step_) {
+      const YawScore candidate = score(source, anchor, coarse_yaw + rad(offset));
+      if (candidate.cost < best.cost) best = candidate;
     }
-
-    pcl::NormalDistributionsTransform<Point, Point> ndt;
-    ndt.setResolution(ndt_resolution_);
-    ndt.setStepSize(ndt_step_size_);
-    ndt.setMaximumIterations(ndt_max_iterations_);
-    ndt.setTransformationEpsilon(0.01);
-    ndt.setInputSource(source);
-    ndt.setInputTarget(target);
-    Cloud ndt_output;
-    ndt.align(ndt_output, guess);
-    if (!ndt.hasConverged()) {
-      ROS_WARN("NDT did not converge; adjust /initialpose or NDT resolution");
-      return false;
+    const double margin = second.cost - best.cost;
+    if (!std::isfinite(best.cost) || best.overlap < min_overlap_ ||
+        best.rmse > max_rmse_ || !std::isfinite(margin) || margin < min_margin_) {
+      ROS_WARN_STREAM("Yaw rejected: yaw=" << best.yaw*180/PI << " deg, rmse="
+                      << best.rmse << ", overlap=" << best.overlap << ", margin=" << margin);
+      best.cost = std::numeric_limits<double>::infinity();
     }
-
-    pcl::IterativeClosestPoint<Point, Point> icp;
-    icp.setMaxCorrespondenceDistance(icp_max_correspondence_);
-    icp.setMaximumIterations(icp_max_iterations_);
-    icp.setTransformationEpsilon(1e-7);
-    icp.setEuclideanFitnessEpsilon(1e-5);
-    icp.setInputSource(source);
-    icp.setInputTarget(target);
-    Cloud aligned;
-    icp.align(aligned, ndt.getFinalTransformation());
-    const double score = icp.getFitnessScore(icp_max_correspondence_);
-    const Eigen::Matrix4f result = icp.getFinalTransformation();
-    const Eigen::Matrix4f correction = result * guess.inverse();
-    const double translation_correction = correction.block<3, 1>(0, 3).norm();
-    const double yaw_correction = std::fabs(std::atan2(correction(1, 0), correction(0, 0)));
-    std_msgs::Float64 fitness_msg;
-    fitness_msg.data = score;
-    fitness_pub_.publish(fitness_msg);
-    if (!icp.hasConverged() || !std::isfinite(score) || score > max_fitness_score_ ||
-        translation_correction > max_translation_correction_ ||
-        yaw_correction > max_yaw_correction_) {
-      ROS_WARN_STREAM("ICP rejected: converged=" << icp.hasConverged()
-                      << ", fitness=" << score << ", translation correction="
-                      << translation_correction << ", yaw correction=" << yaw_correction);
-      return false;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      map_from_world_ = result;
-      initialized_ = true;
-      accumulated_.clear();
-      publishRelocalizationTransformLocked(stamp);
-      publishGlobalOdomLocked(latest_odom_);
-    }
-    sensor_msgs::PointCloud2 aligned_msg;
-    pcl::toROSMsg(aligned, aligned_msg);
-    aligned_msg.header.stamp = stamp;
-    aligned_msg.header.frame_id = map_frame_;
-    aligned_pub_.publish(aligned_msg);
-    publishStatus(true);
-    publishState("READY");
-    ROS_INFO_STREAM("Relocalization succeeded, ICP fitness=" << score);
-    return true;
+    return best;
   }
 
-  bool relocalizeService(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& response) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!have_odom_) {
-      response.success = false;
-      response.message = "No valid local odometry received";
-      return true;
+  void finishEstimate(const YawScore& result, const Cloud::Ptr& source,
+                      const ros::Time& stamp) {
+    std::lock_guard<std::mutex> lock(mutex_); running_ = false;
+    std_msgs::Float64 fitness; fitness.data = result.rmse; fitness_pub_.publish(fitness);
+    if (!std::isfinite(result.cost)) {
+      yaws_.clear(); publishState("FAILED_RETRYING"); return;
     }
-    initial_map_from_body_ = configured_map_from_body_;
-    initial_map_from_world_guess_ = initial_map_from_body_ * world_from_body_.inverse();
-    have_guess_ = true;
-    initialized_ = false;
-    running_ = false;
-    accumulated_.clear();
-    publishStatus(false);
-    publishState("COLLECTING_SCAN");
-    response.success = true;
-    response.message = "Relocalization requested";
-    return true;
+    if (!yaws_.empty() && std::fabs(wrap(result.yaw - yaws_.back())) > rad(max_consistency_))
+      yaws_.clear();
+    yaws_.push_back(result.yaw);
+    if (static_cast<int>(yaws_.size()) < required_results_) {
+      publishState("VERIFYING_YAW"); return;
+    }
+    double ss = 0, cc = 0;
+    for (double yaw : yaws_) { ss += std::sin(yaw); cc += std::cos(yaw); }
+    const double yaw = std::atan2(ss, cc);
+    map_from_local_ = Eigen::Matrix4f::Identity();
+    map_from_local_.block<3, 3>(0, 0) =
+        Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ()).toRotationMatrix();
+    // Translation is determined, never optimized: current body becomes (0,0,0).
+    const Eigen::Vector3f current_body = local_from_body_.block<3, 1>(0, 3);
+    map_from_local_.block<3, 1>(0, 3) =
+        -map_from_local_.block<3, 3>(0, 0) * current_body;
+    initialized_ = true; publishTransformLocked(stamp); publishOdomLocked(latest_odom_);
+    publishStatus(true); publishState("READY");
+    Cloud aligned; pcl::transformPointCloud(*source, aligned, map_from_local_);
+    sensor_msgs::PointCloud2 msg; pcl::toROSMsg(aligned, msg);
+    msg.header.stamp = stamp; msg.header.frame_id = map_frame_; aligned_pub_.publish(msg);
+    ROS_INFO_STREAM("Yaw-only initialization ready: yaw=" << yaw*180/PI
+                    << " deg, rmse=" << result.rmse << ", overlap=" << result.overlap);
   }
 
-  bool resetService(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& response) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    initialized_ = false;
-    have_guess_ = false;
-    running_ = false;
-    accumulated_.clear();
-    publishStatus(false);
-    publishState("WAITING_FOR_SEED");
-    response.success = true;
-    response.message = "Global initialization cleared";
+  bool relocalizeService(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res) {
+    std::lock_guard<std::mutex> lock(mutex_); clearLocked();
+    publishState(have_odom_ ? "COLLECTING_SCAN" : "WAITING_FOR_LIO");
+    res.success = true; res.message = "Automatic fixed-origin yaw initialization requested";
     return true;
   }
+  bool resetService(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res) {
+    std::lock_guard<std::mutex> lock(mutex_); clearLocked(); publishState("WAITING_FOR_LIO");
+    res.success = true; res.message = "Yaw initialization cleared"; return true;
+  }
+  void clearLocked() {
+    initialized_ = false; running_ = false; scans_.clear(); yaws_.clear(); publishStatus(false);
+  }
 
-  void publishGlobalOdomLocked(const nav_msgs::Odometry& local) {
-    nav_msgs::Odometry global = local;
-    global.header.frame_id = map_frame_;
+  void publishOdomLocked(const nav_msgs::Odometry& local) {
+    nav_msgs::Odometry global = local; global.header.frame_id = map_frame_;
     global.child_frame_id = body_frame_;
-    const Eigen::Matrix4f map_from_body = map_from_world_ * poseMatrix(local.pose.pose);
-    global.pose.pose = matrixPose(map_from_body);
-
-    // nav_msgs/Odometry twist is conventionally expressed in child_frame_id.
-    // Preserve it unchanged; rotate only if a producer explicitly uses world-frame twist.
-    global_odom_pub_.publish(global);
-
-    tf::Transform tf_map_world;
-    const geometry_msgs::Pose pose = matrixPose(map_from_world_);
-    tf_map_world.setOrigin(tf::Vector3(pose.position.x, pose.position.y, pose.position.z));
-    tf::Quaternion q(pose.orientation.x, pose.orientation.y, pose.orientation.z,
-                     pose.orientation.w);
-    tf_map_world.setRotation(q);
-    tf_broadcaster_.sendTransform(tf::StampedTransform(
-        tf_map_world, local.header.stamp, map_frame_, local_frame_));
+    global.pose.pose = matrixPose(map_from_local_ * poseMatrix(local.pose.pose));
+    odom_pub_.publish(global);
+    if (publish_original_) original_odom_pub_.publish(global);
+    publishTransformLocked(local.header.stamp);
   }
-
-  void publishRelocalizationTransformLocked(const ros::Time& stamp) {
-    geometry_msgs::TransformStamped msg;
-    msg.header.stamp = stamp;
-    msg.header.frame_id = map_frame_;
-    msg.child_frame_id = local_frame_;
-    const geometry_msgs::Pose pose = matrixPose(map_from_world_);
+  void publishTransformLocked(const ros::Time& stamp) {
+    const geometry_msgs::Pose pose = matrixPose(map_from_local_);
+    geometry_msgs::TransformStamped msg; msg.header.stamp = stamp;
+    msg.header.frame_id = map_frame_; msg.child_frame_id = local_frame_;
     msg.transform.translation.x = pose.position.x;
     msg.transform.translation.y = pose.position.y;
-    msg.transform.translation.z = pose.position.z;
-    msg.transform.rotation = pose.orientation;
+    msg.transform.translation.z = pose.position.z; msg.transform.rotation = pose.orientation;
     transform_pub_.publish(msg);
+    tf::Transform transform;
+    transform.setOrigin(tf::Vector3(pose.position.x, pose.position.y, pose.position.z));
+    transform.setRotation(tf::Quaternion(pose.orientation.x, pose.orientation.y,
+                                         pose.orientation.z, pose.orientation.w));
+    tf_broadcaster_.sendTransform(tf::StampedTransform(transform, stamp, map_frame_, local_frame_));
   }
 
-  ros::NodeHandle nh_;
-  ros::NodeHandle pnh_;
-  ros::Subscriber odom_sub_, cloud_sub_, initial_pose_sub_;
-  ros::Publisher map_pub_, aligned_pub_, global_odom_pub_, original_odom_pub_;
+  ros::NodeHandle nh_, pnh_;
+  ros::Subscriber odom_sub_, cloud_sub_;
+  ros::Publisher map_pub_, aligned_pub_, odom_pub_, original_odom_pub_;
   ros::Publisher status_pub_, state_pub_, fitness_pub_, transform_pub_;
   ros::ServiceServer relocalize_srv_, reset_srv_;
   tf::TransformBroadcaster tf_broadcaster_;
-  std::mutex mutex_;
-  Cloud::Ptr prior_map_;
-  std::deque<Cloud::Ptr> accumulated_;
+  mutable pcl::KdTreeFLANN<Point> tree_;
+  Cloud::Ptr map_; std::deque<Cloud::Ptr> scans_; std::vector<double> yaws_;
   nav_msgs::Odometry latest_odom_;
-  Eigen::Matrix4f map_from_pcd_ = Eigen::Matrix4f::Identity();
-  Eigen::Matrix4f configured_map_from_body_ = Eigen::Matrix4f::Identity();
-  Eigen::Matrix4f initial_map_from_body_ = Eigen::Matrix4f::Identity();
-  Eigen::Matrix4f initial_map_from_world_guess_ = Eigen::Matrix4f::Identity();
-  Eigen::Matrix4f world_from_body_ = Eigen::Matrix4f::Identity();
-  Eigen::Matrix4f map_from_world_ = Eigen::Matrix4f::Identity();
-  std::string map_file_, map_frame_, local_frame_, body_frame_;
-  std::string odom_topic_, cloud_topic_, initial_pose_topic_, global_odom_topic_;
-  std::string original_odom_topic_;
-  std::string map_topic_, aligned_topic_, status_topic_, state_topic_, fitness_topic_;
-  std::string transform_topic_;
-  double map_leaf_size_, scan_leaf_size_, target_crop_radius_, ndt_resolution_, ndt_step_size_;
-  double icp_max_correspondence_, max_fitness_score_;
-  double max_translation_correction_, max_yaw_correction_;
-  int accumulate_frames_, ndt_max_iterations_, icp_max_iterations_;
-  bool auto_initialize_, initialized_, have_odom_, have_guess_, running_;
-  bool publish_to_original_odom_topic_;
+  Eigen::Matrix4f local_from_body_ = Eigen::Matrix4f::Identity();
+  Eigen::Matrix4f map_from_local_ = Eigen::Matrix4f::Identity();
+  std::mutex mutex_;
+  std::string map_file_, map_frame_, local_frame_, body_frame_, odom_topic_, cloud_topic_;
+  std::string global_odom_topic_, original_topic_, map_topic_, aligned_topic_, status_topic_, state_topic_;
+  std::string fitness_topic_, transform_topic_;
+  double map_leaf_=0.08, scan_leaf_=0.08, origin_radius_=15, coarse_step_=2;
+  double fine_step_=0.05, fine_window_=2, max_corr_=0.4, min_overlap_=0.45;
+  double max_rmse_=0.2, ambiguity_sep_=15, min_margin_=0.02, overlap_weight_=0.5;
+  double max_consistency_=0.3, max_linear_speed_=0.05, max_angular_speed_=0.03;
+  int frames_=20, required_results_=3;
+  bool publish_original_=false, have_odom_=false, initialized_=false, running_=false;
 };
-
 }  // namespace
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "map_frame_manager");
-  MapRelocalization node;
+  YawOnlyRelocalization node;
   ros::spin();
   return 0;
 }

@@ -9,7 +9,7 @@
   <arg name="auto_initialize" default="false" />
 
   <!-- Relocalize the current LIO session into the unanchored PCD frame. -->
-  <include file="$(find map_frame_manager)/launch/relocalize.launch">
+  <include file="$(find map_frame_manager)/launch/origin_match.launch">
     <arg name="map_file" value="$(arg map_file)" />
     <arg name="odom_topic" value="$(arg odom_topic)" />
     <arg name="cloud_topic" value="$(arg cloud_topic)" />

@@ -13,23 +13,15 @@ catkin_make -DCMAKE_BUILD_TYPE=Release
 source devel/setup.bash
 ```
 
-## 2. 首次创建永久地图
+## 2. 手持创建临时地图并确定永久原点
 
-把飞机放在希望的永久原点，机头对准场地正 X，并保持静止。RA-LIO 模式：
+建图阶段不再固定永久原点。RA-LIO 模式：
 
 ```bash
 roslaunch map_frame_manager create_map_ra_lio.launch \
   output_directory:=/data/maps/jiangyin \
   map_name:=competition_map \
   rviz:=true
-```
-
-节点默认等待 3 秒稳定窗口和至少 20 帧点云，然后自动锁定：
-
-```text
-初始飞机位置 → lio_global (0,0,0)
-初始机头水平投影 → lio_global +X
-重力反方向 → lio_global +Z
 ```
 
 查看状态：
@@ -39,7 +31,7 @@ rostopic echo /map_frame_manager/state
 rostopic echo /map_frame_manager/ready
 ```
 
-原点锁定后移动飞机完成建图。结束前显式保存：
+状态进入 `MAPPING` 后移动飞机完成建图。结束前显式保存：
 
 ```bash
 rosservice call /map_frame_manager/save_map
@@ -53,6 +45,8 @@ rosservice call /map_frame_manager/save_map
 ```
 
 YAML 是最后写入的有效性标志；保存失败时状态会变为 `FAILED_SAVE`。
+保存结果的 `origin_definition` 为 `unanchored_lio_local_frame`。随后按
+`docs/competition_map_workflow.md` 的“确定永久原点”步骤生成永久坐标 PCD。
 
 Point-LIO 首次建图时先启动 `sml-core-machine` 的 Point-LIO，再执行：
 
@@ -70,13 +64,9 @@ roslaunch map_frame_manager create_map_point_lio.launch \
 
 ## 3. 使用已有地图重定位
 
-从固定起飞区域启动时，在 `config/relocalize.yaml` 中填写飞机在地图内的大致
-起始位姿：
-
-```yaml
-auto_initialize: true
-initial_pose: [x, y, z, roll, pitch, yaw]
-```
+比赛运行只支持固定原点 yaw 初始化。飞机必须放在永久 `(0,0,0)`，roll、pitch
+为零；节点自动在全角度范围搜索 yaw，不接收 `/initialpose`，也不允许配准算法
+修改位置、roll 或 pitch。
 
 由本系统创建的 PCD 已经位于永久场地坐标，不再需要手动转换。
 创建地图时该坐标在文件中记为 `lio_global`；重定位运行时，同一组
@@ -157,7 +147,8 @@ roslaunch map_frame_manager relocalize_point_lio.launch \
 禁止让 `odom_topic` 与兼容输出话题相同；节点会主动拒绝这种配置，避免订阅自身
 输出形成反馈。
 
-节点积累点云后依次执行 NDT 和 ICP。RA-LIO 全局输出模式成功后输出：
+节点积累点云后执行 yaw 粗搜索、`0.05°` 细搜索和连续一致性验证。RA-LIO
+全局输出模式成功后输出：
 
 - TF `world -> lio_local`；
 - `/Odometry` 与 `/cloud_registered`（永久 `world`）；
@@ -175,8 +166,9 @@ rosservice call /map_frame_manager/relocalize
 rosservice call /map_frame_manager/reset
 ```
 
-若不使用固定起飞粗位姿，将 `auto_initialize` 设为 false，并在 RViz 使用
-`2D Pose Estimate` 发布 `/initialpose`。
+运行状态依次为 `COLLECTING_SCAN -> MATCHING_YAW -> VERIFYING_YAW -> READY`。
+场景航向有歧义、重叠率不足或连续结果不一致时拒绝初始化，不提供任意地点的
+人工粗定位回退。
 
 ## 4. 输入接口约束
 

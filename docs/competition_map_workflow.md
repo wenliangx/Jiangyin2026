@@ -109,9 +109,13 @@ competition_map.yaml
 roslaunch map_frame_manager relocalize_ra_lio.launch \
   map_file:=$HOME/maps/jiangyin/competition_map_relocal.pcd \
   publish_to_original_odom_topic:=true \
-  auto_initialize:=true \
   rviz:=false
 ```
+
+比赛定位只支持固定原点 yaw 初始化：飞机放在永久 `(0,0,0)`，保持水平，
+程序在全角度范围自动搜索 yaw。运行时不订阅 `/initialpose`，不允许 NDT/ICP
+修改平移、roll 或 pitch。状态依次为 `COLLECTING_SCAN`、`MATCHING_YAW`、
+`VERIFYING_YAW`、`READY`；连续多次航向不一致或场景有歧义时拒绝初始化。
 
 确认：
 
