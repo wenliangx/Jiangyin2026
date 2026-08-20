@@ -6,7 +6,7 @@
   <arg name="front_device" default="/dev/uav_front_camera"/>
   <arg name="rear_device" default="/dev/uav_rear_camera"/>
   <arg name="front_rotate_180" default="true"/>
-  <arg name="rear_rotate_180" default="false"/>
+  <arg name="rear_rotate_180" default="true"/>
 
   <node pkg="uav_vision"
         type="v4l2_camera_node.py"

@@ -6,7 +6,7 @@
   <arg name="recording_enabled" default="true"/>
   <arg name="recording_root" default="/home/flag/vision_recordings"/>
   <arg name="front_rotate_180" default="true"/>
-  <arg name="rear_rotate_180" default="false"/>
+  <arg name="rear_rotate_180" default="true"/>
 
   <include file="$(find uav_vision)/launch/dual_camera.launch">
     <arg name="control_topic" value="$(arg control_topic)"/>
