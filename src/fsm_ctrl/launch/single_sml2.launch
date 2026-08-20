@@ -100,7 +100,7 @@
         <param name="landing_x_sign" value="1.0" type="double"/>
         <param name="landing_y_sign" value="1.0" type="double"/>
         <param name="landing_descent_rate" value="0.3" type="double"/>
-        <param name="landing_min_z" value="0.03" type="double"/>
+        <param name="landing_min_z" value="-0.03" type="double"/>
 
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />

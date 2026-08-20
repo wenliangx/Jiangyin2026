@@ -82,7 +82,7 @@
         <param name="mission_super_waypoints_file"
                value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
                type="string"/>
-        <param name="mission_super_arrival_tolerance" value="0.20" type="double"/>
+        <param name="mission_super_arrival_tolerance" value="0.60" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
         <param name="target_recognition_topic" value="/vision/target/result" type="string"/>
 
