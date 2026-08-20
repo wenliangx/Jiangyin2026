@@ -117,6 +117,26 @@ class TargetMatcherTest(unittest.TestCase):
             self.assertEqual(result.corners.shape, (4, 2))
             self.assertGreater(result.target_side_px, 200.0)
 
+    def test_white_board_candidate_survives_brick_mortar_background(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            frame = np.full((480, 640, 3), (35, 35, 150), np.uint8)
+            for y in range(30, 470, 30):
+                cv2.line(frame, (0, y), (239, y), (235, 235, 235), 2)
+                cv2.line(frame, (400, y), (639, y), (235, 235, 235), 2)
+            board = cv2.resize(make_pattern("plane"), (160, 160))
+            frame[150:310, 240:400] = board
+
+            candidates = matcher._find_white_board_candidates(
+                frame, float(frame.shape[0] * frame.shape[1])
+            )
+            self.assertTrue(candidates)
+            centers = [candidate[2].mean(axis=0) for candidate in candidates]
+            self.assertTrue(
+                any(np.linalg.norm(center - (320, 230)) < 10 for center in centers)
+            )
+
     def test_blank_frame_is_unknown(self):
         with tempfile.TemporaryDirectory() as directory:
             write_templates(directory)

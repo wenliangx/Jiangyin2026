@@ -24,6 +24,13 @@ class MatcherConfig:
     min_side_ratio: float = 0.60
     max_angle_cosine: float = 0.35
     max_candidates: int = 5
+    white_board_enabled: bool = True
+    white_max_saturation: int = 60
+    white_min_value: int = 170
+    white_open_kernel: int = 5
+    white_close_kernel: int = 5
+    white_min_fill_ratio: float = 0.65
+    white_max_area_ratio: float = 0.20
     min_target_side_px: float = 80.0
     min_sharpness: float = 20.0
     gray_weight: float = 0.50
@@ -60,6 +67,22 @@ class MatcherConfig:
             raise ValueError("area ratios must satisfy 0 < min < max <= 1")
         if self.max_candidates <= 0:
             raise ValueError("max_candidates must be positive")
+        if not 0 <= self.white_max_saturation <= 255:
+            raise ValueError("white_max_saturation must be in [0, 255]")
+        if not 0 <= self.white_min_value <= 255:
+            raise ValueError("white_min_value must be in [0, 255]")
+        for name, size in (
+            ("white_open_kernel", self.white_open_kernel),
+            ("white_close_kernel", self.white_close_kernel),
+        ):
+            if size <= 0 or size % 2 == 0:
+                raise ValueError(f"{name} must be a positive odd integer")
+        if not 0.0 < self.white_min_fill_ratio <= 1.0:
+            raise ValueError("white_min_fill_ratio must be in (0, 1]")
+        if not self.min_area_ratio <= self.white_max_area_ratio <= self.max_area_ratio:
+            raise ValueError(
+                "white_max_area_ratio must be within the global area limits"
+            )
         if self.orb_nfeatures <= 0 or self.orb_max_width <= 0:
             raise ValueError("ORB feature count and max width must be positive")
         if not 0.0 < self.orb_ratio_test < 1.0:
@@ -422,6 +445,8 @@ class TargetMatcher:
                 continue
             ranked.append((quality[0], quality[1], ordered))
 
+        ranked.extend(self._find_white_board_candidates(frame, frame_area))
+
         ranked.sort(key=lambda item: item[0], reverse=True)
         deduplicated = []
         for item in ranked:
@@ -438,6 +463,67 @@ class TargetMatcher:
             if len(deduplicated) >= self.config.max_candidates:
                 break
         return deduplicated
+
+    def _find_white_board_candidates(
+        self, frame: np.ndarray, frame_area: float
+    ):
+        """Locate bright, low-saturation competition boards.
+
+        The edge-only contour path can merge a white board with mortar lines on
+        the red brick-pattern walls used at the competition. Opening the HSV
+        mask removes those thin lines before a minimum-area rectangle recovers
+        the board boundary. Template classification and temporal voting remain
+        responsible for rejecting unrelated white regions.
+        """
+        if not self.config.white_board_enabled:
+            return []
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(
+            hsv,
+            np.array((0, 0, self.config.white_min_value), dtype=np.uint8),
+            np.array(
+                (179, self.config.white_max_saturation, 255),
+                dtype=np.uint8,
+            ),
+        )
+        for operation, size in (
+            (cv2.MORPH_OPEN, self.config.white_open_kernel),
+            (cv2.MORPH_CLOSE, self.config.white_close_kernel),
+        ):
+            if size > 1:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT, (size, size)
+                )
+                mask = cv2.morphologyEx(mask, operation, kernel)
+
+        ranked = []
+        contours = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )[0]
+        for contour in contours:
+            contour_area = abs(float(cv2.contourArea(contour)))
+            if contour_area <= 0.0:
+                continue
+            rectangle = cv2.minAreaRect(contour)
+            width, height = rectangle[1]
+            if min(width, height) <= 1.0:
+                continue
+            rectangle_area = float(width * height)
+            area_ratio = rectangle_area / frame_area
+            if area_ratio > self.config.white_max_area_ratio:
+                continue
+            fill_ratio = contour_area / rectangle_area
+            if fill_ratio < self.config.white_min_fill_ratio:
+                continue
+            corners = order_quad(cv2.boxPoints(rectangle))
+            quality = self._quad_quality(corners, frame_area)
+            if quality is None:
+                continue
+            ranked.append(
+                (quality[0] * fill_ratio, quality[1], corners)
+            )
+        return ranked
 
     def _warp_candidate(self, frame: np.ndarray, corners: np.ndarray):
         size = self.config.canonical_size

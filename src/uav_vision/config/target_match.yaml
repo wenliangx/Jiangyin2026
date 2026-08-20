@@ -9,6 +9,16 @@ matcher:
   min_side_ratio: 0.60
   max_angle_cosine: 0.35
   max_candidates: 5
+  # Competition boards are white sheets on red brick-pattern walls. The HSV
+  # path prevents thin mortar lines from merging the sheet into a non-convex
+  # Canny contour. Values were replay-tested on front_target/001 from the venue.
+  white_board_enabled: true
+  white_max_saturation: 60
+  white_min_value: 170
+  white_open_kernel: 5
+  white_close_kernel: 5
+  white_min_fill_ratio: 0.65
+  white_max_area_ratio: 0.20
   min_target_side_px: 80.0
   min_sharpness: 20.0
   gray_weight: 0.50
