@@ -1,0 +1,38 @@
+<launch>
+  <!-- Only one role should be enabled in each mission segment. Both nodes
+       remain alive and reset their temporal state when their camera is off. -->
+  <arg name="control_topic" default="/vision/control"/>
+  <arg name="result_topic" default="/vision/target/result"/>
+  <arg name="templates_dir" default="$(find uav_vision)/templates"/>
+  <arg name="publish_debug_image" default="true"/>
+  <arg name="recording_enabled" default="true"/>
+  <arg name="recording_root" default="/home/flag/vision_recordings"/>
+
+  <include file="$(find uav_vision)/launch/target_match.launch">
+    <arg name="node_name" value="front_target_match_node"/>
+    <arg name="camera_role" value="front"/>
+    <arg name="image_topic" value="/vision/front/image_raw"/>
+    <arg name="result_topic" value="$(arg result_topic)"/>
+    <arg name="debug_topic" value="/vision/target/front/debug_image"/>
+    <arg name="templates_dir" value="$(arg templates_dir)"/>
+    <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="publish_debug_image" value="$(arg publish_debug_image)"/>
+    <arg name="recording_stream_name" value="front_target"/>
+    <arg name="recording_enabled" value="$(arg recording_enabled)"/>
+    <arg name="recording_root" value="$(arg recording_root)"/>
+  </include>
+
+  <include file="$(find uav_vision)/launch/target_match.launch">
+    <arg name="node_name" value="rear_target_match_node"/>
+    <arg name="camera_role" value="rear"/>
+    <arg name="image_topic" value="/vision/rear/image_raw"/>
+    <arg name="result_topic" value="$(arg result_topic)"/>
+    <arg name="debug_topic" value="/vision/target/rear/debug_image"/>
+    <arg name="templates_dir" value="$(arg templates_dir)"/>
+    <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="publish_debug_image" value="$(arg publish_debug_image)"/>
+    <arg name="recording_stream_name" value="rear_target"/>
+    <arg name="recording_enabled" value="$(arg recording_enabled)"/>
+    <arg name="recording_root" value="$(arg recording_root)"/>
+  </include>
+</launch>

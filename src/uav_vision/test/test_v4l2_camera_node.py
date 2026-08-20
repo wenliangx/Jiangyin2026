@@ -71,8 +71,8 @@ class CameraControlStateTest(unittest.TestCase):
         self.assertTrue(enabled)
         self.assertTrue(state.desired_enabled)
 
-    def test_down_camera_updates_are_idempotent(self):
-        state = v4l2_camera_node.CameraControlState("down")
+    def test_rear_camera_uses_legacy_down_field(self):
+        state = v4l2_camera_node.CameraControlState("rear")
 
         changed, enabled = state.update(FakeVisionControl(down=True))
         self.assertTrue(changed)
@@ -85,6 +85,13 @@ class CameraControlStateTest(unittest.TestCase):
         changed, enabled = state.update(FakeVisionControl(down=False))
         self.assertTrue(changed)
         self.assertFalse(enabled)
+
+    def test_down_role_remains_a_rear_compatibility_alias(self):
+        state = v4l2_camera_node.CameraControlState("down")
+        self.assertEqual(state._camera_role, "rear")
+        changed, enabled = state.update(FakeVisionControl(down=True))
+        self.assertTrue(changed)
+        self.assertTrue(enabled)
 
     def test_always_enabled_ignores_disable_requests(self):
         state = v4l2_camera_node.CameraControlState(

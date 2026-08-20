@@ -1,0 +1,15 @@
+<launch>
+  <include file="$(find uav_vision)/launch/target_debug_web.launch">
+    <arg name="node_name" value="front_target_debug_web"/>
+    <arg name="image_topic" value="/vision/target/front/debug_image"/>
+    <arg name="port" value="8081"/>
+    <arg name="page_title" value="UAV Front Target Debug"/>
+  </include>
+
+  <include file="$(find uav_vision)/launch/target_debug_web.launch">
+    <arg name="node_name" value="rear_target_debug_web"/>
+    <arg name="image_topic" value="/vision/target/rear/debug_image"/>
+    <arg name="port" value="8083"/>
+    <arg name="page_title" value="UAV Rear Target Debug"/>
+  </include>
+</launch>

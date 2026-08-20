@@ -4,16 +4,29 @@
   <arg name="debug_topic" default="/vision/target/debug_image"/>
   <arg name="templates_dir" default="$(find uav_vision)/templates"/>
   <arg name="publish_debug_image" default="true"/>
+  <arg name="node_name" default="front_target_match_node"/>
+  <arg name="camera_role" default="front"/>
+  <arg name="control_topic" default="/vision/control"/>
+  <arg name="always_enabled" default="false"/>
+  <arg name="recording_stream_name" default="front_target"/>
+  <arg name="recording_enabled" default="true"/>
+  <arg name="recording_root" default="/home/flag/vision_recordings"/>
 
   <node pkg="uav_vision"
         type="target_match_node.py"
-        name="target_match_node"
+        name="$(arg node_name)"
         output="screen">
     <param name="image_topic" value="$(arg image_topic)"/>
     <param name="result_topic" value="$(arg result_topic)"/>
     <param name="debug_topic" value="$(arg debug_topic)"/>
     <param name="templates_dir" value="$(arg templates_dir)"/>
     <param name="publish_debug_image" value="$(arg publish_debug_image)"/>
+    <param name="camera_role" value="$(arg camera_role)"/>
+    <param name="control_topic" value="$(arg control_topic)"/>
+    <param name="always_enabled" value="$(arg always_enabled)"/>
+    <param name="recording_stream_name" value="$(arg recording_stream_name)"/>
     <rosparam command="load" file="$(find uav_vision)/config/target_match.yaml"/>
+    <param name="recording/enabled" value="$(arg recording_enabled)"/>
+    <param name="recording/root" value="$(arg recording_root)"/>
   </node>
 </launch>

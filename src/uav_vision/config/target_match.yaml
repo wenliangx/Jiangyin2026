@@ -55,3 +55,15 @@ temporal:
   target_lost_frames: 3
 
 publish_debug_image: true
+
+# Raw/result recording runs on a bounded background queue. Each classifier
+# overrides the stream name to front_target or rear_target.
+recording:
+  enabled: true
+  root: /home/flag/vision_recordings
+  fps: 10.0
+  codec: mp4v
+  extension: .mp4
+  segment_seconds: 300.0
+  inactivity_seconds: 3.0
+  queue_size: 2

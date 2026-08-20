@@ -90,8 +90,12 @@ def orient_frame(frame, rotate_180):
 
 def validate_camera_role(camera_role):
     camera_role = str(camera_role).strip().lower()
-    if camera_role not in ("front", "down"):
-        raise ValueError("camera_role must be 'front' or 'down'")
+    # Keep "down" as a compatibility alias while VisionControl still uses
+    # the legacy down_camera_enabled field for the rear camera.
+    if camera_role == "down":
+        camera_role = "rear"
+    if camera_role not in ("front", "rear"):
+        raise ValueError("camera_role must be 'front' or 'rear'")
     return camera_role
 
 
@@ -99,6 +103,8 @@ def requested_camera_enabled(message, camera_role):
     camera_role = validate_camera_role(camera_role)
     if camera_role == "front":
         return bool(message.front_camera_enabled)
+    # The message field is intentionally retained to avoid changing the ROS
+    # message MD5. It now carries the rear-camera request.
     return bool(message.down_camera_enabled)
 
 

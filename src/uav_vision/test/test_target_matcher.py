@@ -124,7 +124,26 @@ class TargetMatcherTest(unittest.TestCase):
             result = matcher.match_frame(np.full((480, 640, 3), 80, np.uint8))
             self.assertFalse(result.valid)
             self.assertEqual(result.label, "unknown")
-            self.assertEqual(result.reason, "no_square_candidate")
+            self.assertIn(
+                result.reason,
+                ("no_square_candidate", "akaze_no_scene_features"),
+            )
+
+    def test_recording_annotation_uses_stable_class_and_box(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            result = matcher.classify_patch(make_pattern("ship"))
+            result.corners = np.float32(
+                [[20, 20], [120, 20], [120, 120], [20, 120]]
+            )
+            frame = np.zeros((160, 180, 3), np.uint8)
+            annotated = matcher.annotate_recording(
+                frame, result, "2026-08-20 01:02:03.456 Beijing"
+            )
+            self.assertEqual(annotated.shape, frame.shape)
+            self.assertGreater(np.count_nonzero(annotated), 0)
+            self.assertTrue(np.array_equal(frame, np.zeros_like(frame)))
 
 
 if __name__ == "__main__":

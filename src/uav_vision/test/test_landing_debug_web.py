@@ -93,7 +93,8 @@ class TargetDebugWebLaunchTest(unittest.TestCase):
         self.assertEqual(
             args["page_title"], "UAV Target Classification Debug"
         )
-        self.assertEqual(node.attrib["name"], "target_debug_web")
+        self.assertEqual(args["node_name"], "target_debug_web")
+        self.assertEqual(node.attrib["name"], "$(arg node_name)")
         self.assertEqual(node.attrib["type"], "landing_debug_web.py")
 
 

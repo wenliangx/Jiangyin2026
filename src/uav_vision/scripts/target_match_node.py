@@ -7,10 +7,32 @@ import cv2
 from cv_bridge import CvBridge, CvBridgeError
 import rospy
 from sensor_msgs.msg import Image
-from uav_vision_msgs.msg import TargetMatch, TargetMatchArray
+from uav_vision_msgs.msg import TargetMatch, TargetMatchArray, VisionControl
 
 from uav_vision.target_matcher import MatcherConfig, TargetMatcher
 from uav_vision.temporal_vote import TemporalVoter
+from uav_vision.video_recorder import (
+    AsyncVideoPairRecorder,
+    RecorderConfig,
+    beijing_timestamp,
+)
+
+
+def normalize_camera_role(camera_role):
+    camera_role = str(camera_role).strip().lower()
+    if camera_role == "down":
+        camera_role = "rear"
+    if camera_role not in ("front", "rear"):
+        raise ValueError("camera_role must be 'front' or 'rear'")
+    return camera_role
+
+
+def requested_camera_enabled(message, camera_role):
+    camera_role = normalize_camera_role(camera_role)
+    if camera_role == "front":
+        return bool(message.front_camera_enabled)
+    # Keep the legacy message field until all non-vision publishers migrate.
+    return bool(message.down_camera_enabled)
 
 
 class TargetMatchNode:
@@ -32,9 +54,27 @@ class TargetMatchNode:
             lost_frames=int(temporal_values["target_lost_frames"]),
         )
         self._last_stable_result = None
+        self._camera_role = normalize_camera_role(
+            rospy.get_param("~camera_role", "front")
+        )
+        self._always_enabled = bool(
+            rospy.get_param("~always_enabled", False)
+        )
+        self._enabled = self._always_enabled
         self._publish_debug = bool(
             rospy.get_param("~publish_debug_image", True)
         )
+        self._recorder = AsyncVideoPairRecorder(
+            RecorderConfig.from_mapping(rospy.get_param("~recording", {})),
+            rospy.get_param(
+                "~recording_stream_name",
+                f"{self._camera_role}_target",
+            ),
+            log_info=rospy.loginfo,
+            log_warning=rospy.logwarn,
+            log_error=rospy.logerr,
+        )
+        rospy.on_shutdown(self._recorder.close)
 
         result_topic = rospy.get_param(
             "~result_topic", "/vision/target/result"
@@ -44,6 +84,9 @@ class TargetMatchNode:
         )
         image_topic = rospy.get_param(
             "~image_topic", "/vision/front/image_raw"
+        )
+        control_topic = rospy.get_param(
+            "~control_topic", "/vision/control"
         )
         self._result_publisher = rospy.Publisher(
             result_topic, TargetMatchArray, queue_size=1
@@ -58,11 +101,50 @@ class TargetMatchNode:
             queue_size=1,
             buff_size=2**24,
         )
+        self._control_subscriber = rospy.Subscriber(
+            control_topic,
+            VisionControl,
+            self._control_callback,
+            queue_size=1,
+        )
+        # Clear any result latch in downstream consumers when this node is
+        # restarted while its camera is disabled.
+        self._publish_invalid()
         rospy.loginfo(
-            "target_match_node ready: image=%s result=%s templates=%s",
+            "target_match_node ready: role=%s image=%s result=%s "
+            "control=%s enabled=%s templates=%s",
+            self._camera_role,
             image_topic,
             result_topic,
+            control_topic,
+            self._enabled,
             templates_dir,
+        )
+
+    def _publish_invalid(self, stamp=None):
+        output = TargetMatchArray()
+        output.header.stamp = stamp or rospy.Time.now()
+        output.valid = False
+        output.matches = []
+        self._result_publisher.publish(output)
+
+    def _reset_matching_state(self):
+        self._voter.reset()
+        self._last_stable_result = None
+
+    def _control_callback(self, message):
+        requested = requested_camera_enabled(message, self._camera_role)
+        enabled = self._always_enabled or requested
+        if enabled == self._enabled:
+            return
+        self._enabled = enabled
+        self._reset_matching_state()
+        if not enabled:
+            self._publish_invalid(message.header.stamp)
+        rospy.loginfo(
+            "%s target matcher %s",
+            self._camera_role,
+            "enabled" if enabled else "disabled",
         )
 
     @staticmethod
@@ -87,6 +169,8 @@ class TargetMatchNode:
         return message
 
     def _image_callback(self, image_message):
+        if not self._enabled:
+            return
         output = TargetMatchArray()
         output.header = image_message.header
         output.valid = False
@@ -94,6 +178,7 @@ class TargetMatchNode:
         frame = None
         result = None
         stable_label = None
+        published_result = None
         try:
             frame = self._bridge.imgmsg_to_cv2(
                 image_message, desired_encoding="bgr8"
@@ -102,7 +187,6 @@ class TargetMatchNode:
             stable_label = self._voter.update(
                 result.label if result.valid else None
             )
-            published_result = None
             if stable_label is not None:
                 if result.valid and result.label == stable_label:
                     self._last_stable_result = result
@@ -128,6 +212,17 @@ class TargetMatchNode:
             )
             debug_message.header = image_message.header
             self._debug_publisher.publish(debug_message)
+
+        if frame is not None and self._recorder.enabled:
+            stamp_seconds = image_message.header.stamp.to_sec()
+            recording_frame = self._matcher.annotate_recording(
+                frame,
+                published_result,
+                beijing_timestamp(stamp_seconds),
+            )
+            self._recorder.submit(
+                frame, recording_frame, stamp_seconds
+            )
 
 
 def main():

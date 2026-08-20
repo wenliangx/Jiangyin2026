@@ -1,0 +1,23 @@
+<launch>
+  <!-- Active runtime: two message-gated cameras and two message-gated target
+       classifiers. The legacy AprilTag landing chain is intentionally absent. -->
+  <arg name="control_topic" default="/vision/control"/>
+  <arg name="always_enabled" default="false"/>
+  <arg name="recording_enabled" default="true"/>
+  <arg name="recording_root" default="/home/flag/vision_recordings"/>
+  <arg name="front_rotate_180" default="true"/>
+  <arg name="rear_rotate_180" default="false"/>
+
+  <include file="$(find uav_vision)/launch/dual_camera.launch">
+    <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="always_enabled" value="$(arg always_enabled)"/>
+    <arg name="front_rotate_180" value="$(arg front_rotate_180)"/>
+    <arg name="rear_rotate_180" value="$(arg rear_rotate_180)"/>
+  </include>
+
+  <include file="$(find uav_vision)/launch/dual_target_match.launch">
+    <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="recording_enabled" value="$(arg recording_enabled)"/>
+    <arg name="recording_root" value="$(arg recording_root)"/>
+  </include>
+</launch>

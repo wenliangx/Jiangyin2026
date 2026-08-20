@@ -6,10 +6,11 @@
   <arg name="max_width" default="960"/>
   <arg name="stream_fps" default="10.0"/>
   <arg name="page_title" default="UAV Target Classification Debug"/>
+  <arg name="node_name" default="target_debug_web"/>
 
   <node pkg="uav_vision"
         type="landing_debug_web.py"
-        name="target_debug_web"
+        name="$(arg node_name)"
         output="screen">
     <param name="image_topic" value="$(arg image_topic)"/>
     <param name="host" value="$(arg host)"/>

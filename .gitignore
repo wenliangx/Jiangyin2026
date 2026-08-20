@@ -17,5 +17,7 @@ compile_commands.json
 __pycache__/
 *.pyc
 *.png
+!src/uav_vision/templates/
+!src/uav_vision/templates/*.png
 *.ipynb
 /docs/superpowers

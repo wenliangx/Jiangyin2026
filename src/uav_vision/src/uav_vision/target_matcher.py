@@ -765,3 +765,45 @@ class TargetMatcher:
             cv2.LINE_AA,
         )
         return output
+
+    @staticmethod
+    def annotate_recording(
+        frame: np.ndarray,
+        result: Optional[MatchResult],
+        timestamp_text: str,
+    ) -> np.ndarray:
+        """Draw only the stable class, capture time and target quadrilateral."""
+        output = frame.copy()
+        label = "unknown"
+        if result is not None and result.valid:
+            label = result.label
+            if result.corners.shape == (4, 2):
+                corners = np.rint(result.corners).astype(np.int32)
+                cv2.polylines(
+                    output, [corners], True, (0, 255, 0), 3, cv2.LINE_AA
+                )
+
+        lines = (f"CLASS: {label}", f"TIME: {timestamp_text}")
+        for index, text in enumerate(lines):
+            position = (18, 36 + index * 36)
+            cv2.putText(
+                output,
+                text,
+                position,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 0, 0),
+                5,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                output,
+                text,
+                position,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+        return output

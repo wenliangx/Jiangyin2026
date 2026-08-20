@@ -3,16 +3,20 @@
        default="$(find uav_vision)/config/camera_common.yaml"/>
   <arg name="control_topic" default="/vision/control"/>
   <arg name="always_enabled" default="false"/>
+  <arg name="front_device" default="/dev/uav_front_camera"/>
+  <arg name="rear_device" default="/dev/uav_rear_camera"/>
+  <arg name="front_rotate_180" default="true"/>
+  <arg name="rear_rotate_180" default="false"/>
 
   <node pkg="uav_vision"
         type="v4l2_camera_node.py"
         name="front_camera_node"
         output="screen">
     <rosparam command="load" file="$(arg config)"/>
-    <param name="device" value="/dev/uav_front_camera"/>
+    <param name="device" value="$(arg front_device)"/>
     <param name="image_topic" value="/vision/front/image_raw"/>
     <param name="frame_id" value="uav_front_camera"/>
-    <param name="rotate_180" value="true"/>
+    <param name="rotate_180" value="$(arg front_rotate_180)"/>
     <param name="camera_role" value="front"/>
     <param name="control_topic" value="$(arg control_topic)"/>
     <param name="always_enabled" value="$(arg always_enabled)"/>
@@ -20,14 +24,14 @@
 
   <node pkg="uav_vision"
         type="v4l2_camera_node.py"
-        name="down_camera_node"
+        name="rear_camera_node"
         output="screen">
     <rosparam command="load" file="$(arg config)"/>
-    <param name="device" value="/dev/uav_down_camera"/>
-    <param name="image_topic" value="/vision/down/image_raw"/>
-    <param name="frame_id" value="uav_down_camera"/>
-    <param name="rotate_180" value="false"/>
-    <param name="camera_role" value="down"/>
+    <param name="device" value="$(arg rear_device)"/>
+    <param name="image_topic" value="/vision/rear/image_raw"/>
+    <param name="frame_id" value="uav_rear_camera"/>
+    <param name="rotate_180" value="$(arg rear_rotate_180)"/>
+    <param name="camera_role" value="rear"/>
     <param name="control_topic" value="$(arg control_topic)"/>
     <param name="always_enabled" value="$(arg always_enabled)"/>
   </node>
