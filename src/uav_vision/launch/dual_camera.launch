@@ -1,6 +1,8 @@
 <launch>
   <arg name="config"
        default="$(find uav_vision)/config/camera_common.yaml"/>
+  <arg name="control_topic" default="/vision/control"/>
+  <arg name="always_enabled" default="false"/>
 
   <node pkg="uav_vision"
         type="v4l2_camera_node.py"
@@ -10,6 +12,10 @@
     <param name="device" value="/dev/uav_front_camera"/>
     <param name="image_topic" value="/vision/front/image_raw"/>
     <param name="frame_id" value="uav_front_camera"/>
+    <param name="rotate_180" value="true"/>
+    <param name="camera_role" value="front"/>
+    <param name="control_topic" value="$(arg control_topic)"/>
+    <param name="always_enabled" value="$(arg always_enabled)"/>
   </node>
 
   <node pkg="uav_vision"
@@ -20,5 +26,9 @@
     <param name="device" value="/dev/uav_down_camera"/>
     <param name="image_topic" value="/vision/down/image_raw"/>
     <param name="frame_id" value="uav_down_camera"/>
+    <param name="rotate_180" value="false"/>
+    <param name="camera_role" value="down"/>
+    <param name="control_topic" value="$(arg control_topic)"/>
+    <param name="always_enabled" value="$(arg always_enabled)"/>
   </node>
 </launch>

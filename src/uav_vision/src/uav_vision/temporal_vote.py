@@ -17,10 +17,12 @@ class TemporalVoter:
         self.lost_frames = int(lost_frames)
         self._window = deque(maxlen=self.window_size)
         self._consecutive_unknown = 0
+        self._stable_label = None
 
     def reset(self):
         self._window.clear()
         self._consecutive_unknown = 0
+        self._stable_label = None
 
     def update(self, label):
         if label is None:
@@ -28,7 +30,8 @@ class TemporalVoter:
             self._window.append(None)
             if self._consecutive_unknown >= self.lost_frames:
                 self.reset()
-            return None
+                return None
+            return self._stable_label
 
         self._consecutive_unknown = 0
         self._window.append(str(label))
@@ -40,5 +43,7 @@ class TemporalVoter:
         winner, count = ranked[0]
         tied = len(ranked) > 1 and ranked[1][1] == count
         if tied or count < self.min_votes or winner != label:
+            self._stable_label = None
             return None
+        self._stable_label = winner
         return winner

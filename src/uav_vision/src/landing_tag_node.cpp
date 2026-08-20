@@ -78,7 +78,6 @@ class LandingTagNode {
         estimator_config.reset_frames);
     expected_ids_ = estimator_config.expected_ids;
 
-    pnh_.param("always_enabled", always_enabled_, true);
     pnh_.param("publish_debug_image", publish_debug_image_, true);
     pnh_.param<std::string>(
         "image_topic", image_topic_, "/vision/down/image_raw");
@@ -86,7 +85,6 @@ class LandingTagNode {
         "result_topic", result_topic_, "/vision/landing/offset");
     pnh_.param<std::string>(
         "debug_topic", debug_topic_, "/vision/landing/debug_image");
-
     detector_.reset(new LandingTagDetector(detector_config));
     estimator_.reset(new LandingOffsetEstimator(estimator_config));
     result_publisher_ =
@@ -109,11 +107,9 @@ class LandingTagNode {
     LandingEstimate estimate;
 
     try {
-      if (always_enabled_) {
-        const auto gray = cv_bridge::toCvShare(
-            image_message, sensor_msgs::image_encodings::MONO8);
-        observations = detector_->detect(gray->image);
-      }
+      const auto gray = cv_bridge::toCvShare(
+          image_message, sensor_msgs::image_encodings::MONO8);
+      observations = detector_->detect(gray->image);
       estimate = estimator_->update(
           image_message->width, image_message->height, observations);
     } catch (const std::exception& error) {
@@ -234,7 +230,6 @@ class LandingTagNode {
   ros::Publisher result_publisher_;
   std::unique_ptr<LandingTagDetector> detector_;
   std::unique_ptr<LandingOffsetEstimator> estimator_;
-  bool always_enabled_ = true;
   bool publish_debug_image_ = true;
   std::vector<int> expected_ids_;
   std::string image_topic_;

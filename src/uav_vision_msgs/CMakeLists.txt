@@ -11,6 +11,7 @@ add_message_files(
   LandingOffset.msg
   TargetMatch.msg
   TargetMatchArray.msg
+  VisionControl.msg
 )
 
 generate_messages(

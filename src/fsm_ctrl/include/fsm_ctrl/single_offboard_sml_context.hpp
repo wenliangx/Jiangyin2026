@@ -11,16 +11,16 @@ namespace single_sml {
 struct Context {
   Context(Clock& clock_in, AutopilotPort& autopilot_in,
           SetpointPort& setpoint_in, NmpcPort& nmpc_in,
-          ReferenceProvider& reference_in, MissionPort& mission_in,
-          PrecisionLandingPort& landing_in,
+          MissionPort& mission_in, PrecisionLandingPort& landing_in,
+          CameraControlPort& camera_control_in,
           const Config& config_in = Config{})
       : clock(clock_in),
         autopilot(autopilot_in),
         setpoint(setpoint_in),
         nmpc(nmpc_in),
-        reference(reference_in),
         mission(mission_in),
         landing(landing_in),
+        camera_control(camera_control_in),
         config(config_in),
         last_service_request(clock_in.now()) {}
 
@@ -58,9 +58,9 @@ struct Context {
   AutopilotPort& autopilot;
   SetpointPort& setpoint;
   NmpcPort& nmpc;
-  ReferenceProvider& reference;
   MissionPort& mission;
   PrecisionLandingPort& landing;
+  CameraControlPort& camera_control;
   Config config;
   TelemetrySnapshot telemetry;
   double last_service_request;

@@ -11,17 +11,19 @@ class TemporalVoterTest(unittest.TestCase):
         self.assertIsNone(voter.update(None))
         self.assertEqual(voter.update("plane"), "plane")
 
-    def test_current_frame_must_match_stable_label(self):
+    def test_stable_label_bridges_short_unknown_gap(self):
         voter = TemporalVoter(window_size=3, min_votes=2, lost_frames=3)
         self.assertIsNone(voter.update("plane"))
         self.assertEqual(voter.update("plane"), "plane")
+        self.assertEqual(voter.update(None), "plane")
+        self.assertEqual(voter.update(None), "plane")
         self.assertIsNone(voter.update(None))
 
     def test_consecutive_unknown_clears_history(self):
         voter = TemporalVoter(window_size=5, min_votes=2, lost_frames=2)
         self.assertIsNone(voter.update("car"))
         self.assertEqual(voter.update("car"), "car")
-        self.assertIsNone(voter.update(None))
+        self.assertEqual(voter.update(None), "car")
         self.assertIsNone(voter.update(None))
         self.assertIsNone(voter.update("car"))
 

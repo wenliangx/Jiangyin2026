@@ -17,6 +17,21 @@ matcher:
   min_class_score: 0.60
   min_class_margin: 0.03
   min_candidate_margin: 0.02
+  orb_nfeatures: 1200
+  orb_max_width: 960
+  orb_ratio_test: 0.75
+  orb_ransac_reproj_px: 5.0
+  orb_min_good_matches: 12
+  orb_min_inliers: 10
+  orb_min_inlier_ratio: 0.45
+  orb_min_inlier_margin: 5
+  akaze_max_width: 960
+  akaze_ratio_test: 0.80
+  akaze_ransac_reproj_px: 5.0
+  akaze_min_good_matches: 10
+  akaze_min_inliers: 8
+  akaze_min_inlier_ratio: 0.45
+  akaze_min_inlier_margin: 4
   augmentations:
     - {}
     - {brightness: -25}

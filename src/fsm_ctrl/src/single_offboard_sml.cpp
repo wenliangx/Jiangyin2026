@@ -3,8 +3,10 @@
 #include <fsm_ctrl/NMPC_Controller.hpp>
 #include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
+#include <fsm_ctrl/nmpc_params.h>
 #include <fsm_ctrl/nmpc_state.h>
-#include <fsm_ctrl/traj_gen.hpp>
+#include <iostream>
+#include <ostream>
 
 // 旧版 NMPC 头文件会导出通用重力宏；这里清掉，避免污染 Boost.SML 和适配层头文件。
 #ifdef G
@@ -23,9 +25,9 @@
 #include <mavros_msgs/State.h>
 #include <ros/ros.h>
 #include <super_msgs/Flag.h>
-#include <traj_utils/Flag.h>
 #include <uav_vision_msgs/LandingOffset.h>
-#include <xmlrpcpp/XmlRpcValue.h>
+#include <uav_vision_msgs/TargetMatchArray.h>
+#include <uav_vision_msgs/VisionControl.h>
 #include <yaml-cpp/yaml.h>
 
 #include <arpa/inet.h>
@@ -60,8 +62,6 @@ constexpr double kRateHz = 50.0;
 constexpr double kInterval = 1.0 / kRateHz;
 // simple NMPC 使用的参考 horizon 点数。
 constexpr std::size_t kHorizonPoints = 9;
-// planner topic 中按旧逻辑读取的参考点数。
-constexpr std::size_t kPlannerPoints = 6;
 // 精降调试 horizon 点数。
 constexpr std::size_t kLandingHorizonPoints = 6;
 
@@ -201,7 +201,7 @@ class RosClock final : public smlfsm::Clock {
   double now() const override { return ros::Time::now().toSec(); }
 };
 
-// AutopilotPort 的 ROS/MAVROS 实现，负责 OFFBOARD、arm 和 disarm 服务调用。
+// AutopilotPort 的 ROS/MAVROS 实现，负责 OFFBOARD 和 arm 服务调用。
 class RosAutopilotPort final : public smlfsm::AutopilotPort {
  public:
   explicit RosAutopilotPort(ros::NodeHandle& node)
@@ -217,8 +217,6 @@ class RosAutopilotPort final : public smlfsm::AutopilotPort {
   }
 
   bool requestArm() override { return requestArmed(true); }
-  bool requestDisarm() override { return requestArmed(false); }
-
  private:
   // 根据 armed 参数复用 MAVROS arming 服务。
   bool requestArmed(bool armed) {
@@ -377,26 +375,59 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     private_node.param("nmpc_RtotalF", r_thrust, r_thrust);
     private_node.param("nmpc_hover_thrust", hover_thrust, hover_thrust);
 
+    // 控制器固定构造参数，提取为具名常量，保证与参数镜像 topic 一致。
+    constexpr std::array<double, 2> kAccZLimit{{0.0, 15.0}};
+    constexpr std::array<double, 2> kWLimit{{-3.14, 3.14}};
+    constexpr int kNlpPredictStep = 8;
+    constexpr double kNlpOnestepTime = 0.05;
+    constexpr int kNlpStateNum = 10;
+    constexpr int kNlpInputNum = 4;
+
     Eigen::Matrix<float, 3, 1> q_position, q_velocity, q_attitude, r_angular;
     q_position << q_pos_x, q_pos_y, q_pos_z;
     q_velocity << q_vel_x, q_vel_y, q_vel_z;
     q_attitude << q_quat_x, q_quat_y, q_quat_z;
     r_angular << r_w_x, r_w_y, r_w_z;
+    std::cout << q_pos_x << q_pos_y << q_pos_z << std::endl;
     controller_.reset(new NMPC_Ctrller_simple(
-        kInterval, std::array<double, 2>{{0.0, 15.0}},
-        std::array<double, 2>{{-3.14, 3.14}}, 8, 0.05, 10, 4,
-        q_position, q_velocity, q_attitude, r_angular, r_thrust,
-        hover_thrust));
+        kInterval, kAccZLimit, kWLimit, kNlpPredictStep, kNlpOnestepTime,
+        kNlpStateNum, kNlpInputNum, q_position, q_velocity, q_attitude,
+        r_angular, r_thrust, hover_thrust));
 
-  }
+    // 镜像实际生效的 NMPC 参数到 /nmpc_params，仅用于录包观察，
+    // 不参与任何控制计算。
+    params_msg_.q_pos_x = q_pos_x;
+    params_msg_.q_pos_y = q_pos_y;
+    params_msg_.q_pos_z = q_pos_z;
+    params_msg_.q_vel_x = q_vel_x;
+    params_msg_.q_vel_y = q_vel_y;
+    params_msg_.q_vel_z = q_vel_z;
+    params_msg_.q_quat_x = q_quat_x;
+    params_msg_.q_quat_y = q_quat_y;
+    params_msg_.q_quat_z = q_quat_z;
+    params_msg_.r_w_x = r_w_x;
+    params_msg_.r_w_y = r_w_y;
+    params_msg_.r_w_z = r_w_z;
+    params_msg_.r_acc_z = r_thrust;
+    params_msg_.hover_thrust = hover_thrust;
+    params_msg_.ctrl_t = kInterval;
+    params_msg_.acc_z_limit_low = kAccZLimit[0];
+    params_msg_.acc_z_limit_high = kAccZLimit[1];
+    params_msg_.w_limit_low = kWLimit[0];
+    params_msg_.w_limit_high = kWLimit[1];
+    params_msg_.nlp_predict_step = kNlpPredictStep;
+    params_msg_.nlp_onestep_time = kNlpOnestepTime;
+    params_msg_.nlp_state_num = kNlpStateNum;
+    params_msg_.nlp_input_num = kNlpInputNum;
 
-  bool solveHover(const smlfsm::TelemetrySnapshot& telemetry,
-                  smlfsm::BodyRateThrust& command) override {
-    std::vector<smlfsm::ReferencePoint> horizon(kHorizonPoints);
-    for (auto& point : horizon) {
-      point.position.z = 0.5;
-    }
-    return solve(telemetry, horizon, command);
+    // 锁存发布：后启动的录包/echo 也能立即收到当前参数。
+    params_pub_ = private_node.advertise<fsm_ctrl::nmpc_params>(
+        "/nmpc_params", 10, true);
+    params_pub_.publish(params_msg_);
+    // 1Hz 低频重发，保证 bag 中任意时间段都能看到这段参数。
+    params_timer_ = private_node.createTimer(
+        ros::Duration(1.0),
+        [this](const ros::TimerEvent&) { params_pub_.publish(params_msg_); });
   }
 
   bool solveTrack(const smlfsm::TelemetrySnapshot& telemetry,
@@ -413,6 +444,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     if (!controller_ || horizon.empty()) {
       return false;
     }
+
     const std::vector<double> current{
         telemetry.position.x, telemetry.position.y, telemetry.position.z,
         telemetry.velocity.x, telemetry.velocity.y, telemetry.velocity.z,
@@ -422,6 +454,7 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
     desired.reserve(kHorizonPoints * 10 + (kHorizonPoints - 1) * 4);
     for (std::size_t index = 0; index < kHorizonPoints; ++index) {
       const auto& point = horizon[std::min(index, horizon.size() - 1)];
+      std::cout<<"x:"<<point.position.x<<", y:"<<point.position.y<<"\n";
       desired.insert(desired.end(),
                      {point.position.x, point.position.y, point.position.z,
                       point.velocity.x, point.velocity.y, point.velocity.z,
@@ -444,144 +477,9 @@ class RosNmpcPort final : public smlfsm::NmpcPort {
   }
 
   std::unique_ptr<NMPC_Ctrller_simple> controller_;  // cmd3/5/6 使用的 simple NMPC。
-};
-
-// cmd5 参考轨迹提供器：按 planner、内部轨迹、固定悬停的优先级生成 horizon。
-class RosReferenceProvider final : public smlfsm::ReferenceProvider {
- public:
-  explicit RosReferenceProvider(ros::NodeHandle& private_node)
-      : private_node_(private_node) {
-    private_node_.param("use_traj_gen", use_internal_, false);
-    private_node_.param("traj_type", trajectory_type_, std::string("circle"));
-    private_node_.param("traj_cx", center_x_, 0.0);
-    private_node_.param("traj_cy", center_y_, 0.0);
-    private_node_.param("traj_alt", altitude_, 1.0);
-    private_node_.param("traj_param1", parameter_one_, 2.0);
-    private_node_.param("traj_param2", parameter_two_, 0.5);
-    private_node_.param("traj_hold_time", hold_seconds_, 3.0);
-  }
-
-  // 记录当前命令，用于 fallback 高度等兼容旧行为的分支。
-  void selectCommand(int command) override {
-    switch (command) {
-      case 6: mode_ = Mode::kSuperTrack; break;
-      default: mode_ = Mode::kNmpcTrack; break;
-    }
-  }
-
-  // 接收 planner 轨迹；保持旧行为：一旦收到有效 planner，就一直复用最后一帧。
-  void updatePlanner(const traj_utils::Flag& message) {
-    planner_.clear();
-    for (std::size_t index = 0; index < kPlannerPoints; ++index) {
-      smlfsm::ReferencePoint point;
-      point.position = {message.cmd[index].position.x,
-                        message.cmd[index].position.y,
-                        message.cmd[index].position.z};
-      point.velocity = {message.cmd[index].velocity.x,
-                        message.cmd[index].velocity.y,
-                        message.cmd[index].velocity.z};
-      planner_.push_back(point);
-    }
-    planner_valid_ = true;
-  }
-
-  // 重新进入 cmd5 时重置内部轨迹起点和计时。
-  void reset() override {
-    start_time_ = ros::Time::now().toSec();
-    internal_.reset();
-    if (use_internal_) {
-      createInternalTrajectory();
-    }
-  }
-
-  // 生成给 cmd5 NMPC 的参考 horizon。
-  bool horizon(double now,
-               std::vector<smlfsm::ReferencePoint>& points) override {
-    points.clear();
-    if (planner_valid_) {
-      for (std::size_t index = 0; index < kHorizonPoints; ++index) {
-        points.push_back(planner_[std::min(index, planner_.size() - 1)]);
-      }
-      return true;
-    }
-    if (use_internal_ && internal_) {
-      for (std::size_t index = 0; index < kHorizonPoints; ++index) {
-        const double elapsed = now - start_time_ + index * 0.05;
-        traj_gen::TrajPoint sample;
-        if (elapsed < hold_seconds_) {
-          sample.pos = Eigen::Vector3d(0.0, 0.0, altitude_);
-        } else {
-          sample = internal_->sample(elapsed - hold_seconds_);
-        }
-        smlfsm::ReferencePoint point;
-        point.position = {sample.pos.x(), sample.pos.y(), sample.pos.z()};
-        point.velocity = {sample.vel.x(), sample.vel.y(), sample.vel.z()};
-        point.attitude = {std::cos(sample.yaw * 0.5), 0.0, 0.0,
-                          std::sin(sample.yaw * 0.5)};
-        points.push_back(point);
-      }
-      return true;
-    }
-    points.resize(kHorizonPoints);
-    for (auto& point : points) {
-      point.position.z = fallbackAltitude();
-    }
-    return true;
-  }
-
- private:
-  // 参考提供器内部模式，用于区分 cmd5 和任务态 fallback。
-  enum class Mode { kNmpcTrack, kSuperTrack };
-
-  // 没有 planner/内部轨迹时使用的固定高度。
-  double fallbackAltitude() const {
-    return mode_ == Mode::kNmpcTrack ? 0.5 : 1.0;
-  }
-
-  // 根据参数创建内部轨迹；参数无效时回退到 circle。
-  void createInternalTrajectory() {
-    try {
-      if (trajectory_type_ == "waypoint") {
-        XmlRpc::XmlRpcValue waypoints;
-        if (private_node_.getParam("traj_waypoints", waypoints) &&
-            waypoints.getType() == XmlRpc::XmlRpcValue::TypeArray &&
-            waypoints.size() >= 2) {
-          auto trajectory = std::make_shared<traj_gen::WaypointTrajectory>(
-              altitude_, parameter_two_, true);
-          for (int index = 0; index < waypoints.size(); ++index) {
-            const double x = static_cast<double>(waypoints[index][0]);
-            const double y = static_cast<double>(waypoints[index][1]);
-            const double yaw = waypoints[index].size() > 2
-                                   ? static_cast<double>(waypoints[index][2])
-                                   : 0.0;
-            trajectory->addWaypoint(x, y, yaw);
-          }
-          internal_ = trajectory;
-          return;
-        }
-        ROS_WARN("Invalid traj_waypoints; falling back to circle");
-      }
-      const std::string type =
-          trajectory_type_ == "waypoint" ? "circle" : trajectory_type_;
-      internal_ = traj_gen::createTrajectory(
-          type, center_x_, center_y_, altitude_, parameter_one_,
-          parameter_two_);
-    } catch (const std::exception& error) {
-      ROS_ERROR("Cannot create internal trajectory: %s", error.what());
-      internal_.reset();
-    }
-  }
-
-  ros::NodeHandle& private_node_;  // 私有参数命名空间。
-  bool use_internal_{false};       // 是否启用内部轨迹生成器。
-  bool planner_valid_{false};      // 是否已经收到 planner 参考。
-  double center_x_{0.0}, center_y_{0.0}, altitude_{1.0};  // 内部轨迹几何参数。
-  double parameter_one_{2.0}, parameter_two_{0.5}, hold_seconds_{3.0};  // 内部轨迹形状/起飞等待参数。
-  double start_time_{0.0};         // 内部轨迹的起始时间。
-  std::string trajectory_type_;    // 内部轨迹类型。
-  std::vector<smlfsm::ReferencePoint> planner_;  // 最近一帧 planner 轨迹。
-  std::shared_ptr<traj_gen::Trajectory> internal_;  // 内部轨迹对象。
-  Mode mode_{Mode::kNmpcTrack};    // 当前参考模式。
+  ros::Publisher params_pub_;          // /nmpc_params 参数镜像观察 topic。
+  ros::Timer params_timer_;            // 参数镜像 1Hz 重发定时器。
+  fsm_ctrl::nmpc_params params_msg_;   // 已加载 NMPC 参数的镜像消息。
 };
 
 class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
@@ -596,10 +494,43 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     private_node.param("landing_pixel_gain_x", pixel_gain_x_, pixel_gain_x_);
     private_node.param("landing_pixel_gain_y", pixel_gain_y_, pixel_gain_y_);
     private_node.param("landing_max_xy_step", max_xy_step_, max_xy_step_);
+    private_node.param("landing_xy_step", closed_loop_config_.xy_step,
+                       closed_loop_config_.xy_step);
+    private_node.param("landing_lock_min_tag_count",
+                       closed_loop_config_.lock_min_tag_count,
+                       closed_loop_config_.lock_min_tag_count);
+    private_node.param("landing_adjust_duration_tag1",
+                       closed_loop_config_.adjust_duration_tag1,
+                       closed_loop_config_.adjust_duration_tag1);
+    private_node.param("landing_adjust_duration_tag2",
+                       closed_loop_config_.adjust_duration_tag2,
+                       closed_loop_config_.adjust_duration_tag2);
+    private_node.param("landing_adjust_duration_tag3",
+                       closed_loop_config_.adjust_duration_tag3,
+                       closed_loop_config_.adjust_duration_tag3);
+    private_node.param("landing_adjust_duration_tag4",
+                       closed_loop_config_.adjust_duration_tag4,
+                       closed_loop_config_.adjust_duration_tag4);
+    private_node.param("landing_adjust_duration_tag5",
+                       closed_loop_config_.adjust_duration_tag5,
+                       closed_loop_config_.adjust_duration_tag5);
+    private_node.param("landing_swap_xy", closed_loop_config_.swap_xy,
+                       closed_loop_config_.swap_xy);
+    private_node.param("landing_x_sign", closed_loop_config_.x_sign,
+                       closed_loop_config_.x_sign);
+    private_node.param("landing_y_sign", closed_loop_config_.y_sign,
+                       closed_loop_config_.y_sign);
     private_node.param("landing_descent_rate", descent_rate_, descent_rate_);
     private_node.param("landing_min_z", min_z_, min_z_);
     private_node.param("landing_loss_hold_seconds", loss_hold_seconds_,
                        loss_hold_seconds_);
+    closed_loop_config_.observation_timeout = valid_timeout_;
+    closed_loop_config_.align_px_threshold = align_px_threshold_;
+    closed_loop_config_.descent_rate = descent_rate_;
+    closed_loop_config_.min_z = min_z_;
+    closed_loop_config_.control_rate_hz = kRateHz;
+    closed_loop_config_.horizon_points = kLandingHorizonPoints;
+    closed_loop_planner_.configure(closed_loop_config_);
   }
 
   void reset() override {
@@ -611,30 +542,43 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     locked_xy_ = false;
     lock_x_ = 0.0;
     lock_y_ = 0.0;
-    complete_ = false;
     last_observation_ = smlfsm::LandingObservation{};
+    closed_loop_planner_.reset();
   }
 
   void updateObservation(
       const smlfsm::LandingObservation& observation) override {
     last_observation_ = observation;
+    closed_loop_planner_.updateObservation(observation);
+  }
+
+  void startClosedLoopLanding(
+      const smlfsm::TelemetrySnapshot& telemetry) override {
+    closed_loop_planner_.start(telemetry);
   }
 
   bool prepareLanding(double now, const smlfsm::TelemetrySnapshot& telemetry,
                       std::vector<smlfsm::ReferencePoint>& horizon) override {
-    if (complete_) {
-      horizon.clear();
-      return false;
-    }
+    const double observation_age =
+        last_observation_.stamp > 0.0 && now >= last_observation_.stamp
+            ? now - last_observation_.stamp
+            : -1.0;
+    ROS_INFO_THROTTLE(
+        0.5,
+        "Landing vision monitor only: valid=%s tags=%d dx=%.2f dy=%.2f "
+        "age=%.3fs",
+        last_observation_.valid ? "true" : "false",
+        last_observation_.tag_count, last_observation_.dx,
+        last_observation_.dy, observation_age);
 
-    const bool observation_fresh =
-        last_observation_.valid && now >= last_observation_.stamp &&
-        now - last_observation_.stamp <= valid_timeout_;
-    if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
-        std::abs(last_observation_.dy) > 50.0) {
-      horizon.clear();
-      return false;
-    }
+    // const bool observation_fresh =
+    //     last_observation_.valid && now >= last_observation_.stamp &&
+    //     now - last_observation_.stamp <= valid_timeout_;
+    // if (!observation_fresh || std::abs(last_observation_.dx) > 50.0 ||
+    //     std::abs(last_observation_.dy) > 50.0) {
+    //   horizon.clear();
+    //   return false;
+    // }
 
     if (!locked_xy_) {
       lock_x_ = telemetry.position.x;
@@ -645,10 +589,6 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     }
 
     target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
-    if (target_z_ <= min_z_ || telemetry.position.z <= min_z_ + 0.02) {
-      complete_ = true;
-    }
-
     buildConstantHorizon({lock_x_, lock_y_, target_z_}, telemetry.attitude,
                          horizon);
     return true;
@@ -664,7 +604,30 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
     */
   }
 
-  bool isComplete() const override { return complete_; }
+  bool prepareClosedLoopLanding(
+      double now, const smlfsm::TelemetrySnapshot& telemetry,
+      std::vector<smlfsm::ReferencePoint>& horizon) override {
+    const bool prepared =
+        closed_loop_planner_.prepare(now, telemetry, horizon);
+    const smlfsm::LandingObservation& observation =
+        closed_loop_planner_.lastObservation();
+    const smlfsm::Vec3& target = closed_loop_planner_.target();
+    const double observation_age =
+        observation.stamp > 0.0 && now >= observation.stamp
+            ? now - observation.stamp
+            : -1.0;
+    ROS_INFO_THROTTLE(
+        0.5,
+        "Closed-loop landing: stage=%s valid=%s tags=%d dx=%.2f dy=%.2f "
+        "age=%.3fs target=(%.3f, %.3f, %.3f)",
+        closed_loop_planner_.descending()
+            ? "descend"
+            : (closed_loop_planner_.adjusting() ? "adjust" : "observe"),
+        observation.valid ? "true" : "false", observation.tag_count,
+        observation.dx, observation.dy, observation_age, target.x, target.y,
+        target.z);
+    return prepared;
+  }
 
  private:
   enum class Stage { Acquire, Align, Descend, Touchdown };
@@ -687,18 +650,61 @@ class RosPrecisionLandingPort final : public smlfsm::PrecisionLandingPort {
   bool locked_xy_{false};
   double lock_x_{0.0};
   double lock_y_{0.0};
-  bool complete_{false};
   smlfsm::LandingObservation last_observation_;
 
   double valid_timeout_{0.25};
-  double align_px_threshold_{25.0};
+  double align_px_threshold_{50.0};
   int stable_frames_{10};
   double pixel_gain_x_{0.001};
   double pixel_gain_y_{0.001};
   double max_xy_step_{0.08};
   double descent_rate_{0.15};
-  double min_z_{0.08};
+  double min_z_{0.03};
   double loss_hold_seconds_{0.5};
+  smlfsm::ClosedLoopLandingConfig closed_loop_config_;
+  smlfsm::ClosedLoopLandingPlanner closed_loop_planner_;
+};
+
+// 发布前视/下视相机的完整期望状态并锁存，保证晚启动的视觉节点也能立即
+// 获得当前模式，而不依赖可能丢失的一次性启停脉冲。
+class RosCameraControlPort final : public smlfsm::CameraControlPort {
+ public:
+  RosCameraControlPort(ros::NodeHandle& node,
+                       ros::NodeHandle& private_node) {
+    std::string topic = "/vision/control";
+    private_node.param("vision_control_topic", topic, topic);
+    publisher_ =
+        node.advertise<uav_vision_msgs::VisionControl>(topic, 1, true);
+  }
+
+  void publishControl(const smlfsm::CameraControlState& control) override {
+    uav_vision_msgs::VisionControl message;
+    message.header.stamp = ros::Time::now();
+    message.front_camera_enabled = control.front_camera_enabled;
+    message.down_camera_enabled = control.down_camera_enabled;
+    publisher_.publish(message);
+
+    const bool changed =
+        !has_last_control_ ||
+        last_control_.front_camera_enabled != control.front_camera_enabled ||
+        last_control_.down_camera_enabled != control.down_camera_enabled;
+    if (changed) {
+      ROS_INFO("Camera control: front=%s down=%s",
+               message.front_camera_enabled ? "enabled" : "disabled",
+               message.down_camera_enabled ? "enabled" : "disabled");
+    } else {
+      ROS_DEBUG_THROTTLE(1.0, "Camera control heartbeat: front=%s down=%s",
+                         message.front_camera_enabled ? "enabled" : "disabled",
+                         message.down_camera_enabled ? "enabled" : "disabled");
+    }
+    last_control_ = control;
+    has_last_control_ = true;
+  }
+
+ private:
+  ros::Publisher publisher_;
+  smlfsm::CameraControlState last_control_;
+  bool has_last_control_{false};
 };
 
 // Super 任务轨迹适配器：负责 waypoint 发布和 planner 缓存。
@@ -709,6 +715,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
             "/super/flag_waypoint", 10)) {
     private_node.param("mission_super_waypoints_file", waypoints_file_,
                        waypoints_file_);
+    ROS_INFO("Mission super waypoints file: %s", waypoints_file_.c_str());
     private_node.param("mission_super_arrival_tolerance",
                        arrival_tolerance_, arrival_tolerance_);
     loadSuperTrajectory();
@@ -725,6 +732,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
     super_waypoint_upload_active_ = true;
     super_waypoint_upload_index_ = 0u;
     segment_arrived_ = false;
+    super_goal_reached_ = false;
     super_planner_valid_ = false;
   }
 
@@ -734,35 +742,14 @@ class RosMissionPort final : public smlfsm::MissionPort {
     return prepareSuperSegment(active_segment_index_, now, telemetry, horizon);
   }
 
-  bool prepareCoreSuperGoal(double /*now*/,
-                            const smlfsm::TelemetrySnapshot& /*telemetry*/,
-                            const smlfsm::Vec3& goal,
-                            std::vector<smlfsm::ReferencePoint>& horizon)
-      override {
-    MissionPoint point;
-    point.mode = 2;
-    point.is_map = 1;
-    point.position = goal;
-    point.yaw = 0.0;
-    point.desired_speed = 0.0;
-    publishSuperWaypoint(point);
-    if (super_planner_valid_) {
-      horizon = super_planner_;
-      return true;
-    }
-    horizon.assign(kHorizonPoints, smlfsm::ReferencePoint{});
-    for (auto& reference : horizon) {
-      reference.position = goal;
-    }
-    return true;
-  }
-
   bool prepareSuperSegment(
       int segment_index, double /*now*/,
       const smlfsm::TelemetrySnapshot& telemetry,
       std::vector<smlfsm::ReferencePoint>& horizon) override {
     active_segment_index_ = segment_index;
+    std::cout<<"active_segment_index_:"<<active_segment_index_<<"\n";
     if (super_segments_.empty()) {
+      std::cout<<"here\n";
       loadSuperTrajectory();
     }
     if (segment_index < 0 ||
@@ -773,7 +760,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
     }
 
     const MissionPoint& last = super_segments_[segment_index].back();
-    if (!segment_arrived_ && reached(last.position, telemetry.position)) {
+    if (!segment_arrived_ && super_goal_reached_ &&
+        reached(last.position, telemetry.position)) {
       segment_arrived_ = true;
     }
     if (segment_arrived_) {
@@ -789,6 +777,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
     buildCurrentHoldHorizon(telemetry, horizon);
     return true;
   }
+
+  bool isSuperSegmentComplete() const override { return segment_arrived_; }
 
   // 接收 super planner 的轨迹输出。
   void updateSuperPlanner(const super_msgs::Flag& message) {
@@ -813,6 +803,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
       super_planner_.push_back(point);
       
     }
+    super_goal_reached_ = message.touch_goal != 0;
     super_planner_valid_ = true;
   }
 
@@ -855,7 +846,9 @@ class RosMissionPort final : public smlfsm::MissionPort {
   }
 
   void loadSuperTrajectory() {
+
     if (waypoints_file_.empty()) {
+      std::cout<<"waypoints_file_ is empty\n";
       super_segments_ = createSuperTrajectorySegments();
       return;
     }
@@ -922,6 +915,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   int next_super_waypoint_id_{0};  // 发布给 SUPER 的全局递增 id，不随重传归零。
   int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
   bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
+  bool super_goal_reached_{false}; // SUPER 是否报告当前轨迹已经完成。
   double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
   std::string waypoints_file_;     // mission super waypoint YAML 文件。
@@ -1009,14 +1003,14 @@ class SingleOffboardNode {
         autopilot_(node_),
         setpoint_(node_),
         nmpc_(private_node_),
-        reference_(private_node_),
         landing_(private_node_),
         mission_(node_, private_node_),
+        camera_control_(node_, private_node_),
         config_(loadConfig()),
-        context_(clock_, autopilot_, setpoint_, nmpc_, reference_, mission_,
-                 landing_, config_),
+        context_(clock_, autopilot_, setpoint_, nmpc_, mission_, landing_,
+                 camera_control_, config_),
         machine_(context_),
-        dispatcher_(machine_, &reference_, &mission_),
+        dispatcher_(machine_, &mission_),
         mailbox_(loadUdpPort()) {
     state_sub_ = node_.subscribe("/mavros/state", 10,
                                 &SingleOffboardNode::stateCallback, this);
@@ -1025,8 +1019,6 @@ class SingleOffboardNode {
     velocity_sub_ =
         node_.subscribe("/mavros/local_position/velocity_local", 10,
                         &SingleOffboardNode::velocityCallback, this);
-    planner_sub_ = node_.subscribe("/position_cmd_nmpc", 10,
-                                  &SingleOffboardNode::plannerCallback, this);
     super_planner_sub_ = node_.subscribe(
         "/super/flag_cmd", 10, &SingleOffboardNode::superPlannerCallback, this);
     std::string landing_topic = "/vision/landing/offset";
@@ -1034,6 +1026,11 @@ class SingleOffboardNode {
                         landing_topic);
     landing_sub_ = node_.subscribe(landing_topic, 10,
                                    &SingleOffboardNode::landingCallback, this);
+    std::string target_topic = "/vision/target/result";
+    private_node_.param("target_recognition_topic", target_topic,
+                        target_topic);
+    target_sub_ = node_.subscribe(target_topic, 10,
+                                  &SingleOffboardNode::targetCallback, this);
     rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
                              &SingleOffboardNode::rcCallback, this);
   }
@@ -1106,10 +1103,6 @@ class SingleOffboardNode {
                                    message->twist.linear.y,
                                    message->twist.linear.z};
   }
-  // planner 回调：喂给 cmd5 参考提供器。
-  void plannerCallback(const traj_utils::Flag::ConstPtr& message) {
-    reference_.updatePlanner(*message);
-  }
   // super planner 回调：短数组直接忽略，防止越界。
   void superPlannerCallback(const super_msgs::Flag::ConstPtr& message) {
     if (message->cmd.size() < kHorizonPoints) {
@@ -1119,12 +1112,13 @@ class SingleOffboardNode {
     }
     mission_.updateSuperPlanner(*message);
   }
-  // 下视 AprilTag 像素偏差回调：只把可控的有效观测写入精降端口。
+  // 下视 AprilTag 像素偏差回调：缓存观测供活动任务的闭环降落使用。
   void landingCallback(
       const uav_vision_msgs::LandingOffset::ConstPtr& message) {
     smlfsm::LandingObservation observation;
     observation.valid =
-        message->valid && message->tag_count == 5 &&
+        message->valid && message->tag_count >= 1 &&
+        message->tag_count <= 5 &&
         std::isfinite(message->dx) && std::isfinite(message->dy);
     observation.dx = message->dx;
     observation.dy = message->dy;
@@ -1134,6 +1128,27 @@ class SingleOffboardNode {
                             : message->header.stamp.toSec();
     observation.age = ros::Time::now().toSec() - observation.stamp;
     landing_.updateObservation(observation);
+  }
+
+  void targetCallback(
+      const uav_vision_msgs::TargetMatchArray::ConstPtr& message) {
+    const bool valid = message->valid && !message->matches.empty();
+    if (!valid) {
+      target_result_valid_ = false;
+      return;
+    }
+    if (target_result_valid_) {
+      return;
+    }
+    target_result_valid_ = true;
+    ROS_INFO_THROTTLE(1.0, "Stable target recognized: %s",
+                      message->matches.front().label.c_str());
+    if (mission_.isSuperSegmentComplete()) {
+      machine_.process_event(smlfsm::OnTargetRecognized{});
+    } else {
+      ROS_INFO_THROTTLE(1.0,
+                        "Ignoring target recognition before SUPER hover");
+    }
   }
   // RC 回调当前只做短数组保护，保留旧 topic 契约。
   void rcCallback(const mavros_msgs::RCIn::ConstPtr& message) {
@@ -1149,18 +1164,20 @@ class SingleOffboardNode {
   RosAutopilotPort autopilot_;    // 飞控服务适配器。
   RosSetpointPort setpoint_;      // 控制输出适配器。
   RosNmpcPort nmpc_;              // NMPC 求解适配器。
-  RosReferenceProvider reference_;  // cmd5 参考轨迹适配器。
   RosPrecisionLandingPort landing_;  // 下视视觉精准降落适配器。
   RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
+  RosCameraControlPort camera_control_;  // 前视/下视相机启停状态发布器。
   smlfsm::Config config_;         // 状态机配置。
   smlfsm::Context context_;       // 状态机运行上下文。
   smlfsm::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。
   smlfsm::ActiveCommandDispatcher dispatcher_;  // 当前节点 cmd 分发器。
   UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
-  ros::Subscriber state_sub_, pose_sub_, velocity_sub_, planner_sub_;  // 基础状态/参考订阅。
+  ros::Subscriber state_sub_, pose_sub_, velocity_sub_;  // 基础状态订阅。
   ros::Subscriber super_planner_sub_;  // super planner 订阅。
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
+  ros::Subscriber target_sub_;   // 前视稳定目标识别结果订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
+  bool target_result_valid_{false};  // 只在识别有效性的上升沿触发一次。
 };
 
 }  // namespace

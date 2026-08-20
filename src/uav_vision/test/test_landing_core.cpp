@@ -71,14 +71,36 @@ TEST(LandingEstimator, FiveIdsAreOrderIndependent) {
   EXPECT_EQ(a.tag_ids, (std::vector<int>{0, 1, 2, 3, 4}));
 }
 
+TEST(LandingEstimator, AnyNonEmptySubsetIsAveraged) {
+  LandingOffsetEstimator single_estimator(estimatorConfig());
+  const auto single = single_estimator.update(
+      640, 480, {observation(2, 350, 260)});
+  ASSERT_TRUE(single.valid);
+  EXPECT_DOUBLE_EQ(single.center_x, 350.0);
+  EXPECT_DOUBLE_EQ(single.center_y, 260.0);
+  EXPECT_DOUBLE_EQ(single.dx, 30.0);
+  EXPECT_DOUBLE_EQ(single.dy, 20.0);
+  EXPECT_EQ(single.tag_ids, (std::vector<int>{2}));
+
+  LandingOffsetEstimator subset_estimator(estimatorConfig());
+  const auto subset = subset_estimator.update(
+      640,
+      480,
+      {observation(0, 100, 120), observation(3, 300, 320)});
+  ASSERT_TRUE(subset.valid);
+  EXPECT_DOUBLE_EQ(subset.center_x, 200.0);
+  EXPECT_DOUBLE_EQ(subset.center_y, 220.0);
+  EXPECT_DOUBLE_EQ(subset.dx, -120.0);
+  EXPECT_DOUBLE_EQ(subset.dy, -20.0);
+  EXPECT_EQ(subset.tag_ids, (std::vector<int>{0, 3}));
+}
+
 TEST(LandingEstimator, InvalidFramesReturnNan) {
   LandingOffsetEstimator estimator(estimatorConfig());
-  auto missing = fiveAt(300, 200);
-  missing.pop_back();
-  auto result = estimator.update(640, 480, missing);
+  auto result = estimator.update(640, 480, {});
   EXPECT_FALSE(result.valid);
   EXPECT_TRUE(std::isnan(result.dx));
-  EXPECT_EQ(result.tag_ids, (std::vector<int>{0, 1, 2, 3}));
+  EXPECT_TRUE(result.tag_ids.empty());
 
   auto poor = fiveAt(300, 200);
   poor[2].decision_margin = 5.0;

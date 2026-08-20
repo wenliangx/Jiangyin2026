@@ -19,7 +19,6 @@ class AutopilotPort {
   virtual ~AutopilotPort() = default;
   virtual bool requestOffboard() = 0;
   virtual bool requestArm() = 0;
-  virtual bool requestDisarm() = 0;
 };
 
 class SetpointPort {
@@ -38,20 +37,9 @@ class SetpointPort {
 class NmpcPort {
  public:
   virtual ~NmpcPort() = default;
-  virtual bool solveHover(const TelemetrySnapshot& telemetry,
-                          BodyRateThrust& command) = 0;
   virtual bool solveTrack(const TelemetrySnapshot& telemetry,
                           const std::vector<ReferencePoint>& horizon,
                           BodyRateThrust& command) = 0;
-};
-
-class ReferenceProvider {
- public:
-  virtual ~ReferenceProvider() = default;
-  virtual void selectCommand(int command) {}
-  virtual void reset() = 0;
-  virtual bool horizon(double now,
-                       std::vector<ReferencePoint>& points) = 0;
 };
 
 class MissionPort {
@@ -61,16 +49,6 @@ class MissionPort {
   virtual void reset() = 0;
   virtual bool prepareSuper(double now, const TelemetrySnapshot& telemetry,
                             std::vector<ReferencePoint>& horizon) = 0;
-  virtual bool prepareCoreSuperGoal(double now,
-                                    const TelemetrySnapshot& telemetry,
-                                    const Vec3& goal,
-                                    std::vector<ReferencePoint>& horizon) {
-    (void)now;
-    (void)telemetry;
-    (void)goal;
-    horizon.clear();
-    return false;
-  }
   virtual bool prepareSuperSegment(
       int segment_index, double now, const TelemetrySnapshot& telemetry,
       std::vector<ReferencePoint>& horizon) {
@@ -80,6 +58,7 @@ class MissionPort {
     horizon.clear();
     return false;
   }
+  virtual bool isSuperSegmentComplete() const { return false; }
 };
 
 class PrecisionLandingPort {
@@ -87,9 +66,23 @@ class PrecisionLandingPort {
   virtual ~PrecisionLandingPort() = default;
   virtual void reset() = 0;
   virtual void updateObservation(const LandingObservation& observation) = 0;
+  virtual void startClosedLoopLanding(
+      const TelemetrySnapshot& telemetry) {
+    (void)telemetry;
+  }
   virtual bool prepareLanding(double now, const TelemetrySnapshot& telemetry,
                               std::vector<ReferencePoint>& horizon) = 0;
-  virtual bool isComplete() const = 0;
+  virtual bool prepareClosedLoopLanding(
+      double now, const TelemetrySnapshot& telemetry,
+      std::vector<ReferencePoint>& horizon) {
+    return prepareLanding(now, telemetry, horizon);
+  }
+};
+
+class CameraControlPort {
+ public:
+  virtual ~CameraControlPort() = default;
+  virtual void publishControl(const CameraControlState& control) = 0;
 };
 
 }  // namespace single_sml

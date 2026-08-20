@@ -32,6 +32,21 @@ class MatcherConfig:
     min_class_score: float = 0.60
     min_class_margin: float = 0.03
     min_candidate_margin: float = 0.02
+    orb_nfeatures: int = 1200
+    orb_max_width: int = 960
+    orb_ratio_test: float = 0.75
+    orb_ransac_reproj_px: float = 5.0
+    orb_min_good_matches: int = 12
+    orb_min_inliers: int = 10
+    orb_min_inlier_ratio: float = 0.45
+    orb_min_inlier_margin: int = 5
+    akaze_max_width: int = 960
+    akaze_ratio_test: float = 0.80
+    akaze_ransac_reproj_px: float = 5.0
+    akaze_min_good_matches: int = 10
+    akaze_min_inliers: int = 8
+    akaze_min_inlier_ratio: float = 0.45
+    akaze_min_inlier_margin: int = 4
     augmentations: Sequence[Mapping[str, Any]] = field(
         default_factory=lambda: ({},)
     )
@@ -45,6 +60,30 @@ class MatcherConfig:
             raise ValueError("area ratios must satisfy 0 < min < max <= 1")
         if self.max_candidates <= 0:
             raise ValueError("max_candidates must be positive")
+        if self.orb_nfeatures <= 0 or self.orb_max_width <= 0:
+            raise ValueError("ORB feature count and max width must be positive")
+        if not 0.0 < self.orb_ratio_test < 1.0:
+            raise ValueError("orb_ratio_test must be in (0, 1)")
+        if self.orb_ransac_reproj_px <= 0.0:
+            raise ValueError("orb_ransac_reproj_px must be positive")
+        if self.orb_min_good_matches < 4 or self.orb_min_inliers < 4:
+            raise ValueError("ORB match thresholds must be at least four")
+        if not 0.0 < self.orb_min_inlier_ratio <= 1.0:
+            raise ValueError("orb_min_inlier_ratio must be in (0, 1]")
+        if self.orb_min_inlier_margin < 0:
+            raise ValueError("orb_min_inlier_margin must be non-negative")
+        if self.akaze_max_width <= 0:
+            raise ValueError("akaze_max_width must be positive")
+        if not 0.0 < self.akaze_ratio_test < 1.0:
+            raise ValueError("akaze_ratio_test must be in (0, 1)")
+        if self.akaze_ransac_reproj_px <= 0.0:
+            raise ValueError("akaze_ransac_reproj_px must be positive")
+        if self.akaze_min_good_matches < 4 or self.akaze_min_inliers < 4:
+            raise ValueError("AKAZE match thresholds must be at least four")
+        if not 0.0 < self.akaze_min_inlier_ratio <= 1.0:
+            raise ValueError("akaze_min_inlier_ratio must be in (0, 1]")
+        if self.akaze_min_inlier_margin < 0:
+            raise ValueError("akaze_min_inlier_margin must be non-negative")
         weight_sum = self.gray_weight + self.hog_weight + self.color_weight
         if not math.isclose(weight_sum, 1.0, abs_tol=1e-6):
             raise ValueError("gray, HOG, and color weights must sum to 1")
@@ -117,6 +156,10 @@ class TargetMatcher:
             9,
         )
         self._templates = self._load_templates(templates_dir)
+        self._orb = cv2.ORB_create(nfeatures=config.orb_nfeatures)
+        self._orb_templates = self._load_orb_templates(templates_dir)
+        self._akaze = cv2.AKAZE_create()
+        self._akaze_templates = self._load_akaze_templates(templates_dir)
 
     def _load_templates(self, templates_dir: str):
         loaded: Dict[str, List[_TemplateFeatures]] = {}
@@ -130,6 +173,32 @@ class TargetMatcher:
                 augmented = self._augment(base, augmentation)
                 variants.append(self._extract_features(augmented))
             loaded[label] = variants
+        return loaded
+
+    def _load_orb_templates(self, templates_dir: str):
+        loaded = {}
+        for label in LABELS:
+            path = os.path.join(templates_dir, f"{label}.png")
+            image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                raise FileNotFoundError(f"template not found or unreadable: {path}")
+            keypoints, descriptors = self._orb.detectAndCompute(image, None)
+            if descriptors is None or len(keypoints) < 4:
+                raise RuntimeError(f"template has too few ORB features: {path}")
+            loaded[label] = (image.shape, keypoints, descriptors)
+        return loaded
+
+    def _load_akaze_templates(self, templates_dir: str):
+        loaded = {}
+        for label in LABELS:
+            path = os.path.join(templates_dir, f"{label}.png")
+            image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                raise FileNotFoundError(f"template not found or unreadable: {path}")
+            keypoints, descriptors = self._akaze.detectAndCompute(image, None)
+            if descriptors is None or len(keypoints) < 4:
+                raise RuntimeError(f"template has too few AKAZE features: {path}")
+            loaded[label] = (image.shape, keypoints, descriptors)
         return loaded
 
     def _augment(self, image: np.ndarray, values: Mapping[str, Any]):
@@ -378,12 +447,250 @@ class TargetMatcher:
         transform = cv2.getPerspectiveTransform(corners, destination)
         return cv2.warpPerspective(frame, transform, (size, size))
 
+    def _match_orb_fallback(self, frame: np.ndarray) -> MatchResult:
+        height, width = frame.shape[:2]
+        scale_back = 1.0
+        working = frame
+        if width > self.config.orb_max_width:
+            working_width = self.config.orb_max_width
+            working_height = max(1, int(round(height * working_width / width)))
+            working = cv2.resize(
+                frame,
+                (working_width, working_height),
+                interpolation=cv2.INTER_AREA,
+            )
+            scale_back = float(width) / working_width
+
+        gray = cv2.cvtColor(working, cv2.COLOR_BGR2GRAY)
+        scene_keypoints, scene_descriptors = self._orb.detectAndCompute(
+            gray, None
+        )
+        if scene_descriptors is None or len(scene_keypoints) < 4:
+            return MatchResult(reason="orb_no_scene_features")
+
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        frame_area = float(height * width)
+        ranked = []
+        for label in LABELS:
+            template_shape, template_keypoints, template_descriptors = (
+                self._orb_templates[label]
+            )
+            pairs = matcher.knnMatch(
+                template_descriptors, scene_descriptors, k=2
+            )
+            good = [
+                first
+                for pair in pairs
+                if len(pair) == 2
+                for first, second in [pair]
+                if first.distance
+                < self.config.orb_ratio_test * second.distance
+            ]
+            if len(good) < 4:
+                continue
+
+            source = np.float32(
+                [template_keypoints[item.queryIdx].pt for item in good]
+            ).reshape(-1, 1, 2)
+            destination = np.float32(
+                [scene_keypoints[item.trainIdx].pt for item in good]
+            ).reshape(-1, 1, 2)
+            transform, mask = cv2.findHomography(
+                source,
+                destination,
+                cv2.RANSAC,
+                self.config.orb_ransac_reproj_px,
+            )
+            if transform is None or mask is None:
+                continue
+
+            template_height, template_width = template_shape
+            template_corners = np.float32(
+                [[
+                    [0, 0],
+                    [template_width - 1, 0],
+                    [template_width - 1, template_height - 1],
+                    [0, template_height - 1],
+                ]]
+            )
+            corners = cv2.perspectiveTransform(
+                template_corners, transform
+            ).reshape(4, 2)
+            corners *= scale_back
+            quality = self._quad_quality(corners, frame_area)
+            if quality is None:
+                continue
+
+            inliers = int(mask.sum())
+            inlier_ratio = float(inliers) / len(good)
+            ranked.append(
+                (
+                    inliers,
+                    len(good),
+                    inlier_ratio,
+                    label,
+                    quality[1],
+                    order_quad(corners),
+                )
+            )
+
+        if not ranked:
+            return MatchResult(reason="orb_no_geometric_match")
+        ranked.sort(key=lambda item: (item[0], item[2]), reverse=True)
+        best = ranked[0]
+        second_inliers = ranked[1][0] if len(ranked) > 1 else 0
+        if best[1] < self.config.orb_min_good_matches:
+            return MatchResult(reason="orb_too_few_matches")
+        if best[0] < self.config.orb_min_inliers:
+            return MatchResult(reason="orb_too_few_inliers")
+        if best[2] < self.config.orb_min_inlier_ratio:
+            return MatchResult(reason="orb_inlier_ratio_too_low")
+        if best[0] - second_inliers < self.config.orb_min_inlier_margin:
+            return MatchResult(reason="orb_inlier_margin_too_low")
+
+        patch = self._warp_candidate(frame, best[5])
+        result = self.classify_patch(patch)
+        result.target_side_px = best[4]
+        result.corners = best[5]
+        if result.valid and result.label != best[3]:
+            result.valid = False
+            result.label = "unknown"
+            result.reason = "orb_label_disagreement"
+        elif result.valid:
+            result.reason = "accepted_orb"
+        return result
+
+    def _match_akaze_fallback(self, frame: np.ndarray) -> MatchResult:
+        height, width = frame.shape[:2]
+        scale_back = 1.0
+        working = frame
+        if width > self.config.akaze_max_width:
+            working_width = self.config.akaze_max_width
+            working_height = max(1, int(round(height * working_width / width)))
+            working = cv2.resize(
+                frame,
+                (working_width, working_height),
+                interpolation=cv2.INTER_AREA,
+            )
+            scale_back = float(width) / working_width
+
+        gray = cv2.cvtColor(working, cv2.COLOR_BGR2GRAY)
+        scene_keypoints, scene_descriptors = self._akaze.detectAndCompute(
+            gray, None
+        )
+        if scene_descriptors is None or len(scene_keypoints) < 4:
+            return MatchResult(reason="akaze_no_scene_features")
+
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+        frame_area = float(height * width)
+        ranked = []
+        for label in LABELS:
+            template_shape, template_keypoints, template_descriptors = (
+                self._akaze_templates[label]
+            )
+            pairs = matcher.knnMatch(
+                template_descriptors, scene_descriptors, k=2
+            )
+            good = [
+                first
+                for pair in pairs
+                if len(pair) == 2
+                for first, second in [pair]
+                if first.distance
+                < self.config.akaze_ratio_test * second.distance
+            ]
+            if len(good) < 4:
+                continue
+
+            source = np.float32(
+                [template_keypoints[item.queryIdx].pt for item in good]
+            ).reshape(-1, 1, 2)
+            destination = np.float32(
+                [scene_keypoints[item.trainIdx].pt for item in good]
+            ).reshape(-1, 1, 2)
+            transform, mask = cv2.findHomography(
+                source,
+                destination,
+                cv2.RANSAC,
+                self.config.akaze_ransac_reproj_px,
+            )
+            if transform is None or mask is None:
+                continue
+
+            template_height, template_width = template_shape
+            template_corners = np.float32(
+                [[
+                    [0, 0],
+                    [template_width - 1, 0],
+                    [template_width - 1, template_height - 1],
+                    [0, template_height - 1],
+                ]]
+            )
+            corners = cv2.perspectiveTransform(
+                template_corners, transform
+            ).reshape(4, 2)
+            corners *= scale_back
+            quality = self._quad_quality(corners, frame_area)
+            if quality is None:
+                continue
+
+            inliers = int(mask.sum())
+            inlier_ratio = float(inliers) / len(good)
+            ranked.append(
+                (
+                    inliers,
+                    len(good),
+                    inlier_ratio,
+                    label,
+                    quality[1],
+                    order_quad(corners),
+                )
+            )
+
+        if not ranked:
+            return MatchResult(reason="akaze_no_geometric_match")
+        ranked.sort(key=lambda item: (item[0], item[2]), reverse=True)
+        best = ranked[0]
+        second_inliers = ranked[1][0] if len(ranked) > 1 else 0
+        if best[1] < self.config.akaze_min_good_matches:
+            return MatchResult(reason="akaze_too_few_matches")
+        if best[0] < self.config.akaze_min_inliers:
+            return MatchResult(reason="akaze_too_few_inliers")
+        if best[2] < self.config.akaze_min_inlier_ratio:
+            return MatchResult(reason="akaze_inlier_ratio_too_low")
+        if best[0] - second_inliers < self.config.akaze_min_inlier_margin:
+            return MatchResult(reason="akaze_inlier_margin_too_low")
+
+        patch = self._warp_candidate(frame, best[5])
+        result = self.classify_patch(patch)
+        result.target_side_px = best[4]
+        result.corners = best[5]
+        if result.valid and result.label != best[3]:
+            result.valid = False
+            result.label = "unknown"
+            result.reason = "akaze_label_disagreement"
+        elif result.valid:
+            result.reason = "accepted_akaze"
+        return result
+
     def match_frame(self, frame: np.ndarray) -> MatchResult:
         if frame is None or frame.size == 0:
             return MatchResult(reason="empty_frame")
+
+        orb_result = self._match_orb_fallback(frame)
+        if orb_result.valid:
+            return orb_result
+        akaze_result = self._match_akaze_fallback(frame)
+        if akaze_result.valid:
+            return akaze_result
+
         candidates = self.find_square_candidates(frame)
         if not candidates:
-            return MatchResult(reason="no_square_candidate")
+            if akaze_result.reason != "akaze_no_geometric_match":
+                return akaze_result
+            if orb_result.reason != "orb_no_geometric_match":
+                return orb_result
+            return akaze_result
 
         accepted: List[MatchResult] = []
         rejected: List[MatchResult] = []
@@ -411,7 +718,11 @@ class TargetMatcher:
                 best_rejected = max(rejected, key=lambda item: item.score)
                 best_rejected.label = "unknown"
                 return best_rejected
-            return MatchResult(reason="all_candidates_rejected")
+            if akaze_result.reason != "akaze_no_geometric_match":
+                return akaze_result
+            if orb_result.reason != "orb_no_geometric_match":
+                return orb_result
+            return akaze_result
 
         accepted.sort(key=lambda item: item.score, reverse=True)
         if len(accepted) > 1:

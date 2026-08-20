@@ -31,6 +31,7 @@ class TargetMatchNode:
             min_votes=int(temporal_values["min_stable_votes"]),
             lost_frames=int(temporal_values["target_lost_frames"]),
         )
+        self._last_stable_result = None
         self._publish_debug = bool(
             rospy.get_param("~publish_debug_image", True)
         )
@@ -101,13 +102,20 @@ class TargetMatchNode:
             stable_label = self._voter.update(
                 result.label if result.valid else None
             )
-            if (
-                stable_label is not None
-                and result.valid
-                and result.label == stable_label
-            ):
+            published_result = None
+            if stable_label is not None:
+                if result.valid and result.label == stable_label:
+                    self._last_stable_result = result
+                if (
+                    self._last_stable_result is not None
+                    and self._last_stable_result.label == stable_label
+                ):
+                    published_result = self._last_stable_result
+            else:
+                self._last_stable_result = None
+            if published_result is not None:
                 output.valid = True
-                output.matches = [self._to_message(result)]
+                output.matches = [self._to_message(published_result)]
         except (CvBridgeError, ValueError, cv2.error) as error:
             rospy.logwarn_throttle(2.0, "target matching failed: %s", error)
 

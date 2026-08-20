@@ -12,12 +12,11 @@ namespace single_sml {
 template <typename StateMachineT>
 class CommandDispatcherT {
  public:
-  // reference 和 mission 为可选适配器；它们先收到原始 cmd，
-  // 用于在 FSM Tick 前选择对应的参考源或任务模式。
+  // mission 为可选适配器；它先收到原始 cmd，
+  // 用于在 FSM Tick 前选择对应的任务分段。
   explicit CommandDispatcherT(StateMachineT& machine,
-                              ReferenceProvider* reference = nullptr,
                               MissionPort* mission = nullptr)
-      : machine_(machine), reference_(reference), mission_(mission) {}
+      : machine_(machine), mission_(mission) {}
 
   // 处理一条 cmd；只有 cmd 变化并触发 command 事件时返回 true。
   // cmd 的实际含义由当前 Machine 的 transition table 决定。
@@ -28,9 +27,6 @@ class CommandDispatcherT {
     }
     previous_ = command;
     has_previous_ = true;
-    if (reference_) {
-      reference_->selectCommand(command);
-    }
     if (mission_) {
       mission_->selectCommand(command);
     }
@@ -57,9 +53,7 @@ class CommandDispatcherT {
 
   // 被驱动的 Boost.SML 状态机实例。
   StateMachineT& machine_;
-  // cmd5 参考轨迹适配器；允许为空，便于纯状态机测试。
-  ReferenceProvider* reference_{nullptr};
-  // cmd6/7/8 任务轨迹适配器；允许为空，便于纯状态机测试。
+  // 任务轨迹适配器；允许为空，便于纯状态机测试。
   MissionPort* mission_{nullptr};
   // 上一次是否已经收到过 cmd。
   bool has_previous_{false};
@@ -67,8 +61,6 @@ class CommandDispatcherT {
   int previous_{0};
 };
 
-using CommandDispatcher = CommandDispatcherT<StateMachine>;
-using CoreFlightCommandDispatcher = CommandDispatcherT<CoreFlightStateMachine>;
 using MissionCommandDispatcher = CommandDispatcherT<MissionStateMachine>;
 using SegmentedMissionCommandDispatcher =
     CommandDispatcherT<SegmentedMissionStateMachine>;

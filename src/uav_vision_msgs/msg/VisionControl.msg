@@ -1,0 +1,3 @@
+std_msgs/Header header
+bool front_camera_enabled
+bool down_camera_enabled

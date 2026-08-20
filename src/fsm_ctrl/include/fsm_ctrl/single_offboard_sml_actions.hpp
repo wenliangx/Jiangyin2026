@@ -2,16 +2,43 @@
 #define FSM_CTRL_SINGLE_OFFBOARD_SML_ACTIONS_HPP_
 
 #include <fsm_ctrl/single_offboard_sml_context.hpp>
+#include <fsm_ctrl/single_offboard_sml_landing.hpp>
 #include <fsm_ctrl/single_offboard_sml_states.hpp>
 
 #include <cmath>
 #include <vector>
-
+#include <iostream>
 namespace fsm_ctrl {
 namespace single_sml {
 
-struct Noop {
-  void operator()() const {}
+inline void publishCameraControl(Context& context, bool front_enabled,
+                                 bool down_enabled) {
+  context.camera_control.publishControl(
+      CameraControlState{front_enabled, down_enabled});
+}
+
+struct DisableCameras {
+  void operator()(Context& context) const {
+    publishCameraControl(context, false, false);
+  }
+};
+
+struct EnableFrontCamera {
+  void operator()(Context& context) const {
+    publishCameraControl(context, true, false);
+  }
+};
+
+struct EnableDownCamera {
+  void operator()(Context& context) const {
+    publishCameraControl(context, false, true);
+  }
+};
+
+struct EnableBothCameras {
+  void operator()(Context& context) const {
+    publishCameraControl(context, true, true);
+  }
 };
 
 inline bool publishTrackCommand(Context& context,
@@ -31,22 +58,6 @@ inline bool publishTrackCommand(Context& context,
   return true;
 }
 
-inline bool publishTrackDebugOnly(Context& context,
-                                  const std::vector<ReferencePoint>& horizon) {
-  BodyRateThrust command;
-  if (horizon.empty() ||
-      !context.nmpc.solveTrack(context.telemetry, horizon, command) ||
-      !Context::finite(command)) {
-    return false;
-  }
-  NmpcMonitor monitor;
-  monitor.references = horizon;
-  monitor.feedback = context.telemetry;
-  monitor.target = command;
-  context.setpoint.publishNmpcMonitor(monitor);
-  return true;
-}
-
 inline std::vector<ReferencePoint> fixedPositionHorizon(const Vec3& position) {
   std::vector<ReferencePoint> horizon(10);
   for (auto& point : horizon) {
@@ -55,139 +66,98 @@ inline std::vector<ReferencePoint> fixedPositionHorizon(const Vec3& position) {
   return horizon;
 }
 
-struct TickLowThrust {
-  void operator()(Context& context) const {
-    context.ensureOffboardArm();
-    context.setpoint.publishBodyRateThrust(
-        BodyRateThrust{Vec3{}, context.config.low_thrust});
+inline void publishLowThrust(Context& context) {
+  context.setpoint.publishBodyRateThrust(
+      BodyRateThrust{Vec3{}, context.config.low_thrust});
+}
+
+inline bool handleLandingCompletion(Context& context) {
+  const bool landed =
+      context.landing_reached ||
+      std::abs(context.telemetry.position.z -
+               context.config.landing_reference_z) <
+          context.config.landing_tolerance_z;
+  if (!landed) {
+    return false;
   }
-};
+  context.landing_reached = true;
+  publishLowThrust(context);
+  return true;
+}
 
 struct TickArmOnly {
   void operator()(Context& context) const {
-    context.setpoint.publishBodyRateThrust(
-        BodyRateThrust{Vec3{}, context.config.low_thrust});
+    publishLowThrust(context);
     context.ensureOffboardArm();
   }
 };
 
-struct TickCoreHoverToOneMeter {
+struct TickLowerHover {
   void operator()(Context& context) const {
     context.ensureOffboardArm();
-    const Vec3 target{context.telemetry.position.x, context.telemetry.position.y,
-                      1.0};
+    const Vec3 target{0.0, 0.0, 0.5};
     publishTrackCommand(context, fixedPositionHorizon(target));
   }
 };
-
-struct TickPositionHold {
+struct TickHighHover {
   void operator()(Context& context) const {
     context.ensureOffboardArm();
-    context.setpoint.publishPosition(
-        PositionSetpoint{Vec3{0.0, 0.0, context.config.position_hold_z}, 0.0});
-  }
-};
-
-struct TickNmpcHover {
-  void operator()(Context& context) const {
-    context.ensureOffboardArm();
-    BodyRateThrust command;
-    if (context.nmpc.solveHover(context.telemetry, command) &&
-        Context::finite(command)) {
-      context.setpoint.publishBodyRateThrust(command);
-    }
-  }
-};
-
-struct TickCoreSuperLandingDebug {
-  void operator()(Context& context) const {
-    context.ensureOffboardArm();
-    const Vec3 goal{1.0, 0.0, 1.0};
-    std::vector<ReferencePoint> super_horizon;
-    if (context.mission.prepareCoreSuperGoal(context.clock.now(),
-                                             context.telemetry, goal,
-                                             super_horizon) &&
-        !super_horizon.empty()) {
-      context.setpoint.publishFeedbackPosition(context.telemetry.position,
-                                               context.telemetry.attitude);
-      context.setpoint.publishReferencePosition(super_horizon.front().position,
-                                                super_horizon.front().attitude);
-      publishTrackCommand(context, super_horizon);
-    }
-
-    std::vector<ReferencePoint> landing_horizon;
-    if (context.landing.prepareLanding(context.clock.now(), context.telemetry,
-                                       landing_horizon) &&
-        !landing_horizon.empty()) {
-      context.setpoint.publishFeedbackPosition(context.telemetry.position,
-                                               context.telemetry.attitude);
-      context.setpoint.publishReferencePosition(landing_horizon.front().position,
-                                                landing_horizon.front().attitude);
-      publishTrackDebugOnly(context, landing_horizon);
-    }
+    const Vec3 target{1.0, 0.0, 1.5};
+    publishTrackCommand(context, fixedPositionHorizon(target));
   }
 };
 
 struct TickLanding {
   void operator()(Context& context) const {
-    if (!context.landing_reached) {
-      context.ensureOffboardArm();
-      std::vector<ReferencePoint> horizon;
-      if (context.landing.prepareLanding(context.clock.now(),
-                                         context.telemetry, horizon)) {
-        publishTrackCommand(context, horizon);
-      }
-      if (context.landing.isComplete() ||
-          std::abs(context.telemetry.position.z -
-                   context.config.landing_reference_z) <
-              context.config.landing_tolerance_z) {
-        context.landing_reached = true;
-      }
+    if (context.landing_reached) {
+      handleLandingCompletion(context);
       return;
     }
 
-    if (context.telemetry.mode != "OFFBOARD" && context.telemetry.armed) {
-      context.autopilot.requestDisarm();
+    context.ensureOffboardArm();
+    std::vector<ReferencePoint> horizon;
+    const bool prepared = context.landing.prepareLanding(
+        context.clock.now(), context.telemetry, horizon);
+    if (handleLandingCompletion(context)) {
+      return;
+    }
+    if (prepared) {
+      publishTrackCommand(context, horizon);
     }
   }
 };
 
-struct TickCoreLanding {
+// 活动任务使用的视觉闭环版本。旧 TickLanding 保留给 MissionMachine，
+// 便于独立回退和对比。
+struct TickClosedLoopLanding {
   void operator()(Context& context) const {
-    if (!context.landing_reached) {
-      context.ensureOffboardArm();
-      std::vector<ReferencePoint> horizon;
-      if (context.landing.prepareLanding(context.clock.now(),
-                                         context.telemetry, horizon) &&
-          !horizon.empty()) {
-        context.setpoint.publishFeedbackPosition(context.telemetry.position,
-                                                 context.telemetry.attitude);
-        context.setpoint.publishReferencePosition(horizon.front().position,
-                                                  horizon.front().attitude);
-        publishTrackCommand(context, horizon);
-      }
-      if (context.landing.isComplete() ||
-          std::abs(context.telemetry.position.z -
-                   context.config.landing_reference_z) <
-              context.config.landing_tolerance_z) {
-        context.landing_reached = true;
-      }
+    if (context.landing_reached) {
+      handleLandingCompletion(context);
       return;
     }
 
-    if (context.telemetry.mode != "OFFBOARD" && context.telemetry.armed) {
-      context.autopilot.requestDisarm();
+    context.ensureOffboardArm();
+    std::vector<ReferencePoint> horizon;
+    const bool prepared = context.landing.prepareClosedLoopLanding(
+        context.clock.now(), context.telemetry, horizon);
+    if (handleLandingCompletion(context)) {
+      return;
+    }
+    if (prepared) {
+      publishTrackCommand(context, horizon);
     }
   }
-};
-
-struct ResetNmpcTrack {
-  void operator()(Context& context) const { context.reference.reset(); }
 };
 
 struct ResetSuperTrack {
   void operator()(Context& context) const {
     context.mission.reset();
+  }
+};
+
+struct SuperSegmentComplete {
+  bool operator()(const Context& context) const {
+    return context.mission.isSuperSegmentComplete();
   }
 };
 
@@ -198,13 +168,11 @@ struct ResetLanding {
   }
 };
 
-struct TickNmpcTrack {
+struct ResetClosedLoopLanding {
   void operator()(Context& context) const {
-    context.ensureOffboardArm();
-    std::vector<ReferencePoint> horizon;
-    if (context.reference.horizon(context.clock.now(), horizon)) {
-      publishTrackCommand(context, horizon);
-    }
+    context.landing_reached = false;
+    context.landing.reset();
+    context.landing.startClosedLoopLanding(context.telemetry);
   }
 };
 
@@ -231,6 +199,7 @@ inline void tickSuperSegment(Context& context, int segment_index) {
   if (context.mission.prepareSuperSegment(segment_index, context.clock.now(),
                                           context.telemetry, horizon) &&
       !horizon.empty()) {
+        std::cout<<"segment_index: "<<segment_index<<"\n";
     context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                              context.telemetry.attitude);
     context.setpoint.publishReferencePosition(horizon.front().position,

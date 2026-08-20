@@ -7,7 +7,8 @@
 视觉模块包含两条相互独立的处理链：
 
 1. 前视相机目标分类
-   - 在画面中寻找带方形外沿的目标板。
+   - 优先使用 ORB/AKAZE 特征和 RANSAC 单应性恢复整张目标图四角。
+   - 特征定位失败时，再使用方形外沿检测作为兜底，避免把车身等内部轮廓当成目标板。
    - 使用传统视觉多模板匹配，在 `plane`、`car`、`ship`、`house` 四类中分类。
    - 使用最近 5 帧投票，至少 3 帧一致后才发布有效类别。
 2. 下视相机降落区域识别
@@ -16,13 +17,15 @@
    - 每帧先对五个 Tag 中心取平均，再对最近 5 帧中心做中值滤波。
    - 输出降落区域中心相对图像中心的像素偏差。
 
-当前两个感知节点都是持续运行模式：收到图像就处理并发布结果。任务触发消息尚未定义，也尚未接入。
+两个相机节点通过 `/vision/control` 接收统一的期望状态。正式任务中由
+`fsm_ctrl` 的 SML 状态机在每个 Tick 按飞行阶段控制前视和下视相机采集。
+目标分类和降落识别节点不再由该消息启停：它们保持运行，收到图像就处理。
 
 ## 2. SSH 连接与工作空间
 
 NUC 当前连接信息：
 
-- IP：`10.1.77.193`
+- 当前临时 IP：`10.152.160.55`
 - 用户名：`flag`
 - 密码：`flag`
 - ROS 工作空间：`/home/flag/Jiangyin2026`
@@ -31,7 +34,7 @@ NUC 当前连接信息：
 在本机终端连接：
 
 ```bash
-ssh flag@10.1.77.193
+ssh flag@10.152.160.55
 ```
 
 输入密码 `flag`。本文后续命令按 Bash 编写；如果 SSH 登录后的终端不是 Bash，先执行：
@@ -76,6 +79,9 @@ udev 固定设备名：
 | 增益 | 5 |
 | 动态帧率 | 关闭 |
 
+`dual_camera.launch` 还会对前视画面固定旋转 180°，下视画面不旋转。
+该处理只改变前视 ROS 图像方向，不改变相机采集分辨率和帧率。
+
 配置文件：
 
 ```text
@@ -110,8 +116,12 @@ roscore
 终端 2：
 
 ```bash
-roslaunch uav_vision dual_camera.launch
+roslaunch uav_vision dual_camera.launch always_enabled:=true
 ```
+
+这里是脱离状态机的独立视觉调试流程，因此显式使两个相机始终开启。
+随整机任务运行时不要传 `always_enabled` 覆盖参数，由
+`/vision/control` 控制相机采集。
 
 该 launch 同时启动：
 
@@ -125,6 +135,8 @@ roslaunch uav_vision dual_camera.launch
 ```bash
 roslaunch uav_vision landing_tag.launch
 ```
+
+该节点始终保持运行；下视相机有图像到达时就执行 AprilTag 识别。
 
 该 launch 启动：
 
@@ -146,6 +158,8 @@ roslaunch uav_vision landing_tag.launch
 ```bash
 roslaunch uav_vision target_match.launch
 ```
+
+该节点同样始终保持运行；前视相机有图像到达时就执行目标匹配。
 
 该 launch 启动：
 
@@ -170,7 +184,7 @@ src/uav_vision/templates/
 └── house.png
 ```
 
-### 4.5 启动浏览器降落可视化
+### 4.5 启动浏览器可视化
 
 终端 5：
 
@@ -181,7 +195,7 @@ roslaunch uav_vision landing_debug_web.launch
 在与 NUC 同一网络的电脑浏览器中打开：
 
 ```text
-http://10.1.77.193:8080
+http://10.152.160.55:8080
 ```
 
 网页画面包含五个 Tag 的边框、ID、图像中心、降落区域中心和像素偏差。该网页节点只负责显示；关闭它不会影响 `/landing_tag_node` 的识别和结果发布。
@@ -203,25 +217,127 @@ roslaunch uav_vision target_debug_web.launch
 然后打开：
 
 ```text
-http://10.1.77.193:8081
+http://10.152.160.55:8081
 ```
 
 端口 `8080` 固定用于降落可视化，端口 `8081` 固定用于目标分类
 可视化。两个网页节点相互独立，关闭任一网页都不会停止对应感知节点
 或结果消息发布。
 
+目标分类网页为降低无线传输延迟，固定使用 960 × 540、JPEG 质量 70、
+最大 10 FPS。该限制只作用于 HTTP 网页流；分类节点仍使用
+1280 × 720、约 30 Hz 的原始前视图像。
+
 ## 5. 节点与话题总表
 
 | 节点 | 订阅 | 发布 | 作用 |
 |---|---|---|---|
-| `/front_camera_node` | 无 | `/vision/front/image_raw` | 发布前视相机图像 |
-| `/down_camera_node` | 无 | `/vision/down/image_raw` | 发布下视相机图像 |
-| `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 识别五个 AprilTag 并计算像素偏差 |
-| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | 方形目标板检测和四类别模板匹配 |
+| `/front_camera_node` | `/vision/control` | `/vision/front/image_raw` | 按期望状态幂等地开启或释放前视相机，开启时发布图像 |
+| `/down_camera_node` | `/vision/control` | `/vision/down/image_raw` | 按期望状态幂等地开启或释放下视相机，开启时发布图像 |
+| `/landing_tag_node` | `/vision/down/image_raw` | `/vision/landing/offset`、`/vision/landing/debug_image` | 收到图像就识别五个 AprilTag 并计算像素偏差 |
+| `/target_match_node` | `/vision/front/image_raw` | `/vision/target/result`、`/vision/target/debug_image` | 收到图像就执行 ORB/AKAZE 特征定位、方框兜底和四类别模板匹配 |
 | `/landing_debug_web` | `/vision/landing/debug_image` | HTTP 8080 端口 | 在浏览器中显示降落调试画面 |
 | `/target_debug_web` | `/vision/target/debug_image` | HTTP 8081 端口 | 在浏览器中显示目标分类调试画面 |
 
 所有图像订阅和发布队列均以低延迟为目标，队列长度为 1。
+
+### 5.1 相机采集启停控制消息
+
+消息类型：
+
+```text
+uav_vision_msgs/VisionControl
+```
+
+定义文件：
+
+```text
+src/uav_vision_msgs/msg/VisionControl.msg
+```
+
+原始定义：
+
+```text
+std_msgs/Header header
+bool front_camera_enabled
+bool down_camera_enabled
+```
+
+控制话题：
+
+```text
+/vision/control
+```
+
+字段含义：
+
+| 字段 | 含义 |
+|---|---|
+| `header` | 当前 SML Tick 发布控制快照的时间；`frame_id` 留空 |
+| `front_camera_enabled` | `true` 时保持前视相机采集和图像发布，`false` 时释放前视相机 |
+| `down_camera_enabled` | `true` 时保持下视相机采集和图像发布，`false` 时释放下视相机 |
+
+该消息表达“收到后应保持的期望状态”，不是需要翻转本地状态的一次性
+start/stop 脉冲。SML 状态机在每个 Tick 发布当前完整快照，正常主循环下约为
+50 Hz；即使状态没有切换，同一期望状态也会继续发布。发布端同时保留
+latched publisher，作为相机节点晚启动时立即获取最后一份快照的附加保障。
+两项布尔值在同一消息内作为一份完整状态更新。
+
+相机节点必须幂等地应用快照：重复收到相同的 `true` 不得重复打开设备，重复
+收到相同的 `false` 也不得重复释放。从 `false` 变为 `true` 时，节点打开
+`VideoCapture`、重新应用曝光和增益参数，并恢复图像发布；从 `true` 变为
+`false` 时，节点调用 `release()` 并停止发布该路图像。这是对 V4L2 采集设备的逻辑
+打开和释放，不是对 USB 相机的物理断电。
+
+目标匹配和降落识别节点保持运行，不订阅 `/vision/control`。相机关闭期间没有
+新图像，因此算法不会产生新结果；相机再次开启后，节点会对新到达的每帧图像
+自动恢复处理。
+
+当前 `ActiveStateMachine` 使用 `SegmentedMissionMachine`，默认映射如下：
+
+| UDP 命令 | SML 状态 | 前视相机 | 下视相机 |
+|---:|---|---|---|
+| `0` | `Idle` | 关 | 关 |
+| `1` | `ArmOnly` | 关 | 关 |
+| `2` | `NmpcHover` | 关 | 开 |
+| `3` | `SuperSegment1` | 开 | 开 |
+| `4` | `SuperSegment2` | 开 | 开 |
+| `5` | `SuperSegment3` | 关 | 开 |
+| `6` | `Landing` | 关 | 开 |
+| `7`、`8`、不支持的命令 | `SafeNoop` | 关 | 关 |
+| `9` | `Emergency` | 关 | 关 |
+
+除表中明确开启的状态外，两路相机均关闭。状态机退出前视任务阶段时必须把
+`front_camera_enabled` 置为 `false`；退出下视任务阶段时同理，不能依赖接收端
+自行推断上一个状态。
+
+分段任务还订阅 `/vision/target/result`。段 1→2 和段 2→3 使用“识别成功或
+手动命令”的 OR 逻辑：对应的 `cmd4`、`cmd5` 可以随时手动切换；收到
+`TargetMatchArray.valid=true` 且 `matches` 非空的稳定识别结果也会自动切换。
+自动切换只响应 `valid=false→true` 的上升沿，避免识别节点连续发布有效结果时
+从段 1 连续跳过段 2。并且该上升沿只有在当前 SUPER 段已经到达末点、进入
+悬停后才有效；飞行途中的上升沿会被忽略。下一次自动切换前需要先出现一次
+无效识别结果。
+
+“当前段完成”使用双重确认：飞机与本段最后航点的三维距离不超过
+`mission_super_arrival_tolerance`，并且 `/super/flag_cmd` 中
+`touch_goal != 0`（SUPER 当前轨迹的 `traj_finish`）。两项必须同时成立，随后
+SML 才改用段末点定点 horizon 并允许悬停阶段的识别上升沿触发切段。
+
+两个相机节点的私有参数 `always_enabled` 用于脱离状态机单独调试：
+
+- `always_enabled=false`：服从 `/vision/control`；在尚未收到控制快照时默认关闭。
+- `always_enabled=true`：忽略对应的关闭指令，相机始终保持采集和图像发布。
+
+正式任务应使用 `always_enabled=false`。`true` 只用于相机、算法或网页画面的
+独立调试，不能用来验证状态机对相机的启停逻辑。
+
+查看当前期望状态和周期发布频率：
+
+```bash
+rostopic echo -n 1 /vision/control
+rostopic hz /vision/control
+```
 
 ## 6. 降落识别消息
 
@@ -330,7 +446,15 @@ uav_vision_msgs/TargetMatch[] matches
 | `valid` | 本帧是否具有经过时间投票确认的有效分类结果 |
 | `matches` | 有效目标结果数组；当前实现有效时只有 1 项，无效时为空 |
 
-当前时间投票窗口为 5 帧，至少 3 帧同类才稳定。若当前帧无有效目标，即使历史投票中曾有稳定类别，本帧仍发布 `valid=false`。连续 3 帧丢失目标后清空投票状态。
+当前时间投票窗口为 5 帧，至少 3 帧同类才稳定。类别稳定后，允许
+跨过最多 2 个连续空帧：这两帧继续发布最近一次稳定结果；连续第 3
+帧丢失时清空状态并发布 `valid=false`。若检测到另一个有效类别，
+不会沿用旧类别，而是重新投票。
+
+跨过空帧时，`header` 使用当前前视图像的时间戳，但 `matches[0]`
+复用最近一次稳定结果，因此其中的 `corners` 和分数最多可能滞后 2
+帧。上层任务只应使用稳定后的 `label` 做类别判断，不应把该消息的
+角点用于实时控制。
 
 ### 7.2 `TargetMatch`
 
@@ -422,7 +546,11 @@ rostopic hz /vision/target/result
         视为当前没有可靠分类结果
 ```
 
-当前尚未确定任务触发消息，所以不要假设存在 start/stop 服务或触发话题。后续接入时，可保留本文件所述结果消息不变，只在感知节点前增加启停状态控制。
+相机采集启停统一使用 `/vision/control`，不要再增加彼此独立的 start/stop 服务或
+裸整数模式话题。相机节点应直接采用消息中的布尔值作为完整期望状态；若重复
+收到相同快照，不得重复打开或释放设备。`always_enabled=true` 是相机节点的本地调试
+覆盖项，不改变 `/vision/control` 本身的含义。目标匹配和降落识别算法不解析该消息，
+只要收到对应图像就继续处理。
 
 ## 9. 常用检查命令
 
@@ -443,6 +571,7 @@ rostopic list | grep '^/vision/'
 ```bash
 rostopic info /vision/landing/offset
 rostopic info /vision/target/result
+rostopic info /vision/control
 ```
 
 查看自定义消息定义：
@@ -451,14 +580,19 @@ rostopic info /vision/target/result
 rosmsg show uav_vision_msgs/LandingOffset
 rosmsg show uav_vision_msgs/TargetMatchArray
 rosmsg show uav_vision_msgs/TargetMatch
+rosmsg show uav_vision_msgs/VisionControl
 ```
 
 检查相机帧率：
 
 ```bash
+rostopic hz /vision/control
 rostopic hz /vision/front/image_raw
 rostopic hz /vision/down/image_raw
 ```
+
+`/vision/control` 在 SML 主循环运行时应约为 50 Hz。某路相机字段为 `false` 时，
+对应 `image_raw` 话题不再有新帧；重新置为 `true` 后应恢复约 30 Hz 的图像。
 
 检查设备是否被进程占用：
 
@@ -471,13 +605,14 @@ fuser /dev/uav_down_camera
 
 在对应启动终端按 `Ctrl+C`。建议按以下顺序关闭：
 
-1. `landing_debug_web.launch`
-2. `target_match.launch`
-3. `landing_tag.launch`
-4. `dual_camera.launch`
-5. `roscore`
+1. `target_debug_web.launch`
+2. `landing_debug_web.launch`
+3. `target_match.launch`
+4. `landing_tag.launch`
+5. `dual_camera.launch`
+6. `roscore`
 
-若只关闭浏览器可视化节点，降落识别结果仍会继续发布。
+若只关闭浏览器可视化节点，对应识别结果仍会继续发布。
 
 ## 11. 当前实机验证记录
 
@@ -489,5 +624,9 @@ fuser /dev/uav_down_camera
 - 150 帧中 `tag_count` 均为 5，`tag_ids` 均为 `[0, 1, 2, 3, 4]`。
 - `/vision/landing/offset` 实测约 26.9 Hz；低于相机 30 Hz 是 AprilTag 处理开销造成的正常现象。
 - 消息时间戳严格递增，偏差公式和字段一致性检查通过。
+- 房子打印图在外沿对比不足时，ORB 兜底连续 36 帧均识别为
+  `house` 且 `valid=true`，分类结果约 12 Hz。
+- 汽车打印图近距离验证中，特征优先流程连续 102 条消息均为
+  `car` 且 `valid=true`，未出现 `house` 或 `unknown`，约 12.2 Hz。
 
 以上验证只代表当时道具位置和光照条件。重新搭建场地后，仍应先用浏览器调试画面确认五个 Tag 都清晰、无遮挡。
