@@ -1,0 +1,18 @@
+<launch>
+  <!-- UAV1: front camera on USB port 2; rear camera on USB port 3. -->
+  <arg name="control_topic" default="/vision/control"/>
+  <arg name="always_enabled" default="false"/>
+  <arg name="recording_enabled" default="true"/>
+  <arg name="recording_root" default="/home/flag/vision_recordings"/>
+
+  <include file="$(find uav_vision)/launch/dual_target_vision.launch">
+    <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="always_enabled" value="$(arg always_enabled)"/>
+    <arg name="recording_enabled" value="$(arg recording_enabled)"/>
+    <arg name="recording_root" value="$(arg recording_root)"/>
+    <arg name="front_device" value="/dev/uav_front_camera"/>
+    <arg name="rear_device" value="/dev/uav_rear_camera"/>
+    <arg name="front_rotate_180" value="true"/>
+    <arg name="rear_rotate_180" value="true"/>
+  </include>
+</launch>

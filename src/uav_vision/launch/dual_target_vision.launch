@@ -5,12 +5,16 @@
   <arg name="always_enabled" default="false"/>
   <arg name="recording_enabled" default="true"/>
   <arg name="recording_root" default="/home/flag/vision_recordings"/>
+  <arg name="front_device" default="/dev/uav_front_camera"/>
+  <arg name="rear_device" default="/dev/uav_rear_camera"/>
   <arg name="front_rotate_180" default="true"/>
   <arg name="rear_rotate_180" default="true"/>
 
   <include file="$(find uav_vision)/launch/dual_camera.launch">
     <arg name="control_topic" value="$(arg control_topic)"/>
     <arg name="always_enabled" value="$(arg always_enabled)"/>
+    <arg name="front_device" value="$(arg front_device)"/>
+    <arg name="rear_device" value="$(arg rear_device)"/>
     <arg name="front_rotate_180" value="$(arg front_rotate_180)"/>
     <arg name="rear_rotate_180" value="$(arg rear_rotate_180)"/>
   </include>

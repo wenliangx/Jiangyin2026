@@ -49,9 +49,9 @@ part of the active front/rear target runtime and require no live extrinsic.
 - **Pose fallback**: a fresh valid fused attitude enables world-plane rotation. If the pose has not arrived, is stale, or has an invalid quaternion, the node keeps `valid=true` and publishes the original image-plane pixel offset.
 - **Temporal voting**: 5-frame sliding window, requires min 3 consecutive consistent labels. `target_lost_frames=3` clears history on consecutive unknowns.
 - **Camera gating**: `front_camera_enabled` activates only the front camera/matcher. The legacy `down_camera_enabled` field activates only the rear camera/matcher. Both classifier nodes stay alive, reset temporal state on every enable transition, and share `/vision/target/result` because mission stages enable only one role at a time.
-- **Camera config**: 1280x720 MJPG @ 30Hz, manual exposure 150, gain 5. UAV2 maps USB path `0:2` to `/dev/uav_front_camera` and `0:7` to `/dev/uav_rear_camera`.
+- **Camera config**: 1280x720 MJPG @ 30Hz, manual exposure 150, gain 5. Both UAVs map USB path `0:2` to `/dev/uav_front_camera`; UAV1 maps rear path `0:3` and UAV2 maps rear path `0:7` to `/dev/uav_rear_camera`.
 - **Classification**: ORB/AKAZE geometry and Canny polygon quads are supplemented by an HSV white-board path tuned from the venue recording (`S<=60`, `V>=170`, 5x5 open/close). The recovered quad then uses the existing gray+HOG+color weighted match (0.5/0.3/0.2). Temporal voting rejects isolated white-region false candidates.
 - **Recording**: each active matcher writes paired raw/result MP4 files asynchronously under `front_target/NNN` or `rear_target/NNN`; the bounded queue drops recording frames instead of delaying recognition.
-- **Runtime launch**: use `dual_target_vision.launch`. `dual_target_debug_web.launch` serves front on port 8081 and rear on port 8083. No landing pose or camera extrinsic is needed.
+- **Runtime launch**: use `dual_target_vision_uav1.launch` on UAV1 and generic `dual_target_vision.launch` on UAV2. `dual_target_debug_web.launch` serves front on port 8081 and rear on port 8083. No landing pose or camera extrinsic is needed.
 - Custom msgs: `LandingOffset`, `TargetMatch`, `TargetMatchArray`, `VisionControl` defined in external `uav_vision_msgs` package.
 - Full runtime guide: `docs/uav_vision_runtime_guide.md` (Chinese).
