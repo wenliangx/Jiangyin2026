@@ -29,6 +29,7 @@ namespace mission_planner {
 
         Eigen::Vector3d cur_position;
         int waypoint_counter{0};
+        int active_batch_end_id{-1};
         bool had_odom{false};
         bool triggered{false};
         bool new_goal{true};
@@ -88,6 +89,18 @@ namespace mission_planner {
             if (msg->id < 0) {
                 ROS_WARN("[MISSION] Ignore waypoint with negative id: %d", msg->id);
                 return;
+            }
+            // total_waypoint 是当前批次结束位置（最后一个全局 id + 1）。
+            // 值变化表示途中切入了新分段；航点 id 保持全局递增，但执行
+            // 游标直接跳到新批次首点，不再继续上一段尚未飞完的航点。
+            if (msg->total_waypoint > 0 &&
+                msg->total_waypoint != active_batch_end_id) {
+                active_batch_end_id = msg->total_waypoint;
+                waypoint_counter = msg->id;
+                triggered = false;
+                new_goal = true;
+                ROS_INFO("[MISSION] Start waypoint batch at global id=%d, end=%d",
+                         msg->id, active_batch_end_id);
             }
             if(msg->id >= cfg_.waypoints.size()){
                 cfg_.waypoints.resize(msg->id+1);

@@ -67,7 +67,7 @@ constexpr std::size_t kLandingHorizonPoints = 6;
 
 // Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
-  int id{0};              // 任务表内局部编号；发布时会替换为全局递增 id。
+  int id{0};              // 任务表内局部编号；发布时替换为全任务递增 id。
   int mode{0};            // 下游 planner 使用的任务模式。
   int is_map{0};          // 是否使用 map 坐标。
   smlfsm::Vec3 position;  // 航点位置。
@@ -718,8 +718,14 @@ class RosMissionPort final : public smlfsm::MissionPort {
     ROS_INFO("Mission super waypoints file: %s", waypoints_file_.c_str());
     private_node.param("mission_super_arrival_tolerance",
                        arrival_tolerance_, arrival_tolerance_);
+    private_node.param("mission_segment_timeout_seconds",
+                       segment_timeout_seconds_, segment_timeout_seconds_);
     loadSuperTrajectory();
     reset();
+    // 构造阶段只初始化状态，不消耗第一段的全局航点 id。
+    next_super_waypoint_id_ = 0;
+    current_batch_start_id_ = 0;
+    current_batch_end_id_ = 0;
   }
 
   void selectCommand(int command) override {
@@ -731,7 +737,16 @@ class RosMissionPort final : public smlfsm::MissionPort {
   void reset() override {
     super_waypoint_upload_active_ = true;
     super_waypoint_upload_index_ = 0u;
+    if (active_segment_index_ >= 0 &&
+        static_cast<std::size_t>(active_segment_index_) <
+            super_segments_.size()) {
+      current_batch_start_id_ = next_super_waypoint_id_;
+      current_batch_end_id_ = current_batch_start_id_ +
+          static_cast<int>(super_segments_[active_segment_index_].size());
+      next_super_waypoint_id_ = current_batch_end_id_;
+    }
     segment_arrived_ = false;
+    segment_completed_at_ = -1.0;
     super_goal_reached_ = false;
     super_planner_valid_ = false;
   }
@@ -743,7 +758,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   }
 
   bool prepareSuperSegment(
-      int segment_index, double /*now*/,
+      int segment_index, double now,
       const smlfsm::TelemetrySnapshot& telemetry,
       std::vector<smlfsm::ReferencePoint>& horizon) override {
     active_segment_index_ = segment_index;
@@ -763,6 +778,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
     if (!segment_arrived_ && super_goal_reached_ &&
         reached(last.position, telemetry.position)) {
       segment_arrived_ = true;
+      segment_completed_at_ = now;
     }
     if (segment_arrived_) {
       buildHoldHorizon(last, horizon);
@@ -778,7 +794,15 @@ class RosMissionPort final : public smlfsm::MissionPort {
     return true;
   }
 
-  bool isSuperSegmentComplete() const override { return segment_arrived_; }
+  bool isSuperSegmentTimedOut(double now) const override {
+    return active_segment_index_ < 2 && segment_arrived_ &&
+           segment_completed_at_ >= 0.0 &&
+           now - segment_completed_at_ >= segment_timeout_seconds_;
+  }
+
+  bool isFinalSuperSegmentComplete() const override {
+    return active_segment_index_ == 2 && segment_arrived_;
+  }
 
   // 接收 super planner 的轨迹输出。
   void updateSuperPlanner(const super_msgs::Flag& message) {
@@ -837,6 +861,7 @@ class RosMissionPort final : public smlfsm::MissionPort {
   void publishSuperWaypoint(const MissionPoint& point) {
     super_msgs::Flag message;
     fillCommonFlag1(point, message);
+    message.total_waypoint = static_cast<int16_t>(current_batch_end_id_);
     super_waypoint_pub_.publish(message);
     ROS_INFO("Published mission super waypoint id=%d segment=%d index=%zu "
              "position=(%.3f, %.3f, %.3f) yaw=%.3f source=%s",
@@ -899,7 +924,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
   void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
-    message.id = next_super_waypoint_id_++;
+    message.id = current_batch_start_id_ +
+                 static_cast<int>(super_waypoint_upload_index_);
     message.mode = point.mode;
     message.is_map = point.is_map;
     message.yaw = point.yaw;
@@ -912,11 +938,15 @@ class RosMissionPort final : public smlfsm::MissionPort {
   ros::Publisher super_waypoint_pub_;  // 发给 super planner 的 waypoint topic。
   bool super_waypoint_upload_active_{true};  // 是否正在逐 tick 上传 waypoint。
   std::size_t super_waypoint_upload_index_{0};  // 本组待上传 waypoint 下标。
-  int next_super_waypoint_id_{0};  // 发布给 SUPER 的全局递增 id，不随重传归零。
+  int next_super_waypoint_id_{0};  // 下一个批次可使用的全局 id，切段不归零。
+  int current_batch_start_id_{0}; // 当前分段首个全局 id。
+  int current_batch_end_id_{0};   // 当前分段最后一个 id 的后一位。
   int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
   bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
   bool super_goal_reached_{false}; // SUPER 是否报告当前轨迹已经完成。
   double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
+  double segment_timeout_seconds_{5.0};  // 末点无识别结果时自动切段等待。
+  double segment_completed_at_{-1.0};   // 到达末点时刻，负值表示未到达。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
   std::string waypoints_file_;     // mission super waypoint YAML 文件。
   std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
@@ -1049,8 +1079,22 @@ class SingleOffboardNode {
     while (ros::ok()) {
       ros::spinOnce();
       const int command = mailbox_.latest();
-      dispatcher_.update(command);
+      const bool command_changed = dispatcher_.update(command);
+      if (command_changed && command >= 3 && command <= 5) {
+        final_landing_dispatched_ = false;
+      }
       machine_.process_event(smlfsm::Tick{});
+      if (mission_.isSuperSegmentTimedOut(clock_.now())) {
+        ROS_WARN("No qualifying target recognized within the segment timeout; "
+                 "advancing to the next SUPER segment");
+        machine_.process_event(smlfsm::OnSegmentTimeout{});
+      }
+      if (!final_landing_dispatched_ &&
+          mission_.isFinalSuperSegmentComplete()) {
+        final_landing_dispatched_ = true;
+        ROS_INFO("Final SUPER segment complete; starting landing");
+        machine_.process_event(smlfsm::OnFinalSegmentComplete{});
+      }
       rate.sleep();
     }
   }
@@ -1134,21 +1178,16 @@ class SingleOffboardNode {
       const uav_vision_msgs::TargetMatchArray::ConstPtr& message) {
     const bool valid = message->valid && !message->matches.empty();
     if (!valid) {
-      target_result_valid_ = false;
+      last_target_label_.clear();
       return;
     }
-    if (target_result_valid_) {
+    const std::string& label = message->matches.front().label;
+    if (label.empty() || label == last_target_label_) {
       return;
     }
-    target_result_valid_ = true;
-    ROS_INFO_THROTTLE(1.0, "Stable target recognized: %s",
-                      message->matches.front().label.c_str());
-    if (mission_.isSuperSegmentComplete()) {
-      machine_.process_event(smlfsm::OnTargetRecognized{});
-    } else {
-      ROS_INFO_THROTTLE(1.0,
-                        "Ignoring target recognition before SUPER hover");
-    }
+    last_target_label_ = label;
+    ROS_INFO("Stable target recognized: %s", label.c_str());
+    machine_.process_event(smlfsm::OnTargetRecognized{label});
   }
   // RC 回调当前只做短数组保护，保留旧 topic 契约。
   void rcCallback(const mavros_msgs::RCIn::ConstPtr& message) {
@@ -1177,7 +1216,8 @@ class SingleOffboardNode {
   ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
   ros::Subscriber target_sub_;   // 前视稳定目标识别结果订阅。
   ros::Subscriber rc_sub_;        // RC 输入订阅。
-  bool target_result_valid_{false};  // 只在识别有效性的上升沿触发一次。
+  std::string last_target_label_;  // 抑制分类节点连续发布的同类别结果。
+  bool final_landing_dispatched_{false};  // 防止末段完成事件在 50Hz 重复发送。
 };
 
 }  // namespace

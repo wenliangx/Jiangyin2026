@@ -58,7 +58,11 @@ class MissionPort {
     horizon.clear();
     return false;
   }
-  virtual bool isSuperSegmentComplete() const { return false; }
+  virtual bool isSuperSegmentTimedOut(double now) const {
+    (void)now;
+    return false;
+  }
+  virtual bool isFinalSuperSegmentComplete() const { return false; }
 };
 
 class PrecisionLandingPort {

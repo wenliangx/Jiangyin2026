@@ -1,0 +1,43 @@
+layout {
+    tab name="打点" focus=true {
+        pane split_direction="vertical" {
+            pane name="航点记录（等待融合位姿）" focus=true command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; echo '[waypoint] 等待 /mavros/local_position/pose ...'; until rostopic info /mavros/local_position/pose >/dev/null 2>&1; do sleep 1; done; echo '[waypoint] 融合位姿已就绪，启动打点程序'; exec rosrun fsm_ctrl record_super_waypoints.py _output_file:=${JY_WAYPOINT_OUTPUT}"
+            }
+            pane name="图像识别结果" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec rosrun uav_vision vision_result_monitor.py"
+            }
+        }
+    }
+
+    tab name="定位" {
+        pane split_direction="vertical" {
+            pane name="ROS Master" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; if rostopic list >/dev/null 2>&1; then echo '[roscore] 使用已有 ROS master'; exec tail -f /dev/null; else exec roscore; fi"
+            }
+            pane name="MID360 驱动" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait ra_lio msg_MID360.launch"
+            }
+            pane name="RA-LIO" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait ra_lio mapping_mid360.launch rviz:=false"
+            }
+            pane name="PX4 融合" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; echo '[px4] 等待 /Odometry ...'; until rostopic info /Odometry >/dev/null 2>&1; do sleep 1; done; exec roslaunch --wait fsm_ctrl px4_estimator.launch"
+            }
+        }
+    }
+
+    tab name="视觉" {
+        pane split_direction="vertical" {
+            pane name="双相机" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision dual_camera.launch always_enabled:=true"
+            }
+            pane name="下视 AprilTag" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision landing_tag.launch"
+            }
+            pane name="前视目标分类" command="bash" {
+                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision target_match.launch"
+            }
+        }
+    }
+}

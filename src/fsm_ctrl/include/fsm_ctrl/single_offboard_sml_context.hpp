@@ -3,7 +3,9 @@
 
 #include <fsm_ctrl/single_offboard_sml_ports.hpp>
 
+#include <array>
 #include <cmath>
+#include <string>
 
 namespace fsm_ctrl {
 namespace single_sml {
@@ -65,6 +67,8 @@ struct Context {
   TelemetrySnapshot telemetry;
   double last_service_request;
   bool landing_reached{false};
+  // 三段任务之间的两个识别卡槽：slot 0 触发 1->2，slot 1 触发 2->3。
+  std::array<std::string, 2> recognized_targets;
 };
 
 }  // namespace single_sml

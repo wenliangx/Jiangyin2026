@@ -1,6 +1,8 @@
 #ifndef FSM_CTRL_SINGLE_OFFBOARD_SML_STATES_HPP_
 #define FSM_CTRL_SINGLE_OFFBOARD_SML_STATES_HPP_
 
+#include <string>
+
 namespace fsm_ctrl {
 namespace single_sml {
 
@@ -26,7 +28,11 @@ struct OnCommand7 {};
 struct OnCommand8 {};
 struct OnCommand9 {};
 struct OnUnsupportedCommand {};
-struct OnTargetRecognized {};
+struct OnTargetRecognized {
+  std::string label;
+};
+struct OnSegmentTimeout {};
+struct OnFinalSegmentComplete {};
 struct Tick {};
 
 }  // namespace single_sml

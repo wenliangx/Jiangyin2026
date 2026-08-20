@@ -155,9 +155,59 @@ struct ResetSuperTrack {
   }
 };
 
-struct SuperSegmentComplete {
-  bool operator()(const Context& context) const {
-    return context.mission.isSuperSegmentComplete();
+struct StartSegmentedMission {
+  void operator()(Context& context) const {
+    context.recognized_targets = {};
+    context.mission.reset();
+  }
+};
+
+struct FirstTargetAvailable {
+  bool operator()(const OnTargetRecognized& event) const {
+    return !event.label.empty();
+  }
+};
+
+struct NewTargetAvailable {
+  bool operator()(const OnTargetRecognized& event,
+                  const Context& context) const {
+    return !event.label.empty() &&
+           (context.recognized_targets[0].empty() ||
+            event.label != context.recognized_targets[0]);
+  }
+};
+
+struct StoreFirstTargetAndResetSuper {
+  void operator()(const OnTargetRecognized& event, Context& context) const {
+    context.recognized_targets[0] = event.label;
+    context.mission.selectCommand(4);
+    context.mission.reset();
+  }
+};
+
+struct StoreNextTargetAndResetSuper {
+  void operator()(const OnTargetRecognized& event, Context& context) const {
+    if (context.recognized_targets[0].empty()) {
+      context.recognized_targets[0] = event.label;
+    } else {
+      context.recognized_targets[1] = event.label;
+    }
+    context.mission.selectCommand(5);
+    context.mission.reset();
+  }
+};
+
+struct StartSuperSegment2 {
+  void operator()(Context& context) const {
+    context.mission.selectCommand(4);
+    context.mission.reset();
+  }
+};
+
+struct StartSuperSegment3 {
+  void operator()(Context& context) const {
+    context.mission.selectCommand(5);
+    context.mission.reset();
   }
 };
 

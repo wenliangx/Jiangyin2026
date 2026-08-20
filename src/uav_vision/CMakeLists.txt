@@ -60,6 +60,7 @@ catkin_install_python(
     scripts/landing_debug_web.py
     scripts/target_match_node.py
     scripts/v4l2_camera_node.py
+    scripts/vision_result_monitor.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

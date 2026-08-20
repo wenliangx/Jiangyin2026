@@ -42,7 +42,7 @@ namespace single_sml {
   boost::sml::state<source_state> + boost::sml::event<OnCommand2> =           \
       boost::sml::state<NmpcHover>,                                           \
   boost::sml::state<source_state> + boost::sml::event<OnCommand3> /           \
-      ResetSuperTrack{} =                                                     \
+      StartSegmentedMission{} =                                               \
       boost::sml::state<SuperSegment1>,                                       \
   boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
       ResetSuperTrack{} =                                                     \
@@ -104,11 +104,17 @@ struct SegmentedMissionMachine {
         state<SuperSegment3> + event<Tick> /
             (DisableCameras{}, TickSuperSegment3{}),
         state<SuperSegment1> + event<OnTargetRecognized>
-            [SuperSegmentComplete{}] /
-            ResetSuperTrack{} = state<SuperSegment2>,
+            [FirstTargetAvailable{}] /
+            StoreFirstTargetAndResetSuper{} = state<SuperSegment2>,
         state<SuperSegment2> + event<OnTargetRecognized>
-            [SuperSegmentComplete{}] /
-            ResetSuperTrack{} = state<SuperSegment3>,
+            [NewTargetAvailable{}] /
+            StoreNextTargetAndResetSuper{} = state<SuperSegment3>,
+        state<SuperSegment1> + event<OnSegmentTimeout> /
+            StartSuperSegment2{} = state<SuperSegment2>,
+        state<SuperSegment2> + event<OnSegmentTimeout> /
+            StartSuperSegment3{} = state<SuperSegment3>,
+        state<SuperSegment3> + event<OnFinalSegmentComplete> /
+            ResetClosedLoopLanding{} = state<Landing>,
         state<Landing> + event<Tick> /
             (DisableCameras{}, TickLanding{}),
         state<Emergency> + event<Tick> /

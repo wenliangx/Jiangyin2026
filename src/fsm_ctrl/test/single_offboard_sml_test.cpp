@@ -102,7 +102,6 @@ class FakeMission final : public MissionPort {
     output = super_points;
     return super_result;
   }
-  bool isSuperSegmentComplete() const override { return segment_complete; }
   int resets{0};
   int super_calls{0};
   int segment_calls{0};
@@ -110,7 +109,6 @@ class FakeMission final : public MissionPort {
   double last_time{0.0};
   TelemetrySnapshot last_telemetry;
   bool super_result{true};
-  bool segment_complete{false};
   std::vector<ReferencePoint> super_points{ReferencePoint{}};
   std::vector<int> selected_commands;
 };
@@ -265,24 +263,63 @@ TEST_F(Fixture, ActiveDispatcherSuppressesRepeatedCommands) {
   EXPECT_EQ(2, mission.resets);
 }
 
-TEST_F(Fixture, RecognitionEventsAdvanceSuperSegments) {
+TEST_F(Fixture, RecognitionSlotsAdvanceOnlyForFirstAndDifferentSecondTarget) {
   sm.process_event(OnCommand3{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
   sm.process_event(Tick{});
   ExpectLatestCameraControl(true, false);
-  sm.process_event(OnTargetRecognized{});
-  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
-  mission.segment_complete = true;
-  sm.process_event(OnTargetRecognized{});
+
+  sm.process_event(OnTargetRecognized{"plane"});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+  EXPECT_EQ("plane", context.recognized_targets[0]);
+  EXPECT_TRUE(context.recognized_targets[1].empty());
   sm.process_event(Tick{});
   ExpectLatestCameraControl(false, true);
-  mission.segment_complete = true;
-  sm.process_event(OnTargetRecognized{});
+
+  sm.process_event(OnTargetRecognized{"plane"});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+  EXPECT_TRUE(context.recognized_targets[1].empty());
+
+  sm.process_event(OnTargetRecognized{"car"});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  EXPECT_EQ("car", context.recognized_targets[1]);
   sm.process_event(Tick{});
   ExpectLatestCameraControl(false, false);
   EXPECT_EQ(3, mission.resets);
+}
+
+TEST_F(Fixture, SegmentTimeoutAdvancesFirstTwoSegmentsOnly) {
+  sm.process_event(OnCommand3{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
+
+  sm.process_event(OnSegmentTimeout{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+  sm.process_event(OnSegmentTimeout{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  sm.process_event(OnSegmentTimeout{});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  EXPECT_EQ(3, mission.resets);
+}
+
+TEST_F(Fixture, FirstRecognitionAfterInitialTimeoutStillAdvances) {
+  sm.process_event(OnCommand3{});
+  sm.process_event(OnSegmentTimeout{});
+  ASSERT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+
+  sm.process_event(OnTargetRecognized{"ship"});
+  EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  EXPECT_EQ("ship", context.recognized_targets[0]);
+  EXPECT_TRUE(context.recognized_targets[1].empty());
+}
+
+TEST_F(Fixture, FinalSegmentCompletionStartsClosedLoopLanding) {
+  sm.process_event(OnCommand5{});
+  ASSERT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+
+  sm.process_event(OnFinalSegmentComplete{});
+  EXPECT_TRUE(sm.is(boost::sml::state<Landing>));
+  EXPECT_EQ(1, landing.resets);
+  EXPECT_EQ(1, landing.start_closed_loop_calls);
 }
 
 TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoFlightOutput) {
