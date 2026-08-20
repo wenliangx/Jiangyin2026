@@ -268,14 +268,20 @@ TEST_F(Fixture, ActiveDispatcherSuppressesRepeatedCommands) {
 TEST_F(Fixture, RecognitionEventsAdvanceSuperSegments) {
   sm.process_event(OnCommand3{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
+  sm.process_event(Tick{});
+  ExpectLatestCameraControl(true, false);
   sm.process_event(OnTargetRecognized{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
   mission.segment_complete = true;
   sm.process_event(OnTargetRecognized{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
+  sm.process_event(Tick{});
+  ExpectLatestCameraControl(false, true);
   mission.segment_complete = true;
   sm.process_event(OnTargetRecognized{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
+  sm.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
   EXPECT_EQ(3, mission.resets);
 }
 
@@ -664,34 +670,38 @@ TEST_F(Fixture, SegmentedMissionPublishesCameraStateOnEveryTick) {
   ASSERT_EQ(1u, camera_control.controls.size());
   ExpectLatestCameraControl(false, false);
 
+  EXPECT_TRUE(dispatcher.update(2));
+  machine.process_event(Tick{});
+  ExpectLatestCameraControl(false, false);
+
   const std::size_t initial_count = camera_control.controls.size();
   EXPECT_TRUE(dispatcher.update(3));
   EXPECT_EQ(initial_count, camera_control.controls.size());
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 1u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  ExpectLatestCameraControl(true, false);
 
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 2u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  ExpectLatestCameraControl(true, false);
 
   EXPECT_FALSE(dispatcher.update(3));
   EXPECT_EQ(initial_count + 2u, camera_control.controls.size());
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 3u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  ExpectLatestCameraControl(true, false);
 
   EXPECT_TRUE(dispatcher.update(4));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(true, true);
+  ExpectLatestCameraControl(false, true);
 
   EXPECT_TRUE(dispatcher.update(5));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, true);
+  ExpectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(6));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, true);
+  ExpectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(9));
   machine.process_event(Tick{});

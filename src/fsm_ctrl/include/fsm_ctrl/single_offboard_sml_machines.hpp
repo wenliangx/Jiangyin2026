@@ -96,13 +96,13 @@ struct SegmentedMissionMachine {
         state<ArmOnly> + event<Tick> /
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
-            (EnableDownCamera{}, TickLowerHover{}),
+            (DisableCameras{}, TickLowerHover{}),
         state<SuperSegment1> + event<Tick> /
-            (EnableBothCameras{}, TickSuperSegment1{}),
+            (EnableFrontCamera{}, TickSuperSegment1{}),
         state<SuperSegment2> + event<Tick> /
-            (EnableBothCameras{}, TickSuperSegment2{}),
+            (EnableDownCamera{}, TickSuperSegment2{}),
         state<SuperSegment3> + event<Tick> /
-            (EnableDownCamera{}, TickSuperSegment3{}),
+            (DisableCameras{}, TickSuperSegment3{}),
         state<SuperSegment1> + event<OnTargetRecognized>
             [SuperSegmentComplete{}] /
             ResetSuperTrack{} = state<SuperSegment2>,
@@ -110,7 +110,7 @@ struct SegmentedMissionMachine {
             [SuperSegmentComplete{}] /
             ResetSuperTrack{} = state<SuperSegment3>,
         state<Landing> + event<Tick> /
-            (EnableDownCamera{}, TickClosedLoopLanding{}),
+            (DisableCameras{}, TickClosedLoopLanding{}),
         state<Emergency> + event<Tick> /
             (DisableCameras{}, TickLanding{}),
         state<SafeNoop> + event<Tick> / DisableCameras{},
