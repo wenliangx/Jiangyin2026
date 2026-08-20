@@ -43,6 +43,34 @@ class IndexHtmlTest(unittest.TestCase):
         self.assertIn("&lt;target&gt;&amp;debug", page)
         self.assertNotIn("<h1><target>", page)
 
+    def test_extrinsic_controls_are_optional(self):
+        plain_page = landing_debug_web.build_index_html("Target").decode(
+            "utf-8"
+        )
+        landing_page = landing_debug_web.build_index_html(
+            "Landing", enable_extrinsic_controls=True
+        ).decode("utf-8")
+
+        self.assertNotIn("/api/extrinsic", plain_page)
+        self.assertIn("相机 → 机体外参", landing_page)
+        self.assertIn("/api/extrinsic", landing_page)
+
+
+class ExtrinsicValidationTest(unittest.TestCase):
+    def test_accepts_three_finite_values(self):
+        self.assertEqual(
+            landing_debug_web.validate_extrinsic_rpy([1, "-2.5", 3]),
+            [1.0, -2.5, 3.0],
+        )
+
+    def test_rejects_bad_values(self):
+        with self.assertRaises(ValueError):
+            landing_debug_web.validate_extrinsic_rpy([1, 2])
+        with self.assertRaises(ValueError):
+            landing_debug_web.validate_extrinsic_rpy([1, float("nan"), 3])
+        with self.assertRaises(ValueError):
+            landing_debug_web.validate_extrinsic_rpy([361, 0, 0])
+
 
 class TargetDebugWebLaunchTest(unittest.TestCase):
     def test_target_launch_uses_independent_topic_and_port(self):

@@ -5,6 +5,7 @@ add_compile_options(-std=c++14 -Wall -Wextra)
 
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
+  geometry_msgs
   image_transport
   roscpp
   rospy
@@ -22,7 +23,8 @@ catkin_package(
   INCLUDE_DIRS include
   LIBRARIES uav_landing_core
   CATKIN_DEPENDS
-    cv_bridge image_transport roscpp rospy sensor_msgs std_msgs uav_vision_msgs
+    cv_bridge geometry_msgs image_transport roscpp rospy sensor_msgs std_msgs
+    uav_vision_msgs
   DEPENDS OpenCV
 )
 
@@ -35,6 +37,7 @@ include_directories(
 
 add_library(uav_landing_core
   src/landing_debug_overlay.cpp
+  src/landing_frame_transformer.cpp
   src/landing_tag_detector.cpp
   src/landing_offset_estimator.cpp
 )
