@@ -1,15 +1,15 @@
 odom_topic: /Odometry
 cloud_topic: /cloud_registered
-global_odom_topic: /Odometry_map
+global_odom_topic: /Odometry_lio_global
 map_cloud_topic: /map_building_cloud
 state_topic: /map_frame_manager/state
 ready_topic: /map_frame_manager/ready
 
-map_frame: map
+map_frame: lio_global
 local_frame: world
 body_frame: body
 
-# The vehicle must be stationary and face the desired map +X direction.
+# The vehicle must be stationary and face the desired lio_global +X direction.
 auto_lock_origin: true
 stability_duration: 3.0
 stability_timeout: 30.0

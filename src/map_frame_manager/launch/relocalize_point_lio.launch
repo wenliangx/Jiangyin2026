@@ -6,6 +6,9 @@
   <arg name="local_frame" default="camera_init" />
   <arg name="body_frame" default="body" />
   <arg name="auto_initialize" default="true" />
+  <arg name="global_odom_topic" default="/Odometry_lio_global" />
+  <arg name="publish_to_original_odom_topic" default="false" />
+  <arg name="original_odom_topic" default="/aft_mapped_to_init" />
 
   <include file="$(find map_frame_manager)/launch/relocalize.launch">
     <arg name="map_file" value="$(arg map_file)" />
@@ -14,5 +17,8 @@
     <arg name="local_frame" value="$(arg local_frame)" />
     <arg name="body_frame" value="$(arg body_frame)" />
     <arg name="auto_initialize" value="$(arg auto_initialize)" />
+    <arg name="global_odom_topic" value="$(arg global_odom_topic)" />
+    <arg name="publish_to_original_odom_topic" value="$(arg publish_to_original_odom_topic)" />
+    <arg name="original_odom_topic" value="$(arg original_odom_topic)" />
   </include>
 </launch>

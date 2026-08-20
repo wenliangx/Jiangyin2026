@@ -4,19 +4,36 @@
   <arg name="rviz" default="false" />
   <arg name="use_sim_time" default="false" />
   <arg name="auto_initialize" default="true" />
+  <arg name="publish_to_original_odom_topic" default="false" />
 
-  <include if="$(arg start_mapping)" file="$(find ra_lio)/launch/mapping_mid360.launch">
-    <arg name="rviz" value="false" />
-    <arg name="use_sim_time" value="$(arg use_sim_time)" />
-  </include>
+  <!-- Default mode preserves RA-LIO's native /Odometry output. -->
+  <group unless="$(arg publish_to_original_odom_topic)">
+    <include if="$(arg start_mapping)" file="$(find ra_lio)/launch/mapping_mid360.launch">
+      <arg name="rviz" value="false" />
+      <arg name="use_sim_time" value="$(arg use_sim_time)" />
+    </include>
+  </group>
+
+  <!-- Compatibility mode keeps /Odometry as the public global output while
+       moving RA-LIO's raw local odometry to an internal topic. -->
+  <group if="$(arg publish_to_original_odom_topic)">
+    <remap from="/Odometry" to="/Odometry_local" />
+    <include if="$(arg start_mapping)" file="$(find ra_lio)/launch/mapping_mid360.launch">
+      <arg name="rviz" value="false" />
+      <arg name="use_sim_time" value="$(arg use_sim_time)" />
+    </include>
+  </group>
 
   <include file="$(find map_frame_manager)/launch/relocalize.launch">
     <arg name="map_file" value="$(arg map_file)" />
-    <arg name="odom_topic" value="/Odometry" />
+    <arg name="odom_topic"
+         value="$(eval '/Odometry_local' if arg('publish_to_original_odom_topic') else '/Odometry')" />
     <arg name="cloud_topic" value="/cloud_registered" />
     <arg name="local_frame" value="world" />
     <arg name="body_frame" value="body" />
     <arg name="auto_initialize" value="$(arg auto_initialize)" />
+    <arg name="publish_to_original_odom_topic" value="$(arg publish_to_original_odom_topic)" />
+    <arg name="original_odom_topic" value="/Odometry" />
   </include>
 
   <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"

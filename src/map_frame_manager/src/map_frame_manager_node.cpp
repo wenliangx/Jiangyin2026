@@ -90,6 +90,19 @@ class MapRelocalization {
   MapRelocalization() : nh_(), pnh_("~"), prior_map_(new Cloud), initialized_(false),
                         have_odom_(false), have_guess_(false), running_(false) {
     loadParameters();
+    const std::string resolved_input = nh_.resolveName(odom_topic_);
+    const std::string resolved_global = nh_.resolveName(global_odom_topic_);
+    const std::string resolved_original = nh_.resolveName(original_odom_topic_);
+    if (resolved_input == resolved_global ||
+        (publish_to_original_odom_topic_ &&
+         (resolved_input == resolved_original || resolved_global == resolved_original))) {
+      ROS_FATAL_STREAM("Conflicting resolved odometry topics: input='" << resolved_input
+                       << "', global='" << resolved_global << "', compatibility='"
+                       << resolved_original << "'. Every active input/output must use a "
+                       << "different ROS topic.");
+      ros::shutdown();
+      return;
+    }
     if (!loadMap()) {
       ROS_FATAL_STREAM("Cannot start map relocalization with PCD: " << map_file_);
       ros::shutdown();
@@ -99,6 +112,9 @@ class MapRelocalization {
     map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(map_topic_, 1, true);
     aligned_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(aligned_topic_, 1);
     global_odom_pub_ = nh_.advertise<nav_msgs::Odometry>(global_odom_topic_, 20);
+    if (publish_to_original_odom_topic_) {
+      original_odom_pub_ = nh_.advertise<nav_msgs::Odometry>(original_odom_topic_, 20);
+    }
     status_pub_ = nh_.advertise<std_msgs::Bool>(status_topic_, 1, true);
     state_pub_ = nh_.advertise<std_msgs::String>(state_topic_, 1, true);
     fitness_pub_ = nh_.advertise<std_msgs::Float64>(fitness_topic_, 1, true);
@@ -120,13 +136,16 @@ class MapRelocalization {
  private:
   void loadParameters() {
     pnh_.param<std::string>("map_file", map_file_, "");
-    pnh_.param<std::string>("map_frame", map_frame_, "map");
+    pnh_.param<std::string>("map_frame", map_frame_, "lio_global");
     pnh_.param<std::string>("local_frame", local_frame_, "world");
     pnh_.param<std::string>("body_frame", body_frame_, "body");
     pnh_.param<std::string>("odom_topic", odom_topic_, "/Odometry");
     pnh_.param<std::string>("cloud_topic", cloud_topic_, "/cloud_registered");
     pnh_.param<std::string>("initial_pose_topic", initial_pose_topic_, "/initialpose");
-    pnh_.param<std::string>("global_odom_topic", global_odom_topic_, "/Odometry_map");
+    pnh_.param<std::string>("global_odom_topic", global_odom_topic_,
+                            "/Odometry_lio_global");
+    pnh_.param<std::string>("original_odom_topic", original_odom_topic_, "/Odometry");
+    pnh_.param("publish_to_original_odom_topic", publish_to_original_odom_topic_, false);
     pnh_.param<std::string>("map_topic", map_topic_, "/prior_map");
     pnh_.param<std::string>("aligned_topic", aligned_topic_, "/relocalization/aligned_cloud");
     pnh_.param<std::string>("status_topic", status_topic_, "/relocalization/initialized");
@@ -213,6 +232,10 @@ class MapRelocalization {
       ROS_WARN_THROTTLE(2.0, "Odometry child frame is '%s'; configured body frame is '%s'",
                         msg->child_frame_id.c_str(), body_frame_.c_str());
     }
+    // Compatibility output deliberately preserves the raw local pose and its
+    // world axes. Relocalization remains available through the global output
+    // and the lio_global -> world TF.
+    if (publish_to_original_odom_topic_) original_odom_pub_.publish(*msg);
     std::lock_guard<std::mutex> lock(mutex_);
     latest_odom_ = *msg;
     world_from_body_ = poseMatrix(msg->pose.pose);
@@ -429,7 +452,8 @@ class MapRelocalization {
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
   ros::Subscriber odom_sub_, cloud_sub_, initial_pose_sub_;
-  ros::Publisher map_pub_, aligned_pub_, global_odom_pub_, status_pub_, state_pub_, fitness_pub_;
+  ros::Publisher map_pub_, aligned_pub_, global_odom_pub_, original_odom_pub_;
+  ros::Publisher status_pub_, state_pub_, fitness_pub_;
   ros::ServiceServer relocalize_srv_, reset_srv_;
   tf::TransformBroadcaster tf_broadcaster_;
   std::mutex mutex_;
@@ -444,12 +468,14 @@ class MapRelocalization {
   Eigen::Matrix4f map_from_world_ = Eigen::Matrix4f::Identity();
   std::string map_file_, map_frame_, local_frame_, body_frame_;
   std::string odom_topic_, cloud_topic_, initial_pose_topic_, global_odom_topic_;
+  std::string original_odom_topic_;
   std::string map_topic_, aligned_topic_, status_topic_, state_topic_, fitness_topic_;
   double map_leaf_size_, scan_leaf_size_, target_crop_radius_, ndt_resolution_, ndt_step_size_;
   double icp_max_correspondence_, max_fitness_score_;
   double max_translation_correction_, max_yaw_correction_;
   int accumulate_frames_, ndt_max_iterations_, icp_max_iterations_;
   bool auto_initialize_, initialized_, have_odom_, have_guess_, running_;
+  bool publish_to_original_odom_topic_;
 };
 
 }  // namespace

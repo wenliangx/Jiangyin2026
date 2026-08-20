@@ -4,8 +4,12 @@
   <arg name="map_file" />
   <arg name="odom_topic" default="/Odometry" />
   <arg name="cloud_topic" default="/cloud_registered" />
-  <arg name="global_odom_topic" default="/Odometry_map" />
-  <arg name="map_frame" default="map" />
+  <arg name="global_odom_topic" default="/Odometry_lio_global" />
+  <!-- When enabled, republish raw world->body odometry on the original topic.
+       Global relocalization remains on global_odom_topic and TF. -->
+  <arg name="publish_to_original_odom_topic" default="false" />
+  <arg name="original_odom_topic" default="/Odometry" />
+  <arg name="map_frame" default="lio_global" />
   <arg name="local_frame" default="world" />
   <arg name="body_frame" default="body" />
   <arg name="auto_initialize" default="false" />
@@ -17,6 +21,9 @@
     <param name="odom_topic" value="$(arg odom_topic)" />
     <param name="cloud_topic" value="$(arg cloud_topic)" />
     <param name="global_odom_topic" value="$(arg global_odom_topic)" />
+    <param name="publish_to_original_odom_topic"
+           value="$(arg publish_to_original_odom_topic)" />
+    <param name="original_odom_topic" value="$(arg original_odom_topic)" />
     <param name="map_frame" value="$(arg map_frame)" />
     <param name="local_frame" value="$(arg local_frame)" />
     <param name="body_frame" value="$(arg body_frame)" />

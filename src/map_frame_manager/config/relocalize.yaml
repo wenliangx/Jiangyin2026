@@ -1,18 +1,18 @@
 # Historical PCD. Points in the file are interpreted in a `pcd` frame first.
 map_file: ""
 
-# T_map_pcd = [x, y, z, roll, pitch, yaw], angles in radians.
+# T_lio_global_pcd = [x, y, z, roll, pitch, yaw], angles in radians.
 # Use this to move the competition origin and define the positive axis directions
 # without modifying the PCD file itself.
 map_transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-map_frame: map
+map_frame: lio_global
 local_frame: world
 body_frame: body
 odom_topic: /Odometry
 cloud_topic: /cloud_registered
 initial_pose_topic: /initialpose
-global_odom_topic: /Odometry_map
+global_odom_topic: /Odometry_lio_global
 map_topic: /prior_map
 aligned_topic: /relocalization/aligned_cloud
 status_topic: /relocalization/initialized
@@ -20,7 +20,7 @@ state_topic: /map_frame_manager/state
 fitness_topic: /map_frame_manager/fitness
 
 # false: wait for an RViz "2D Pose Estimate" message (recommended).
-# true: use initial_pose below as T_map_body automatically.
+# true: use initial_pose below as T_lio_global_body automatically.
 auto_initialize: false
 initial_pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 

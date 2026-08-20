@@ -24,9 +24,9 @@ roslaunch map_frame_manager create_map_ra_lio.launch \
 节点默认等待 3 秒稳定窗口和至少 20 帧点云，然后自动锁定：
 
 ```text
-初始飞机位置 → map (0,0,0)
-初始机头水平投影 → map +X
-重力反方向 → map +Z
+初始飞机位置 → lio_global (0,0,0)
+初始机头水平投影 → lio_global +X
+重力反方向 → lio_global +Z
 ```
 
 查看状态：
@@ -75,7 +75,8 @@ auto_initialize: true
 initial_pose: [x, y, z, roll, pitch, yaw]
 ```
 
-由本系统创建的 PCD 已经位于永久 `map` 坐标，不再需要手动转换：
+由本系统创建的 PCD 已经位于永久 `lio_global` 坐标，不再需要手动转换。
+`map` 坐标系不由本模块发布，可继续留给其他模块使用：
 
 ```yaml
 map_transform: [0, 0, 0, 0, 0, 0]
@@ -89,6 +90,19 @@ roslaunch map_frame_manager relocalize_ra_lio.launch \
   rviz:=true
 ```
 
+若现有下游节点只能订阅 RA-LIO 原来的 `/Odometry`，可开启兼容开关：
+
+```bash
+roslaunch map_frame_manager relocalize_ra_lio.launch \
+  map_file:=/data/maps/jiangyin/competition_map.pcd \
+  publish_to_original_odom_topic:=true
+```
+
+此时 wrapper 会把 RA-LIO 的原始局部里程计重映射到 `/Odometry_local`，再将其
+原样转发到 `/Odometry`。因此 `/Odometry` 仍是 `world -> body`，坐标轴、数值和
+连续性与原始 RA-LIO 一致。全局重定位结果始终单独发布到
+`/Odometry_lio_global`，不会覆盖原始坐标语义。
+
 Point-LIO：
 
 ```bash
@@ -100,10 +114,24 @@ roslaunch map_frame_manager relocalize_point_lio.launch \
   body_frame:=body
 ```
 
+Point-LIO 由外部 launch 启动，若启用同一兼容方式，必须先将 Point-LIO 的原始
+输出改到独立话题，再指定输入和原输出话题，例如：
+
+```bash
+roslaunch map_frame_manager relocalize_point_lio.launch \
+  map_file:=/data/maps/jiangyin/competition_map.pcd \
+  odom_topic:=/aft_mapped_to_init_local \
+  publish_to_original_odom_topic:=true \
+  original_odom_topic:=/aft_mapped_to_init
+```
+
+禁止让 `odom_topic` 与兼容输出话题相同；节点会主动拒绝这种配置，避免订阅自身
+输出形成反馈。
+
 节点积累点云后依次执行 NDT 和 ICP。成功输出：
 
-- TF `map -> local_frame`；
-- `/Odometry_map`；
+- TF `lio_global -> local_frame`；
+- `/Odometry_lio_global`；
 - `/prior_map`；
 - `/relocalization/aligned_cloud`；
 - `/relocalization/initialized = true`；
@@ -134,13 +162,13 @@ registered cloud 必须真正转换到了 `local_frame`，不能只修改消息�
 
 ## 5. 飞控接入
 
-初期保持 PX4 estimator 使用原始 LIO 里程计。确认以下条件后再切换到
-`/Odometry_map`：
+PX4 estimator 和现有局部控制链继续使用 `world` 系的 `/Odometry`。永久地图、
+永久航点或全局规划使用 `/Odometry_lio_global`：
 
 1. `/relocalization/initialized` 为 true；
 2. aligned cloud 与 prior map 重合；
-3. 飞机静止时 `/Odometry_map` 没有跳变；
-4. `map -> local_frame` 保持固定；
+3. 飞机静止时 `/Odometry_lio_global` 没有跳变；
+4. `lio_global -> local_frame` 保持固定；
 5. 重复启动的位置和 yaw 满足精度要求。
 
 自动飞行必须由 ready 状态门控，任何 `WAITING`、`MATCHING` 或 `FAILED` 状态均

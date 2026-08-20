@@ -102,11 +102,12 @@ class MapOriginRecorder {
   void loadParameters() {
     pnh_.param<std::string>("odom_topic", odom_topic_, "/Odometry");
     pnh_.param<std::string>("cloud_topic", cloud_topic_, "/cloud_registered");
-    pnh_.param<std::string>("global_odom_topic", global_odom_topic_, "/Odometry_map");
+    pnh_.param<std::string>("global_odom_topic", global_odom_topic_,
+                            "/Odometry_lio_global");
     pnh_.param<std::string>("map_cloud_topic", map_cloud_topic_, "/map_building_cloud");
     pnh_.param<std::string>("state_topic", state_topic_, "/map_frame_manager/state");
     pnh_.param<std::string>("ready_topic", ready_topic_, "/map_frame_manager/ready");
-    pnh_.param<std::string>("map_frame", map_frame_, "map");
+    pnh_.param<std::string>("map_frame", map_frame_, "lio_global");
     pnh_.param<std::string>("local_frame", local_frame_, "world");
     pnh_.param<std::string>("body_frame", body_frame_, "body");
     pnh_.param<std::string>("map_output_directory", output_directory_, "/tmp/jiangyin_map");
