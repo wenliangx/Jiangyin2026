@@ -1,0 +1,32 @@
+<launch>
+  <arg name="map_file" />
+  <arg name="output_directory" default="/tmp/jiangyin_map/permanent" />
+  <arg name="map_name" default="competition_map" />
+  <arg name="odom_topic" default="/Odometry" />
+  <arg name="cloud_topic" default="/cloud_registered" />
+  <arg name="local_frame" default="world" />
+  <arg name="body_frame" default="body" />
+  <arg name="auto_initialize" default="false" />
+
+  <!-- Relocalize the current LIO session into the unanchored PCD frame. -->
+  <include file="$(find map_frame_manager)/launch/relocalize.launch">
+    <arg name="map_file" value="$(arg map_file)" />
+    <arg name="odom_topic" value="$(arg odom_topic)" />
+    <arg name="cloud_topic" value="$(arg cloud_topic)" />
+    <arg name="global_odom_topic" value="/Odometry_map_origin_input" />
+    <arg name="map_frame" value="lio_global" />
+    <arg name="local_frame" value="$(arg local_frame)" />
+    <arg name="body_frame" value="$(arg body_frame)" />
+    <arg name="auto_initialize" value="$(arg auto_initialize)" />
+  </include>
+
+  <!-- Freeze the matched pose as zero and current heading as permanent +X. -->
+  <node pkg="map_frame_manager" type="map_origin_setter_node"
+        name="map_origin_setter" output="screen" required="true">
+    <rosparam command="load" file="$(find map_frame_manager)/config/set_origin.yaml" />
+    <param name="input_pcd" value="$(arg map_file)" />
+    <param name="output_directory" value="$(arg output_directory)" />
+    <param name="map_name" value="$(arg map_name)" />
+    <param name="odom_topic" value="/Odometry_map_origin_input" />
+  </node>
+</launch>

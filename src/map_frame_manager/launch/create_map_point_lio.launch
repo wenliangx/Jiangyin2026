@@ -6,6 +6,7 @@
   <arg name="body_frame" default="body" />
   <arg name="output_directory" default="/tmp/jiangyin_map" />
   <arg name="map_name" default="competition_map" />
+  <arg name="define_origin_during_mapping" default="false" />
 
   <include file="$(find map_frame_manager)/launch/create_map.launch">
     <arg name="odom_topic" value="$(arg odom_topic)" />
@@ -14,5 +15,6 @@
     <arg name="body_frame" value="$(arg body_frame)" />
     <arg name="output_directory" value="$(arg output_directory)" />
     <arg name="map_name" value="$(arg map_name)" />
+    <arg name="define_origin_during_mapping" value="$(arg define_origin_during_mapping)" />
   </include>
 </launch>

@@ -38,7 +38,12 @@ add_executable(map_pcd_processor_node src/map_pcd_processor_node.cpp)
 target_link_libraries(map_pcd_processor_node ${catkin_LIBRARIES} ${PCL_LIBRARIES}
                       ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY})
 
+add_executable(map_origin_setter_node src/map_origin_setter_node.cpp)
+target_link_libraries(map_origin_setter_node ${catkin_LIBRARIES} ${PCL_LIBRARIES}
+                      ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY})
+
 install(TARGETS map_frame_manager_node map_origin_recorder_node map_pcd_processor_node
+                map_origin_setter_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 install(DIRECTORY config launch
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

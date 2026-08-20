@@ -2,9 +2,9 @@
 
 ## 1. 手举建图
 
-把无人机放在永久原点，机头对准 `world +X`，保持静止直到状态进入
-`MAPPING`。之后把无人机举到约 1.2--1.8 m，缓慢行走并至少从两个方向
-覆盖每条通道。
+本阶段不再决定永久原点。启动后等待状态进入 `MAPPING`，再把无人机举到
+约 1.2--1.8 m，缓慢行走并至少从两个方向覆盖每条通道。保存的 PCD 使用
+本次 LIO 的临时局部坐标系；起步位置和机头方向都不会成为比赛原点。
 
 ```bash
 roslaunch map_frame_manager create_map_ra_lio.launch \
@@ -29,14 +29,51 @@ competition_map.pcd        已排除持机人的工作图
 competition_map.yaml       原点、坐标系与过滤参数
 ```
 
-## 2. 自动清理和派生
+此时 YAML 中的 `origin_definition` 应为 `unanchored_lio_local_frame`。
+
+## 2. 在建好的地图中确定永久原点
+
+完成建图后，把飞机拿到希望的永久原点，机头对准永久 `lio_global +X`，保持静止。
+使用 RA-LIO 时可由定原点工具一并启动 LIO：
+
+```bash
+roslaunch map_frame_manager set_origin_ra_lio.launch \
+  map_file:=$HOME/maps/jiangyin/competition_map.pcd \
+  output_directory:=$HOME/maps/jiangyin/permanent \
+  map_name:=competition_map \
+  auto_initialize:=false
+```
+
+如果 LIO 已经启动，则使用通用入口 `set_origin.launch`，参数相同。
+
+在 RViz 中用 `2D Pose Estimate` 给出飞机在临时 PCD 中的大致位置和朝向。
+该值只作为 NDT+ICP 的搜索种子，不会成为永久原点。等待匹配成功：
+
+```bash
+rostopic echo -n 1 /relocalization/initialized
+rostopic echo /map_origin_setter/state
+```
+
+当状态为 `READY_TO_SET_ORIGIN` 时，确认飞机仍位于原点且机头朝 `+X`：
+
+```bash
+rosservice call /map_origin_setter/set_origin
+```
+
+工具把匹配到的当前机体位置设为 `(0,0,0)`，把当前航向设为零航向；滚转和
+俯仰不会倾斜地图。输出为
+`$HOME/maps/jiangyin/permanent/competition_map.pcd` 和对应 YAML。后续清理、
+重定位和规划只使用这份永久坐标地图。重复走廊等场景不能保证无先验全局
+匹配唯一，因此推荐始终在 RViz 中给出粗略种子并检查 ICP fitness。
+
+## 3. 自动清理和派生
 
 先根据实际赛场修改 `map_frame_manager/config/process_map.yaml` 中的
 `venue_bounds`，然后执行：
 
 ```bash
 roslaunch map_frame_manager process_map.launch \
-  input_pcd:=$HOME/maps/jiangyin/competition_map.pcd \
+  input_pcd:=$HOME/maps/jiangyin/permanent/competition_map.pcd \
   output_directory:=$HOME/maps/jiangyin \
   map_name:=competition_map
 ```
@@ -50,7 +87,7 @@ competition_map_planner.pcd
 competition_map.yaml
 ```
 
-## 3. CloudCompare 复核
+## 4. CloudCompare 复核
 
 1. 备份 `clean.pcd`，不覆盖 `raw.pcd`。
 2. 同时打开 raw 和 clean，确认原点、方向和缩放完全重合。
@@ -64,7 +101,7 @@ competition_map.yaml
 人工修订后，将文件作为 `competition_map_clean.pcd`，再从该文件运行一次
 派生流程。不要分别手工编辑 relocal 和 planner 版本。
 
-## 4. 比赛启动
+## 5. 比赛启动
 
 先启动重定位：
 

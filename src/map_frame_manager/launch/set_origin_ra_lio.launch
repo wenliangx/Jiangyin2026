@@ -1,0 +1,29 @@
+<launch>
+  <arg name="map_file" />
+  <arg name="output_directory" default="/tmp/jiangyin_map/permanent" />
+  <arg name="map_name" default="competition_map" />
+  <arg name="start_mapping" default="true" />
+  <arg name="rviz" default="true" />
+  <arg name="use_sim_time" default="false" />
+  <arg name="auto_initialize" default="false" />
+
+  <include if="$(arg start_mapping)" file="$(find ra_lio)/launch/mapping_mid360.launch">
+    <arg name="rviz" value="false" />
+    <arg name="use_sim_time" value="$(arg use_sim_time)" />
+    <arg name="global_output_en" value="false" />
+  </include>
+
+  <include file="$(find map_frame_manager)/launch/set_origin.launch">
+    <arg name="map_file" value="$(arg map_file)" />
+    <arg name="output_directory" value="$(arg output_directory)" />
+    <arg name="map_name" value="$(arg map_name)" />
+    <arg name="odom_topic" value="/Odometry" />
+    <arg name="cloud_topic" value="/cloud_registered" />
+    <arg name="local_frame" value="world" />
+    <arg name="body_frame" value="body" />
+    <arg name="auto_initialize" value="$(arg auto_initialize)" />
+  </include>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(find ra_lio)/rviz_cfg/mid360.rviz" />
+</launch>

@@ -116,6 +116,7 @@ class MapOriginRecorder {
     pnh_.param<std::string>("map_output_directory", output_directory_, "/tmp/jiangyin_map");
     pnh_.param<std::string>("map_name", map_name_, "competition_map");
     pnh_.param("auto_lock_origin", auto_lock_origin_, true);
+    pnh_.param("define_origin_during_mapping", define_origin_during_mapping_, true);
     pnh_.param("save_on_shutdown", save_on_shutdown_, true);
     pnh_.param("stability_duration", stability_duration_, 3.0);
     pnh_.param("stability_timeout", stability_timeout_, 30.0);
@@ -174,7 +175,13 @@ class MapOriginRecorder {
     while (!samples_.empty() && (sample.stamp - samples_.front().stamp).toSec() > stability_duration_)
       samples_.pop_front();
 
-    if (!origin_locked_) {
+    if (!origin_locked_ && !define_origin_during_mapping_) {
+      map_from_local_ = Eigen::Matrix4f::Identity();
+      origin_locked_ = true;
+      saved_ = false;
+      setStateLocked("MAPPING", true);
+      publishGlobalOdomLocked(*msg);
+    } else if (!origin_locked_) {
       setStateLocked("WAITING_FOR_STABILITY", false);
       if (auto_lock_origin_ && stableLocked()) lockOriginLocked();
       else if (stability_timeout_ > 0.0 && (ros::Time::now() - start_time_).toSec() > stability_timeout_)
@@ -404,7 +411,10 @@ class MapOriginRecorder {
          << "point_count: " << filtered.size() << "\n"
          << "raw_point_count: " << raw_filtered.size() << "\n"
          << "frame_convention: ENU\n"
-         << "origin_definition: initial_vehicle_position_and_heading\n"
+         << "origin_definition: "
+         << (define_origin_during_mapping_ ? "initial_vehicle_position_and_heading"
+                                           : "unanchored_lio_local_frame")
+         << "\n"
          << "map_frame: " << map_frame_ << "\n"
          << "creation_local_frame: " << local_frame_ << "\n"
          << "creation_body_frame: " << body_frame_ << "\n"
@@ -482,6 +492,7 @@ class MapOriginRecorder {
   std::string state_topic_, ready_topic_, map_frame_, local_frame_, body_frame_;
   std::string output_directory_, map_name_, state_;
   bool auto_lock_origin_ = true, save_on_shutdown_ = true;
+  bool define_origin_during_mapping_ = true;
   bool handheld_mapping_ = false, operator_exclusion_enabled_ = true;
   bool have_odom_ = false, origin_locked_ = false, saved_ = false, ready_ = false;
   double stability_duration_ = 3.0, stability_timeout_ = 30.0;

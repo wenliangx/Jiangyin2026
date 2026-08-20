@@ -9,7 +9,9 @@ map_frame: lio_global
 local_frame: world
 body_frame: body
 
-# The vehicle must be stationary and face the desired lio_global +X direction.
+# false: save the map in its unanchored LIO frame. Set the permanent origin later.
+define_origin_during_mapping: false
+# Used only when define_origin_during_mapping is true (legacy workflow).
 auto_lock_origin: true
 stability_duration: 3.0
 stability_timeout: 30.0

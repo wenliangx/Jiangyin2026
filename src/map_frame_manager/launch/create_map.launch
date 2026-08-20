@@ -6,6 +6,7 @@
   <arg name="body_frame" default="body" />
   <arg name="output_directory" default="/tmp/jiangyin_map" />
   <arg name="map_name" default="competition_map" />
+  <arg name="define_origin_during_mapping" default="false" />
 
   <node pkg="map_frame_manager" type="map_origin_recorder_node"
         name="map_frame_manager" output="screen" required="true">
@@ -17,5 +18,6 @@
     <param name="body_frame" value="$(arg body_frame)" />
     <param name="map_output_directory" value="$(arg output_directory)" />
     <param name="map_name" value="$(arg map_name)" />
+    <param name="define_origin_during_mapping" value="$(arg define_origin_during_mapping)" />
   </node>
 </launch>
