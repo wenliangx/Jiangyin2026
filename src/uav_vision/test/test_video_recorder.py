@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import pathlib
 import tempfile
+import time
 import unittest
 
 import cv2
@@ -14,6 +15,15 @@ from uav_vision.video_recorder import (
 
 
 class VideoRecorderTest(unittest.TestCase):
+    @staticmethod
+    def _wait_until(predicate, timeout=3.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.05)
+        return predicate()
+
     def test_formats_beijing_timestamp_independent_of_host_timezone(self):
         self.assertEqual(
             beijing_timestamp(0.001),
@@ -78,6 +88,48 @@ class VideoRecorderTest(unittest.TestCase):
                 for path in pathlib.Path(directory).rglob("raw.mp4")
             )
             self.assertEqual(session_dirs, ["001", "002"])
+
+    def test_inactivity_finalizes_files_before_next_frame_or_shutdown(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = RecorderConfig(
+                root=directory,
+                fps=10.0,
+                codec="mp4v",
+                extension=".mp4",
+                segment_seconds=60.0,
+                inactivity_seconds=0.2,
+                queue_size=8,
+            )
+            recorder = AsyncVideoPairRecorder(config, "test_stream")
+            frame = np.zeros((24, 32, 3), np.uint8)
+
+            def video_is_finalized(path):
+                if not path.exists():
+                    return False
+                capture = cv2.VideoCapture(str(path))
+                opened = capture.isOpened()
+                frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+                capture.release()
+                return opened and frames == 1
+
+            first_raw = pathlib.Path(
+                directory, "2023-11-15", "test_stream", "001", "raw.mp4"
+            )
+            self.assertTrue(recorder.submit(frame, frame, 1700000000.0))
+            self.assertTrue(
+                self._wait_until(lambda: video_is_finalized(first_raw)),
+                "first session was not finalized after inactivity",
+            )
+
+            second_raw = pathlib.Path(
+                directory, "2023-11-15", "test_stream", "002", "raw.mp4"
+            )
+            self.assertTrue(recorder.submit(frame, frame, 1700000001.0))
+            self.assertTrue(
+                self._wait_until(lambda: video_is_finalized(second_raw)),
+                "second session was not finalized after inactivity",
+            )
+            recorder.close()
 
     def test_rejects_invalid_codec(self):
         with self.assertRaises(ValueError):

@@ -253,12 +253,29 @@ class AsyncVideoPairRecorder:
         session_dir = None
         segment_stamp = None
         last_stamp = None
+        last_activity_monotonic = None
         part_index = 0
         try:
             while not self._stop.is_set() or not self._queue.empty():
                 try:
                     item = self._queue.get(timeout=0.2)
                 except queue.Empty:
+                    if (
+                        raw_writer is not None
+                        and last_activity_monotonic is not None
+                        and time.monotonic() - last_activity_monotonic
+                        >= self.config.inactivity_seconds
+                    ):
+                        raw_writer.release()
+                        result_writer.release()
+                        raw_writer = None
+                        result_writer = None
+                        raw_size = None
+                        result_size = None
+                        session_dir = None
+                        segment_stamp = None
+                        last_stamp = None
+                        last_activity_monotonic = None
                     continue
                 try:
                     item_raw_size = (item.raw.shape[1], item.raw.shape[0])
@@ -307,6 +324,7 @@ class AsyncVideoPairRecorder:
                     raw_writer.write(item.raw)
                     result_writer.write(item.processed)
                     last_stamp = item.stamp_seconds
+                    last_activity_monotonic = time.monotonic()
                 except (OSError, RuntimeError, cv2.error) as error:
                     self._log_error(
                         f"{self.stream_name} video recording failed: {error}"
