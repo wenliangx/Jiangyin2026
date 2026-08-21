@@ -1117,15 +1117,6 @@ class SingleOffboardNode {
                         config.landing_reference_z);
     private_node_.param("landing_tolerance_z", config.landing_tolerance_z,
                         config.landing_tolerance_z);
-    private_node_.param("landing_max_vertical_speed",
-                        config.landing_max_vertical_speed,
-                        config.landing_max_vertical_speed);
-    private_node_.param("landing_confirmation_seconds",
-                        config.landing_confirmation_seconds,
-                        config.landing_confirmation_seconds);
-    private_node_.param("landing_disarm_retry_seconds",
-                        config.landing_disarm_retry_seconds,
-                        config.landing_disarm_retry_seconds);
     return config;
   }
 

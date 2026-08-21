@@ -61,8 +61,7 @@ struct Context {
     }
     const double current_time = clock.now();
     if (!disarm_request_started ||
-        current_time - last_service_request >
-            config.landing_disarm_retry_seconds) {
+        current_time - last_service_request > config.service_retry_seconds) {
       autopilot.requestDisarm();
       last_service_request = current_time;
       disarm_request_started = true;
@@ -87,7 +86,6 @@ struct Context {
   TelemetrySnapshot telemetry;
   double last_service_request;
   bool landing_reached{false};
-  double landing_condition_since{-1.0};
   bool disarm_request_started{false};
   // 首次判定落地后永久置位；进程生命周期内任何动作都不得清除此锁。
   bool permanent_landing_lock{false};

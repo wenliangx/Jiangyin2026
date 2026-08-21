@@ -71,44 +71,19 @@ inline void publishLowThrust(Context& context) {
       BodyRateThrust{Vec3{}, context.config.low_thrust});
 }
 
-inline void publishZeroThrust(Context& context) {
-  context.setpoint.publishBodyRateThrust(BodyRateThrust{Vec3{}, 0.0});
-}
-
 inline bool handleLandingCompletion(Context& context) {
-  if (context.landing_reached) {
-    if (context.telemetry.armed) {
-      publishZeroThrust(context);
-      context.ensureDisarm();
-    }
-    return true;
-  }
-
-  const bool height_ready =
+  const bool landed =
+      context.landing_reached ||
       std::abs(context.telemetry.position.z -
                context.config.landing_reference_z) <
-      context.config.landing_tolerance_z;
-  const bool vertical_speed_ready =
-      std::abs(context.telemetry.velocity.z) <
-      context.config.landing_max_vertical_speed;
-  if (!height_ready || !vertical_speed_ready) {
-    context.landing_condition_since = -1.0;
+          context.config.landing_tolerance_z;
+  if (!landed) {
     return false;
   }
-
-  const double now = context.clock.now();
-  if (context.landing_condition_since < 0.0) {
-    context.landing_condition_since = now;
-  }
-  if (now - context.landing_condition_since <
-      context.config.landing_confirmation_seconds) {
-    return false;
-  }
-
   context.landing_reached = true;
   context.permanent_landing_lock = true;
   if (context.telemetry.armed) {
-    publishZeroThrust(context);
+    publishLowThrust(context);
     context.ensureDisarm();
   }
   return true;
@@ -247,7 +222,6 @@ struct StartSuperSegment3 {
 struct ResetLanding {
   void operator()(Context& context) const {
     context.landing_reached = false;
-    context.landing_condition_since = -1.0;
     context.disarm_request_started = false;
     context.landing.reset();
   }
