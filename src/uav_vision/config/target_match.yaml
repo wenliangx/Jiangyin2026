@@ -19,6 +19,27 @@ matcher:
   white_close_kernel: 5
   white_min_fill_ratio: 0.65
   white_max_area_ratio: 0.20
+  # Keep close=5 as the primary path. Only when it produces no accepted
+  # candidate, retry the white mask with close=11 and stricter class gates.
+  white_fallback_enabled: true
+  white_fallback_close_kernel: 11
+  white_fallback_min_class_score: 0.70
+  white_fallback_min_class_margin: 0.10
+  white_fallback_max_candidates: 1
+  # Blue competition posters are attempted only after both primary matching
+  # and the strict white fallback fail.
+  blue_fallback_enabled: true
+  blue_min_hue: 80
+  blue_max_hue: 140
+  blue_min_saturation: 25
+  blue_min_value: 50
+  blue_open_kernel: 3
+  blue_close_kernel: 11
+  blue_min_fill_ratio: 0.35
+  blue_max_area_ratio: 0.08
+  blue_min_class_score: 0.75
+  blue_min_class_margin: 0.10
+  blue_max_candidates: 1
   min_target_side_px: 80.0
   min_sharpness: 20.0
   gray_weight: 0.50

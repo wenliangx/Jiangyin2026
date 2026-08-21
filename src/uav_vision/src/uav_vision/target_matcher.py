@@ -31,6 +31,23 @@ class MatcherConfig:
     white_close_kernel: int = 5
     white_min_fill_ratio: float = 0.65
     white_max_area_ratio: float = 0.20
+    white_fallback_enabled: bool = True
+    white_fallback_close_kernel: int = 11
+    white_fallback_min_class_score: float = 0.70
+    white_fallback_min_class_margin: float = 0.10
+    white_fallback_max_candidates: int = 1
+    blue_fallback_enabled: bool = True
+    blue_min_hue: int = 80
+    blue_max_hue: int = 140
+    blue_min_saturation: int = 25
+    blue_min_value: int = 50
+    blue_open_kernel: int = 3
+    blue_close_kernel: int = 11
+    blue_min_fill_ratio: float = 0.35
+    blue_max_area_ratio: float = 0.08
+    blue_min_class_score: float = 0.75
+    blue_min_class_margin: float = 0.10
+    blue_max_candidates: int = 1
     min_target_side_px: float = 80.0
     min_sharpness: float = 20.0
     gray_weight: float = 0.50
@@ -74,6 +91,12 @@ class MatcherConfig:
         for name, size in (
             ("white_open_kernel", self.white_open_kernel),
             ("white_close_kernel", self.white_close_kernel),
+            (
+                "white_fallback_close_kernel",
+                self.white_fallback_close_kernel,
+            ),
+            ("blue_open_kernel", self.blue_open_kernel),
+            ("blue_close_kernel", self.blue_close_kernel),
         ):
             if size <= 0 or size % 2 == 0:
                 raise ValueError(f"{name} must be a positive odd integer")
@@ -83,6 +106,34 @@ class MatcherConfig:
             raise ValueError(
                 "white_max_area_ratio must be within the global area limits"
             )
+        if not 0.0 <= self.white_fallback_min_class_score <= 1.0:
+            raise ValueError(
+                "white_fallback_min_class_score must be in [0, 1]"
+            )
+        if not 0.0 <= self.white_fallback_min_class_margin <= 1.0:
+            raise ValueError(
+                "white_fallback_min_class_margin must be in [0, 1]"
+            )
+        if self.white_fallback_max_candidates <= 0:
+            raise ValueError("white_fallback_max_candidates must be positive")
+        if not 0 <= self.blue_min_hue <= self.blue_max_hue <= 179:
+            raise ValueError("blue hue range must be within [0, 179]")
+        if not 0 <= self.blue_min_saturation <= 255:
+            raise ValueError("blue_min_saturation must be in [0, 255]")
+        if not 0 <= self.blue_min_value <= 255:
+            raise ValueError("blue_min_value must be in [0, 255]")
+        if not 0.0 < self.blue_min_fill_ratio <= 1.0:
+            raise ValueError("blue_min_fill_ratio must be in (0, 1]")
+        if not self.min_area_ratio <= self.blue_max_area_ratio <= self.max_area_ratio:
+            raise ValueError(
+                "blue_max_area_ratio must be within the global area limits"
+            )
+        if not 0.0 <= self.blue_min_class_score <= 1.0:
+            raise ValueError("blue_min_class_score must be in [0, 1]")
+        if not 0.0 <= self.blue_min_class_margin <= 1.0:
+            raise ValueError("blue_min_class_margin must be in [0, 1]")
+        if self.blue_max_candidates <= 0:
+            raise ValueError("blue_max_candidates must be positive")
         if self.orb_nfeatures <= 0 or self.orb_max_width <= 0:
             raise ValueError("ORB feature count and max width must be positive")
         if not 0.0 < self.orb_ratio_test < 1.0:
@@ -179,6 +230,7 @@ class TargetMatcher:
             9,
         )
         self._templates = self._load_templates(templates_dir)
+        self._build_template_bank()
         self._orb = cv2.ORB_create(nfeatures=config.orb_nfeatures)
         self._orb_templates = self._load_orb_templates(templates_dir)
         self._akaze = cv2.AKAZE_create()
@@ -197,6 +249,56 @@ class TargetMatcher:
                 variants.append(self._extract_features(augmented))
             loaded[label] = variants
         return loaded
+
+    @staticmethod
+    def _normalized_vector(values: np.ndarray, center: bool) -> np.ndarray:
+        vector = np.asarray(values, dtype=np.float32).reshape(-1)
+        if center:
+            vector = vector - float(vector.mean())
+        norm = float(np.linalg.norm(vector))
+        if norm <= 1e-12:
+            return np.zeros_like(vector)
+        return vector / norm
+
+    def _build_template_bank(self):
+        """Pack template variants for vectorized batch scoring."""
+        labels = []
+        gray_rows = []
+        hog_rows = []
+        histogram_rows = []
+        for label in LABELS:
+            for template in self._templates[label]:
+                labels.append(label)
+                gray_rows.append(
+                    self._normalized_vector(template.gray, center=True)
+                )
+                hog_rows.append(
+                    self._normalized_vector(template.hog, center=False)
+                )
+                histogram_rows.append(
+                    self._normalized_vector(template.histogram, center=True)
+                )
+        self._template_labels = tuple(labels)
+        self._gray_template_matrix = np.ascontiguousarray(
+            np.stack(gray_rows), dtype=np.float32
+        )
+        self._hog_template_matrix = np.ascontiguousarray(
+            np.stack(hog_rows), dtype=np.float32
+        )
+        self._histogram_template_matrix = np.ascontiguousarray(
+            np.stack(histogram_rows), dtype=np.float32
+        )
+        self._template_label_indices = {
+            label: np.asarray(
+                [
+                    index
+                    for index, item in enumerate(self._template_labels)
+                    if item == label
+                ],
+                dtype=np.int32,
+            )
+            for label in LABELS
+        }
 
     def _load_orb_templates(self, templates_dir: str):
         loaded = {}
@@ -341,14 +443,51 @@ class TargetMatcher:
             return MatchResult(reason=f"invalid_patch:{error}")
 
         sharpness = measure_sharpness(candidate.gray)
+        gray_vector = self._normalized_vector(candidate.gray, center=True)
+        hog_vector = self._normalized_vector(candidate.hog, center=False)
+        histogram_vector = self._normalized_vector(
+            candidate.histogram, center=True
+        )
+        gray_scores = np.clip(
+            (
+                self._gray_template_matrix.dot(gray_vector)
+                + 1.0
+            )
+            * 0.5,
+            0.0,
+            1.0,
+        )
+        hog_scores = np.clip(
+            self._hog_template_matrix.dot(hog_vector), 0.0, 1.0
+        )
+        color_scores = np.clip(
+            (
+                self._histogram_template_matrix.dot(histogram_vector)
+                + 1.0
+            )
+            * 0.5,
+            0.0,
+            1.0,
+        )
+        total_scores = (
+            self.config.gray_weight * gray_scores
+            + self.config.hog_weight * hog_scores
+            + self.config.color_weight * color_scores
+        )
         class_scores = []
         for label in LABELS:
-            best = None
-            for template in self._templates[label]:
-                scored = self._score_features(candidate, template)
-                if best is None or scored[0] > best[0]:
-                    best = scored
-            class_scores.append((best[0], label, best[1], best[2], best[3]))
+            indices = self._template_label_indices[label]
+            local_index = int(np.argmax(total_scores[indices]))
+            best_index = int(indices[local_index])
+            class_scores.append(
+                (
+                    float(total_scores[best_index]),
+                    label,
+                    float(gray_scores[best_index]),
+                    float(hog_scores[best_index]),
+                    float(color_scores[best_index]),
+                )
+            )
 
         class_scores.sort(key=lambda item: item[0], reverse=True)
         best, second = class_scores[0], class_scores[1]
@@ -465,7 +604,10 @@ class TargetMatcher:
         return deduplicated
 
     def _find_white_board_candidates(
-        self, frame: np.ndarray, frame_area: float
+        self,
+        frame: np.ndarray,
+        frame_area: float,
+        close_kernel: Optional[int] = None,
     ):
         """Locate bright, low-saturation competition boards.
 
@@ -487,9 +629,14 @@ class TargetMatcher:
                 dtype=np.uint8,
             ),
         )
+        selected_close_kernel = (
+            self.config.white_close_kernel
+            if close_kernel is None
+            else int(close_kernel)
+        )
         for operation, size in (
             (cv2.MORPH_OPEN, self.config.white_open_kernel),
-            (cv2.MORPH_CLOSE, self.config.white_close_kernel),
+            (cv2.MORPH_CLOSE, selected_close_kernel),
         ):
             if size > 1:
                 kernel = cv2.getStructuringElement(
@@ -524,6 +671,88 @@ class TargetMatcher:
                 (quality[0] * fill_ratio, quality[1], corners)
             )
         return ranked
+
+    def _find_white_board_fallback_candidates(self, frame: np.ndarray):
+        """Retry only the white mask with a wider close kernel.
+
+        The wider kernel reconnects boards split by a dark target, but it can
+        also merge unrelated bright regions. It is therefore kept out of the
+        primary candidate competition, capped, and classified with stricter
+        gates in ``match_frame``.
+        """
+        if not self.config.white_fallback_enabled:
+            return []
+        if (
+            self.config.white_fallback_close_kernel
+            == self.config.white_close_kernel
+        ):
+            return []
+        frame_area = float(frame.shape[0] * frame.shape[1])
+        ranked = self._find_white_board_candidates(
+            frame,
+            frame_area,
+            close_kernel=self.config.white_fallback_close_kernel,
+        )
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return ranked[: self.config.white_fallback_max_candidates]
+
+    def _find_blue_board_fallback_candidates(self, frame: np.ndarray):
+        """Locate blue competition posters after the primary paths fail."""
+        if not self.config.blue_fallback_enabled:
+            return []
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(
+            hsv,
+            np.array(
+                (
+                    self.config.blue_min_hue,
+                    self.config.blue_min_saturation,
+                    self.config.blue_min_value,
+                ),
+                dtype=np.uint8,
+            ),
+            np.array(
+                (self.config.blue_max_hue, 255, 255), dtype=np.uint8
+            ),
+        )
+        for operation, size in (
+            (cv2.MORPH_OPEN, self.config.blue_open_kernel),
+            (cv2.MORPH_CLOSE, self.config.blue_close_kernel),
+        ):
+            if size > 1:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT, (size, size)
+                )
+                mask = cv2.morphologyEx(mask, operation, kernel)
+
+        frame_area = float(frame.shape[0] * frame.shape[1])
+        ranked = []
+        contours = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )[0]
+        for contour in contours:
+            contour_area = abs(float(cv2.contourArea(contour)))
+            if contour_area <= 0.0:
+                continue
+            rectangle = cv2.minAreaRect(contour)
+            width, height = rectangle[1]
+            if min(width, height) <= 1.0:
+                continue
+            rectangle_area = float(width * height)
+            if rectangle_area / frame_area > self.config.blue_max_area_ratio:
+                continue
+            fill_ratio = contour_area / rectangle_area
+            if fill_ratio < self.config.blue_min_fill_ratio:
+                continue
+            corners = order_quad(cv2.boxPoints(rectangle))
+            quality = self._quad_quality(corners, frame_area)
+            if quality is None:
+                continue
+            ranked.append(
+                (quality[0] * fill_ratio, quality[1], corners)
+            )
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return ranked[: self.config.blue_max_candidates]
 
     def _warp_candidate(self, frame: np.ndarray, corners: np.ndarray):
         size = self.config.canonical_size
@@ -771,12 +1000,6 @@ class TargetMatcher:
             return akaze_result
 
         candidates = self.find_square_candidates(frame)
-        if not candidates:
-            if akaze_result.reason != "akaze_no_geometric_match":
-                return akaze_result
-            if orb_result.reason != "orb_no_geometric_match":
-                return orb_result
-            return akaze_result
 
         accepted: List[MatchResult] = []
         rejected: List[MatchResult] = []
@@ -798,6 +1021,52 @@ class TargetMatcher:
                 accepted.append(result)
             else:
                 rejected.append(result)
+
+        if not accepted:
+            fallback_paths = (
+                (
+                    "white",
+                    self._find_white_board_fallback_candidates,
+                    self.config.white_fallback_min_class_score,
+                    self.config.white_fallback_min_class_margin,
+                ),
+                (
+                    "blue",
+                    self._find_blue_board_fallback_candidates,
+                    self.config.blue_min_class_score,
+                    self.config.blue_min_class_margin,
+                ),
+            )
+            for name, finder, min_score, min_margin in fallback_paths:
+                if accepted:
+                    break
+                for _, side_px, corners in finder(frame):
+                    if side_px < self.config.min_target_side_px:
+                        rejected.append(
+                            MatchResult(
+                                target_side_px=side_px,
+                                corners=corners,
+                                reason=f"target_too_small_{name}_fallback",
+                            )
+                        )
+                        continue
+                    patch = self._warp_candidate(frame, corners)
+                    result = self.classify_patch(patch)
+                    result.target_side_px = side_px
+                    result.corners = corners
+                    if result.valid and result.score < min_score:
+                        result.valid = False
+                        result.label = "unknown"
+                        result.reason = f"{name}_fallback_score_too_low"
+                    elif result.valid and result.margin < min_margin:
+                        result.valid = False
+                        result.label = "unknown"
+                        result.reason = f"{name}_fallback_margin_too_low"
+                    if result.valid:
+                        result.reason = f"accepted_{name}_fallback"
+                        accepted.append(result)
+                    else:
+                        rejected.append(result)
 
         if not accepted:
             if rejected:

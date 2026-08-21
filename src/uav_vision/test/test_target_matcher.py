@@ -2,11 +2,17 @@
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
 
-from uav_vision.target_matcher import MatcherConfig, TargetMatcher, order_quad
+from uav_vision.target_matcher import (
+    MatchResult,
+    MatcherConfig,
+    TargetMatcher,
+    order_quad,
+)
 
 
 LABELS = ("plane", "car", "ship", "house")
@@ -88,10 +94,34 @@ class TargetMatcherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             write_templates(directory)
             matcher = TargetMatcher(test_config(), directory)
-            result = matcher.classify_patch(make_pattern("plane"))
-            self.assertTrue(result.valid, result.reason)
-            self.assertEqual(result.label, "plane")
-            self.assertGreater(result.score, result.second_score)
+            for label in LABELS:
+                with self.subTest(label=label):
+                    result = matcher.classify_patch(make_pattern(label))
+                    self.assertTrue(result.valid, result.reason)
+                    self.assertEqual(result.label, label)
+                    self.assertGreater(result.score, result.second_score)
+
+    def test_vectorized_score_matches_legacy_template_loop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            patch = make_pattern("ship")
+            result = matcher.classify_patch(patch)
+            candidate = matcher._extract_features(patch)
+            legacy_scores = []
+            for label in LABELS:
+                best = max(
+                    matcher._score_features(candidate, template)
+                    for template in matcher._templates[label]
+                )
+                legacy_scores.append((best[0], label))
+            legacy_scores.sort(reverse=True)
+
+            self.assertEqual(result.label, legacy_scores[0][1])
+            self.assertAlmostEqual(result.score, legacy_scores[0][0], places=5)
+            self.assertAlmostEqual(
+                result.second_score, legacy_scores[1][0], places=5
+            )
 
     def test_rejects_ambiguous_patch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -137,6 +167,21 @@ class TargetMatcherTest(unittest.TestCase):
                 any(np.linalg.norm(center - (320, 230)) < 10 for center in centers)
             )
 
+    def test_blue_fallback_finds_blue_poster(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            frame = np.full((480, 640, 3), (35, 35, 150), np.uint8)
+            frame[155:305, 245:395] = (180, 120, 40)
+
+            candidates = matcher._find_blue_board_fallback_candidates(frame)
+
+            self.assertTrue(candidates)
+            centers = [candidate[2].mean(axis=0) for candidate in candidates]
+            self.assertTrue(
+                any(np.linalg.norm(center - (320, 230)) < 10 for center in centers)
+            )
+
     def test_blank_frame_is_unknown(self):
         with tempfile.TemporaryDirectory() as directory:
             write_templates(directory)
@@ -148,6 +193,120 @@ class TargetMatcherTest(unittest.TestCase):
                 result.reason,
                 ("no_square_candidate", "akaze_no_scene_features"),
             )
+
+    def test_white_fallback_accepts_strong_candidate_after_primary_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            frame = np.full((480, 640, 3), 80, np.uint8)
+            corners = np.float32(
+                [[200, 120], [360, 120], [360, 280], [200, 280]]
+            )
+            fallback = MatchResult(
+                valid=True,
+                label="car",
+                score=0.78,
+                second_score=0.56,
+                margin=0.22,
+            )
+            with mock.patch.object(
+                matcher,
+                "_match_orb_fallback",
+                return_value=MatchResult(reason="orb_no_geometric_match"),
+            ), mock.patch.object(
+                matcher,
+                "_match_akaze_fallback",
+                return_value=MatchResult(reason="akaze_no_geometric_match"),
+            ), mock.patch.object(
+                matcher, "find_square_candidates", return_value=[]
+            ), mock.patch.object(
+                matcher,
+                "_find_white_board_fallback_candidates",
+                return_value=[(1.0, 160.0, corners)],
+            ), mock.patch.object(
+                matcher, "classify_patch", return_value=fallback
+            ):
+                result = matcher.match_frame(frame)
+
+            self.assertTrue(result.valid, result.reason)
+            self.assertEqual(result.label, "car")
+            self.assertEqual(result.reason, "accepted_white_fallback")
+
+    def test_white_fallback_rejects_weak_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            frame = np.full((480, 640, 3), 80, np.uint8)
+            corners = np.float32(
+                [[200, 120], [360, 120], [360, 280], [200, 280]]
+            )
+            weak = MatchResult(
+                valid=True,
+                label="ship",
+                score=0.69,
+                second_score=0.50,
+                margin=0.19,
+            )
+            with mock.patch.object(
+                matcher,
+                "_match_orb_fallback",
+                return_value=MatchResult(reason="orb_no_geometric_match"),
+            ), mock.patch.object(
+                matcher,
+                "_match_akaze_fallback",
+                return_value=MatchResult(reason="akaze_no_geometric_match"),
+            ), mock.patch.object(
+                matcher, "find_square_candidates", return_value=[]
+            ), mock.patch.object(
+                matcher,
+                "_find_white_board_fallback_candidates",
+                return_value=[(1.0, 160.0, corners)],
+            ), mock.patch.object(
+                matcher, "classify_patch", return_value=weak
+            ):
+                result = matcher.match_frame(frame)
+
+            self.assertFalse(result.valid)
+            self.assertEqual(result.label, "unknown")
+            self.assertEqual(result.reason, "white_fallback_score_too_low")
+
+    def test_white_fallback_does_not_override_primary_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            write_templates(directory)
+            matcher = TargetMatcher(test_config(), directory)
+            frame = np.full((480, 640, 3), 80, np.uint8)
+            corners = np.float32(
+                [[200, 120], [360, 120], [360, 280], [200, 280]]
+            )
+            primary = MatchResult(
+                valid=True,
+                label="plane",
+                score=0.75,
+                second_score=0.55,
+                margin=0.20,
+            )
+            with mock.patch.object(
+                matcher,
+                "_match_orb_fallback",
+                return_value=MatchResult(reason="orb_no_geometric_match"),
+            ), mock.patch.object(
+                matcher,
+                "_match_akaze_fallback",
+                return_value=MatchResult(reason="akaze_no_geometric_match"),
+            ), mock.patch.object(
+                matcher,
+                "find_square_candidates",
+                return_value=[(1.0, 160.0, corners)],
+            ), mock.patch.object(
+                matcher, "classify_patch", return_value=primary
+            ), mock.patch.object(
+                matcher, "_find_white_board_fallback_candidates"
+            ) as fallback_mock:
+                result = matcher.match_frame(frame)
+
+            self.assertTrue(result.valid, result.reason)
+            self.assertEqual(result.label, "plane")
+            fallback_mock.assert_not_called()
 
     def test_recording_annotation_uses_stable_class_and_box(self):
         with tempfile.TemporaryDirectory() as directory:
