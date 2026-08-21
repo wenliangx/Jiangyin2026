@@ -15,7 +15,7 @@ start_program_delay: 3.0
 cmd_type: 1
 
 # the distance threshold for waypoint goal swithcing
-switch_dis: 1.0
+switch_dis: 0.3
 
 # odom timeout threshold (s)
 odom_timeout: 0.1

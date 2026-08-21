@@ -37,17 +37,20 @@
 #       - {id: 0, x: 0.327046, y: 0.153163, z: 0.888233, mode: 2, is_map: 1, yaw: -1.132040, desired_speed: 0.000000}
 #       - {id: 1, x: 1.579308, y: -1.064747, z: 1.113209, mode: 2, is_map: 1, yaw: 0.071927, desired_speed: 0.000000}
 
-
 frame_id: "world"
 segments:
   - name: "cmd3_segment_1"
     waypoints:
-      - {id: 0, x: 1.255729, y: 0.816144, z: 1.002925, mode: 2, is_map: 1, yaw: 0.236554, desired_speed: 0.000000}
-      - {id: 1, x: 1.204341, y: 1.776063, z: 1.007074, mode: 2, is_map: 1, yaw: 1.580613, desired_speed: 0.000000}
-      - {id: 2, x: 0.010554, y: 1.330522, z: 1.000267, mode: 2, is_map: 1, yaw: -3.141462, desired_speed: 0.000000}
+      - {id: 0, x: 1.616848, y: 0.762920, z: 1.221339, mode: 2, is_map: 1, yaw: -0.010930, desired_speed: 0.000000}
+      - {id: 1, x: 6.604775, y: 1.452390, z: 1.273165, mode: 2, is_map: 1, yaw: -0.845202, desired_speed: 0.000000} 
+      - {id: 2, x: 9.343652, y: -0.037094, z: 1.236397, mode: 2, is_map: 1, yaw: 1.122032, desired_speed: 0.000000}
   - name: "cmd4_segment_2"
     waypoints: 
-      - {id: 0, x: 0.255729, y: 0.016144, z: 0.202925, mode: 2, is_map: 1, yaw: 0.126554, desired_speed: 0.000000}
+      - {id: 0, x: 9.580183, y: 5.424916, z: 1.409224, mode: 2, is_map: 1, yaw: 1.992318, desired_speed: 0.000000}
   - name: "cmd5_segment_3"
     waypoints: 
-       - {id: 0, x: 0.255729, y: 0.016144, z: 0.202925, mode: 2, is_map: 1, yaw: 0.126554, desired_speed: 0.000000}
+      - {id: 0, x: 4.694757, y: 11.572553, z: 1.409783, mode: 2, is_map: 1, yaw: 3.009090, desired_speed: 0.000000} 
+      - {id: 1, x: 3.531407, y: 11.861757, z: 1.405306, mode: 1, is_map: 1, yaw: 3.005497, desired_speed: 0.000000}
+      - {id: 2, x: 3.557939, y: 11.826533, z: 0.406035, mode: 1, is_map: 1, yaw: 3.005497, desired_speed: 0.000000}
+      - {id: 3, x: 2.052475, y: 11.929168, z: 0.400356, mode: 2, is_map: 1, yaw: 3.141592, desired_speed: 0.000000}  
+      - {id: 4, x: -0.606466, y: 10.037596, z: 0.308220, mode: 2, is_map: 1, yaw: 3.141592, desired_speed: 0.000000}
