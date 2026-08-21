@@ -3,6 +3,7 @@
   <arg name="result_topic" default="/vision/target/result"/>
   <arg name="debug_topic" default="/vision/target/debug_image"/>
   <arg name="templates_dir" default="$(find uav_vision)/templates"/>
+  <arg name="model_path" default="$(find uav_vision)/models/target_board_openvino/best.xml"/>
   <arg name="publish_debug_image" default="true"/>
   <arg name="node_name" default="front_target_match_node"/>
   <arg name="camera_role" default="front"/>
@@ -16,10 +17,17 @@
         type="target_match_node.py"
         name="$(arg node_name)"
         output="screen">
+    <!-- NumPy's OpenBLAS otherwise creates one worker per logical CPU for
+         tiny template-score dot products, starving flight/planner threads. -->
+    <env name="OPENBLAS_NUM_THREADS" value="1"/>
+    <env name="MKL_NUM_THREADS" value="1"/>
+    <env name="NUMEXPR_NUM_THREADS" value="1"/>
+    <env name="OMP_NUM_THREADS" value="4"/>
     <param name="image_topic" value="$(arg image_topic)"/>
     <param name="result_topic" value="$(arg result_topic)"/>
     <param name="debug_topic" value="$(arg debug_topic)"/>
     <param name="templates_dir" value="$(arg templates_dir)"/>
+    <param name="model_path" value="$(arg model_path)"/>
     <param name="publish_debug_image" value="$(arg publish_debug_image)"/>
     <param name="camera_role" value="$(arg camera_role)"/>
     <param name="control_topic" value="$(arg control_topic)"/>

@@ -9,7 +9,8 @@ import rospy
 from sensor_msgs.msg import Image
 from uav_vision_msgs.msg import TargetMatch, TargetMatchArray, VisionControl
 
-from uav_vision.target_matcher import MatcherConfig, TargetMatcher
+from uav_vision.board_pipeline import DetectorConfig, TargetRecognitionPipeline
+from uav_vision.target_matcher import MatcherConfig
 from uav_vision.temporal_vote import TemporalVoter
 from uav_vision.video_recorder import (
     AsyncVideoPairRecorder,
@@ -38,16 +39,23 @@ def requested_camera_enabled(message, camera_role):
 class TargetMatchNode:
     def __init__(self):
         matcher_values = rospy.get_param("~matcher")
+        detector_values = rospy.get_param("~detector")
         temporal_values = rospy.get_param("~temporal")
         templates_dir = rospy.get_param("~templates_dir")
+        model_path = rospy.get_param("~model_path")
         if not os.path.isdir(templates_dir):
             raise RuntimeError(f"templates directory does not exist: {templates_dir}")
 
+        detector_config = DetectorConfig.from_mapping(detector_values)
         self._bridge = CvBridge()
-        self._matcher = TargetMatcher(
+        self._pipeline = TargetRecognitionPipeline(
+            detector_config,
             MatcherConfig.from_mapping(matcher_values),
             templates_dir,
+            model_path,
         )
+        self._processing_period = 1.0 / detector_config.processing_fps
+        self._last_processed_stamp = None
         self._voter = TemporalVoter(
             window_size=int(temporal_values["vote_window"]),
             min_votes=int(temporal_values["min_stable_votes"]),
@@ -112,13 +120,14 @@ class TargetMatchNode:
         self._publish_invalid()
         rospy.loginfo(
             "target_match_node ready: role=%s image=%s result=%s "
-            "control=%s enabled=%s templates=%s",
+            "control=%s enabled=%s templates=%s model=%s",
             self._camera_role,
             image_topic,
             result_topic,
             control_topic,
             self._enabled,
             templates_dir,
+            model_path,
         )
 
     def _publish_invalid(self, stamp=None):
@@ -131,6 +140,18 @@ class TargetMatchNode:
     def _reset_matching_state(self):
         self._voter.reset()
         self._last_stable_result = None
+        self._last_processed_stamp = None
+
+    def _should_process(self, stamp):
+        stamp_seconds = stamp.to_sec()
+        if stamp_seconds <= 0.0:
+            stamp_seconds = rospy.get_time()
+        if self._last_processed_stamp is not None:
+            elapsed = stamp_seconds - self._last_processed_stamp
+            if 0.0 <= elapsed < self._processing_period * 0.95:
+                return False
+        self._last_processed_stamp = stamp_seconds
+        return True
 
     def _control_callback(self, message):
         requested = requested_camera_enabled(message, self._camera_role)
@@ -171,19 +192,23 @@ class TargetMatchNode:
     def _image_callback(self, image_message):
         if not self._enabled:
             return
+        if not self._should_process(image_message.header.stamp):
+            return
         output = TargetMatchArray()
         output.header = image_message.header
         output.valid = False
         output.matches = []
         frame = None
         result = None
+        pipeline_result = None
         stable_label = None
         published_result = None
         try:
             frame = self._bridge.imgmsg_to_cv2(
                 image_message, desired_encoding="bgr8"
             )
-            result = self._matcher.match_frame(frame)
+            pipeline_result = self._pipeline.process(frame)
+            result = pipeline_result.match
             stable_label = self._voter.update(
                 result.label if result.valid else None
             )
@@ -200,13 +225,31 @@ class TargetMatchNode:
             if published_result is not None:
                 output.valid = True
                 output.matches = [self._to_message(published_result)]
-        except (CvBridgeError, ValueError, cv2.error) as error:
+            rospy.loginfo_throttle(
+                5.0,
+                "%s target pipeline: detector=%.1f ms classify=%.1f ms "
+                "total=%.1f ms method=%s current=%s stable=%s",
+                self._camera_role,
+                pipeline_result.detector_ms,
+                pipeline_result.classification_ms,
+                pipeline_result.total_ms,
+                pipeline_result.method,
+                result.label,
+                stable_label or "none",
+            )
+        except (CvBridgeError, ValueError, RuntimeError, cv2.error) as error:
             rospy.logwarn_throttle(2.0, "target matching failed: %s", error)
 
         self._result_publisher.publish(output)
 
-        if self._publish_debug and frame is not None and result is not None:
-            debug = self._matcher.annotate(frame, result, stable_label)
+        if (
+            self._publish_debug
+            and frame is not None
+            and pipeline_result is not None
+        ):
+            debug = self._pipeline.annotate(
+                frame, pipeline_result, stable_label
+            )
             debug_message = self._bridge.cv2_to_imgmsg(
                 debug, encoding="bgr8"
             )
@@ -215,7 +258,7 @@ class TargetMatchNode:
 
         if frame is not None and self._recorder.enabled:
             stamp_seconds = image_message.header.stamp.to_sec()
-            recording_frame = self._matcher.annotate_recording(
+            recording_frame = self._pipeline.annotate_recording(
                 frame,
                 published_result,
                 beijing_timestamp(stamp_seconds),

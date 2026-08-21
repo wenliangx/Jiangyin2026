@@ -3,6 +3,7 @@
        remain alive and reset their temporal state when their camera is off. -->
   <arg name="control_topic" default="/vision/control"/>
   <arg name="result_topic" default="/vision/target/result"/>
+  <arg name="always_enabled" default="false"/>
   <arg name="templates_dir" default="$(find uav_vision)/templates"/>
   <arg name="publish_debug_image" default="true"/>
   <arg name="recording_enabled" default="true"/>
@@ -16,6 +17,7 @@
     <arg name="debug_topic" value="/vision/target/front/debug_image"/>
     <arg name="templates_dir" value="$(arg templates_dir)"/>
     <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="always_enabled" value="$(arg always_enabled)"/>
     <arg name="publish_debug_image" value="$(arg publish_debug_image)"/>
     <arg name="recording_stream_name" value="front_target"/>
     <arg name="recording_enabled" value="$(arg recording_enabled)"/>
@@ -30,6 +32,7 @@
     <arg name="debug_topic" value="/vision/target/rear/debug_image"/>
     <arg name="templates_dir" value="$(arg templates_dir)"/>
     <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="always_enabled" value="$(arg always_enabled)"/>
     <arg name="publish_debug_image" value="$(arg publish_debug_image)"/>
     <arg name="recording_stream_name" value="rear_target"/>
     <arg name="recording_enabled" value="$(arg recording_enabled)"/>

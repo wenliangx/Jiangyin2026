@@ -21,6 +21,7 @@
 
   <include file="$(find uav_vision)/launch/dual_target_match.launch">
     <arg name="control_topic" value="$(arg control_topic)"/>
+    <arg name="always_enabled" value="$(arg always_enabled)"/>
     <arg name="recording_enabled" value="$(arg recording_enabled)"/>
     <arg name="recording_root" value="$(arg recording_root)"/>
   </include>

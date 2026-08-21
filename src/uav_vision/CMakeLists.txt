@@ -65,7 +65,7 @@ catkin_install_python(
 )
 
 install(
-  DIRECTORY config launch templates udev
+  DIRECTORY config launch models templates udev
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
 

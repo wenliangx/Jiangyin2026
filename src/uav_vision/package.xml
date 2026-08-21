@@ -2,7 +2,7 @@
 <package format="2">
   <name>uav_vision</name>
   <version>0.1.0</version>
-  <description>Traditional vision algorithms for UAV landing and wall targets.</description>
+  <description>UAV camera control, OpenVINO board detection, and target classification.</description>
 
   <maintainer email="flag@example.com">flag</maintainer>
   <license>MIT</license>
@@ -20,6 +20,7 @@
 
   <build_depend>libapriltag-dev</build_depend>
   <exec_depend>libapriltag0</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 

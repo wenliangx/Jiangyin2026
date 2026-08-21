@@ -1,3 +1,21 @@
+detector:
+  # Single-class OpenVINO target-board detector. The strongest detection is
+  # geometrically rectified and then classified by the existing four templates.
+  input_size: 512
+  confidence: 0.10
+  # Camera acquisition remains 30 Hz, while inference and the configured
+  # paired recording are sampled together at 10 Hz to reserve CPU for flight.
+  processing_fps: 10.0
+  inference_threads: 4
+  opencv_threads: 1
+  # Venue replay showed that 0.35 clipped too much context around the small,
+  # oblique rear-camera car board. 0.75 recovers four consecutive car frames.
+  roi_padding: 0.75
+  direct_min_score: 0.63
+  direct_min_margin: 0.06
+  roi_min_target_side_px: 40.0
+  matcher_max_width: 1280
+
 matcher:
   canonical_size: 256
   border_crop_fraction: 0.04
