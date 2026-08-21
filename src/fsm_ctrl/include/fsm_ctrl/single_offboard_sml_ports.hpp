@@ -19,6 +19,7 @@ class AutopilotPort {
   virtual ~AutopilotPort() = default;
   virtual bool requestOffboard() = 0;
   virtual bool requestArm() = 0;
+  virtual bool requestDisarm() = 0;
 };
 
 class SetpointPort {

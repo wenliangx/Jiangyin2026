@@ -49,6 +49,19 @@ struct Context {
     }
   }
 
+  void ensureDisarm() {
+    if (!telemetry.armed) {
+      return;
+    }
+    const double current_time = clock.now();
+    if (!disarm_request_started ||
+        current_time - last_service_request > config.service_retry_seconds) {
+      autopilot.requestDisarm();
+      last_service_request = current_time;
+      disarm_request_started = true;
+    }
+  }
+
   static bool finite(const BodyRateThrust& command) {
     return std::isfinite(command.body_rate.x) &&
            std::isfinite(command.body_rate.y) &&
@@ -67,6 +80,7 @@ struct Context {
   TelemetrySnapshot telemetry;
   double last_service_request;
   bool landing_reached{false};
+  bool disarm_request_started{false};
   // 三段任务之间的两个识别卡槽：slot 0 触发 1->2，slot 1 触发 2->3。
   std::array<std::string, 2> recognized_targets;
 };

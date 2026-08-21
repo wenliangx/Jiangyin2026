@@ -26,6 +26,10 @@ class FakeAutopilot final : public AutopilotPort {
     calls.push_back("arm");
     return result;
   }
+  bool requestDisarm() override {
+    calls.push_back("disarm");
+    return result;
+  }
   bool result{true};
   std::vector<std::string> calls;
 };
@@ -589,17 +593,19 @@ TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.x);
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.y);
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.z);
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.front());
 
   sm.process_event(Tick{});
   ASSERT_EQ(2u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.031, setpoint.body_rates.back().thrust);
-  EXPECT_TRUE(autopilot.calls.empty());
+  EXPECT_EQ(1u, autopilot.calls.size());
 
   context.telemetry.mode = "POSCTL";
   sm.process_event(Tick{});
   ASSERT_EQ(3u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.031, setpoint.body_rates.back().thrust);
-  EXPECT_TRUE(autopilot.calls.empty());
+  EXPECT_EQ(1u, autopilot.calls.size());
 }
 
 TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
@@ -619,6 +625,8 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   ASSERT_EQ(1u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(context.config.low_thrust,
                    setpoint.body_rates.back().thrust);
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.front());
 }
 
 TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
@@ -631,20 +639,46 @@ TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
   sm.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
-  EXPECT_TRUE(autopilot.calls.empty());
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.front());
 
   context.telemetry.mode = "POSCTL";
   context.telemetry.armed = false;
   sm.process_event(Tick{});
   ASSERT_EQ(2u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
-  EXPECT_TRUE(autopilot.calls.empty());
+  EXPECT_EQ(1u, autopilot.calls.size());
 
   context.telemetry.armed = true;
   sm.process_event(Tick{});
   ASSERT_EQ(3u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
-  EXPECT_TRUE(autopilot.calls.empty());
+  EXPECT_EQ(1u, autopilot.calls.size());
+}
+
+TEST_F(Fixture, LandingDisarmRetriesUntilTelemetryReportsDisarmed) {
+  sm.process_event(OnCommand6{});
+  context.landing_reached = true;
+  context.telemetry.armed = true;
+  context.config.service_retry_seconds = 5.0;
+
+  sm.process_event(Tick{});
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.back());
+
+  clock.value = 4.0;
+  sm.process_event(Tick{});
+  EXPECT_EQ(1u, autopilot.calls.size());
+
+  clock.value = 6.0;
+  sm.process_event(Tick{});
+  ASSERT_EQ(2u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.back());
+
+  context.telemetry.armed = false;
+  clock.value = 12.0;
+  sm.process_event(Tick{});
+  EXPECT_EQ(2u, autopilot.calls.size());
 }
 
 TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {

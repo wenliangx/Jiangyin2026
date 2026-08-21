@@ -217,6 +217,7 @@ class RosAutopilotPort final : public smlfsm::AutopilotPort {
   }
 
   bool requestArm() override { return requestArmed(true); }
+  bool requestDisarm() override { return requestArmed(false); }
  private:
   // 根据 armed 参数复用 MAVROS arming 服务。
   bool requestArmed(bool armed) {

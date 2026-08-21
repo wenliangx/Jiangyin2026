@@ -82,6 +82,7 @@ inline bool handleLandingCompletion(Context& context) {
   }
   context.landing_reached = true;
   publishLowThrust(context);
+  context.ensureDisarm();
   return true;
 }
 
@@ -214,6 +215,7 @@ struct StartSuperSegment3 {
 struct ResetLanding {
   void operator()(Context& context) const {
     context.landing_reached = false;
+    context.disarm_request_started = false;
     context.landing.reset();
   }
 };
@@ -221,6 +223,7 @@ struct ResetLanding {
 struct ResetClosedLoopLanding {
   void operator()(Context& context) const {
     context.landing_reached = false;
+    context.disarm_request_started = false;
     context.landing.reset();
     context.landing.startClosedLoopLanding(context.telemetry);
   }
