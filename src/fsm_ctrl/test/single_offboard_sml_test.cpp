@@ -167,7 +167,10 @@ struct Fixture : testing::Test {
   Fixture()
       : context(clock, autopilot, setpoint, nmpc, mission, landing,
                 camera_control),
-        sm(context) {}
+        sm(context) {
+    // 既有完成测试保持单 Tick；持续确认行为由专门测试覆盖。
+    context.config.landing_confirmation_seconds = 0.0;
+  }
 
   void ClearOutputs() {
     autopilot.calls.clear();
@@ -591,7 +594,7 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_TRUE(setpoint.monitors.empty());
 }
 
-TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
+TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsZeroThrust) {
   SetOffboardAndArmed();
   context.config.low_thrust = 0.031;
   context.telemetry.position =
@@ -601,7 +604,7 @@ TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
   ASSERT_EQ(1u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.031, setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.x);
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.y);
   EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().body_rate.z);
@@ -610,13 +613,13 @@ TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
 
   sm.process_event(Tick{});
   ASSERT_EQ(2u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.031, setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   EXPECT_EQ(1u, autopilot.calls.size());
 
   context.telemetry.mode = "POSCTL";
   sm.process_event(Tick{});
   ASSERT_EQ(3u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.031, setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   EXPECT_EQ(1u, autopilot.calls.size());
 }
 
@@ -635,13 +638,41 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
   ASSERT_EQ(1u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(context.config.low_thrust,
-                   setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls.front());
 }
 
-TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
+TEST_F(Fixture, LandingRequiresLowVerticalSpeedForConfirmationDuration) {
+  SetOffboardAndArmed();
+  context.config.landing_confirmation_seconds = 0.3;
+  context.config.landing_max_vertical_speed = 0.15;
+  context.telemetry.position.z = context.config.landing_reference_z;
+  context.telemetry.velocity.z = 0.2;
+  landing.result = false;
+  sm.process_event(OnCommand6{});
+
+  clock.value = 1.0;
+  sm.process_event(Tick{});
+  EXPECT_FALSE(context.landing_reached);
+
+  context.telemetry.velocity.z = 0.1;
+  sm.process_event(Tick{});
+  EXPECT_FALSE(context.landing_reached);
+  clock.value = 1.29;
+  sm.process_event(Tick{});
+  EXPECT_FALSE(context.landing_reached);
+
+  clock.value = 1.31;
+  sm.process_event(Tick{});
+  EXPECT_TRUE(context.landing_reached);
+  ASSERT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.back());
+}
+
+TEST_F(Fixture, LandingReachedKeepsZeroThrustAcrossFlightModesAndArmStates) {
   sm.process_event(OnCommand6{});
   context.landing_reached = true;
   context.config.low_thrust = 0.027;
@@ -650,7 +681,7 @@ TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
   context.telemetry.armed = true;
   sm.process_event(Tick{});
   ASSERT_EQ(1u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls.front());
 
@@ -663,7 +694,7 @@ TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
   context.telemetry.armed = true;
   sm.process_event(Tick{});
   ASSERT_EQ(2u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(0.0, setpoint.body_rates.back().thrust);
   EXPECT_EQ(1u, autopilot.calls.size());
 }
 
@@ -671,7 +702,7 @@ TEST_F(Fixture, LandingDisarmRetriesUntilTelemetryReportsDisarmed) {
   sm.process_event(OnCommand6{});
   context.landing_reached = true;
   context.telemetry.armed = true;
-  context.config.service_retry_seconds = 5.0;
+  context.config.landing_disarm_retry_seconds = 5.0;
 
   sm.process_event(Tick{});
   ASSERT_EQ(1u, autopilot.calls.size());

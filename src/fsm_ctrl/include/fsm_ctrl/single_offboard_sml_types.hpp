@@ -79,6 +79,9 @@ struct Config {
   double landing_target_z{0.00};
   double landing_reference_z{-0.1};
   double landing_tolerance_z{0.12};
+  double landing_max_vertical_speed{0.15};
+  double landing_confirmation_seconds{0.3};
+  double landing_disarm_retry_seconds{0.5};
 };
 
 }  // namespace single_sml
