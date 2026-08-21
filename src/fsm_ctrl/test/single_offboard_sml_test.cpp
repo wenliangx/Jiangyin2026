@@ -241,16 +241,16 @@ TEST_F(Fixture, ActiveMachineMapsCommandsToSegmentedMissionStates) {
   EXPECT_EQ(1, landing.start_closed_loop_calls);
 }
 
-TEST_F(Fixture, InitialStatePublishesCamerasDisabledOnEveryTick) {
+TEST_F(Fixture, InitialStatePublishesBothCamerasEnabledOnEveryTick) {
   EXPECT_TRUE(camera_control.controls.empty());
 
   sm.process_event(Tick{});
   ASSERT_EQ(1u, camera_control.controls.size());
-  ExpectLatestCameraControl(false, false);
+  ExpectLatestCameraControl(true, true);
 
   sm.process_event(Tick{});
   ASSERT_EQ(2u, camera_control.controls.size());
-  ExpectLatestCameraControl(false, false);
+  ExpectLatestCameraControl(true, true);
 }
 
 TEST_F(Fixture, ActiveDispatcherSuppressesRepeatedCommands) {
@@ -783,7 +783,7 @@ TEST_F(Fixture, SegmentedMissionPublishesCameraStateOnEveryTick) {
 
   machine.process_event(Tick{});
   ASSERT_EQ(1u, camera_control.controls.size());
-  ExpectLatestCameraControl(false, false);
+  ExpectLatestCameraControl(true, true);
 
   EXPECT_TRUE(dispatcher.update(2));
   machine.process_event(Tick{});

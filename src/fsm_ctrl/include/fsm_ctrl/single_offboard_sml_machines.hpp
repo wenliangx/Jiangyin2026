@@ -88,7 +88,7 @@ struct MissionMachine {
   auto operator()() const {
     using namespace boost::sml;
     return make_transition_table(
-        *state<Idle> + event<Tick> / DisableCameras{},
+        *state<Idle> + event<Tick> / EnableBothCameras{},
         state<ArmOnly> + event<Tick> /
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
@@ -114,7 +114,7 @@ struct SegmentedMissionMachine {
   auto operator()() const {
     using namespace boost::sml;
     return make_transition_table(
-        *state<Idle> + event<Tick> / DisableCameras{},
+        *state<Idle> + event<Tick> / EnableBothCameras{},
         state<ArmOnly> + event<Tick> /
             (DisableCameras{}, TickArmOnly{}),
         state<NmpcHover> + event<Tick> /
