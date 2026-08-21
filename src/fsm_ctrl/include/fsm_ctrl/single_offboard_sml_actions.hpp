@@ -81,8 +81,10 @@ inline bool handleLandingCompletion(Context& context) {
     return false;
   }
   context.landing_reached = true;
-  publishLowThrust(context);
-  context.ensureDisarm();
+  if (context.telemetry.armed) {
+    publishLowThrust(context);
+    context.ensureDisarm();
+  }
   return true;
 }
 

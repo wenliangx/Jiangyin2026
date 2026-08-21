@@ -645,13 +645,12 @@ TEST_F(Fixture, LandingReachedKeepsLowThrustAcrossFlightModesAndArmStates) {
   context.telemetry.mode = "POSCTL";
   context.telemetry.armed = false;
   sm.process_event(Tick{});
-  ASSERT_EQ(2u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
+  ASSERT_EQ(1u, setpoint.body_rates.size());
   EXPECT_EQ(1u, autopilot.calls.size());
 
   context.telemetry.armed = true;
   sm.process_event(Tick{});
-  ASSERT_EQ(3u, setpoint.body_rates.size());
+  ASSERT_EQ(2u, setpoint.body_rates.size());
   EXPECT_DOUBLE_EQ(0.027, setpoint.body_rates.back().thrust);
   EXPECT_EQ(1u, autopilot.calls.size());
 }
@@ -679,6 +678,7 @@ TEST_F(Fixture, LandingDisarmRetriesUntilTelemetryReportsDisarmed) {
   clock.value = 12.0;
   sm.process_event(Tick{});
   EXPECT_EQ(2u, autopilot.calls.size());
+  EXPECT_EQ(3u, setpoint.body_rates.size());
 }
 
 TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {
