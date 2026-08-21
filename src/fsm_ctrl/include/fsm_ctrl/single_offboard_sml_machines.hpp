@@ -9,57 +9,79 @@ namespace fsm_ctrl {
 namespace single_sml {
 
 #define FSM_CTRL_SML_MISSION_COMMAND_TRANSITIONS(source_state)                 \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand0> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand0>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<Idle>,                                                \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand1> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand1>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<ArmOnly>,                                             \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand2> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand2>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<NmpcHover>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand3> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand3>            \
+      [TerminalSafetyUnlocked{}] /                                            \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperTrack>,                                          \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand4>            \
+      [TerminalSafetyUnlocked{}] /                                            \
       ResetLanding{} =                                                        \
       boost::sml::state<Landing>,                                             \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand9> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand9>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<Emergency>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand5> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand5>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand6> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand6>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand7> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand7>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand8> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand8>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand> = \
+  boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand>  \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>
 
 #define FSM_CTRL_SML_SEGMENTED_MISSION_COMMAND_TRANSITIONS(source_state)       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand0> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand0>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<Idle>,                                                \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand1> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand1>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<ArmOnly>,                                             \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand2> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand2>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<NmpcHover>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand3> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand3>            \
+      [TerminalSafetyUnlocked{}] /                                            \
       StartSegmentedMission{} =                                               \
       boost::sml::state<SuperSegment1>,                                       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand4> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand4>            \
+      [TerminalSafetyUnlocked{}] /                                            \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperSegment2>,                                       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand5> /           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand5>            \
+      [TerminalSafetyUnlocked{}] /                                            \
       ResetSuperTrack{} =                                                     \
       boost::sml::state<SuperSegment3>,                                       \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand6> /           \
-      ResetClosedLoopLanding{} =                                              \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand6>            \
+      [TerminalSafetyUnlocked{}] /                                            \
+      ResetLanding{} =                                                        \
       boost::sml::state<Landing>,                                             \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand9> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand9>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<Emergency>,                                           \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand7> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand7>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnCommand8> =           \
+  boost::sml::state<source_state> + boost::sml::event<OnCommand8>            \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>,                                            \
-  boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand> = \
+  boost::sml::state<source_state> + boost::sml::event<OnUnsupportedCommand>  \
+      [TerminalSafetyUnlocked{}] =                                           \
       boost::sml::state<SafeNoop>
 
 struct MissionMachine {
@@ -114,7 +136,7 @@ struct SegmentedMissionMachine {
         state<SuperSegment2> + event<OnSegmentTimeout> /
             StartSuperSegment3{} = state<SuperSegment3>,
         state<SuperSegment3> + event<OnFinalSegmentComplete> /
-            ResetClosedLoopLanding{} = state<Landing>,
+            ResetLanding{} = state<Landing>,
         state<Landing> + event<Tick> /
             (DisableCameras{}, TickLanding{}),
         state<Emergency> + event<Tick> /

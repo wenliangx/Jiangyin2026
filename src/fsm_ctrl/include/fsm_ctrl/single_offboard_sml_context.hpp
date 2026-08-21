@@ -27,6 +27,9 @@ struct Context {
         last_service_request(clock_in.now()) {}
 
   void ensureOffboardArm() {
+    if (permanent_landing_lock) {
+      return;
+    }
     const double current_time = clock.now();
     if (telemetry.mode != "OFFBOARD" &&
         current_time - last_service_request > config.service_retry_seconds) {
@@ -41,6 +44,9 @@ struct Context {
   }
 
   void ensureArm() {
+    if (permanent_landing_lock) {
+      return;
+    }
     const double current_time = clock.now();
     if (!telemetry.armed &&
         current_time - last_service_request > config.service_retry_seconds) {
@@ -81,6 +87,8 @@ struct Context {
   double last_service_request;
   bool landing_reached{false};
   bool disarm_request_started{false};
+  // 首次判定落地后永久置位；进程生命周期内任何动作都不得清除此锁。
+  bool permanent_landing_lock{false};
   // 三段任务之间的两个识别卡槽：slot 0 触发 1->2，slot 1 触发 2->3。
   std::array<std::string, 2> recognized_targets;
 };

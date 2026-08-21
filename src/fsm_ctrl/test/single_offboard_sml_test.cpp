@@ -516,7 +516,7 @@ TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(1u, setpoint.feedback_positions.size());
 }
 
-TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
+TEST_F(Fixture, LandingUsesDescentHorizonAndNmpcMonitor) {
   SetOffboardAndArmed();
   context.telemetry.position = {2.0, 3.0, 0.11};
   landing.points[0].position = {2.1, 2.9, 0.10};
@@ -525,13 +525,11 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
 
   sm.process_event(OnCommand6{});
   EXPECT_EQ(1, landing.resets);
-  EXPECT_EQ(1, landing.start_closed_loop_calls);
-  EXPECT_DOUBLE_EQ(2.0, landing.start_telemetry.position.x);
-  EXPECT_DOUBLE_EQ(3.0, landing.start_telemetry.position.y);
+  EXPECT_EQ(0, landing.start_closed_loop_calls);
   sm.process_event(Tick{});
 
   EXPECT_EQ(1, landing.prepare_calls);
-  EXPECT_EQ(1, landing.closed_loop_prepare_calls);
+  EXPECT_EQ(0, landing.closed_loop_prepare_calls);
   EXPECT_DOUBLE_EQ(12.0, landing.last_time);
   EXPECT_DOUBLE_EQ(2.0, landing.last_telemetry.position.x);
   EXPECT_EQ(1, nmpc.track_calls);
@@ -543,6 +541,20 @@ TEST_F(Fixture, LandingUsesPrecisionHorizonAndNmpcMonitor) {
   ASSERT_EQ(1u, setpoint.monitors.size());
   EXPECT_DOUBLE_EQ(2.1, setpoint.monitors[0].references[0].position.x);
   EXPECT_FALSE(context.landing_reached);
+}
+
+TEST_F(Fixture, LandingNeverRequestsOffboardOrArm) {
+  context.telemetry.mode = "MANUAL";
+  context.telemetry.armed = false;
+  context.telemetry.position.z = 1.0;
+  clock.value = 12.0;
+
+  sm.process_event(OnCommand6{});
+  sm.process_event(Tick{});
+
+  EXPECT_TRUE(sm.is(boost::sml::state<Landing>));
+  EXPECT_TRUE(autopilot.calls.empty());
+  EXPECT_EQ(1, landing.prepare_calls);
 }
 
 TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
@@ -679,6 +691,38 @@ TEST_F(Fixture, LandingDisarmRetriesUntilTelemetryReportsDisarmed) {
   sm.process_event(Tick{});
   EXPECT_EQ(2u, autopilot.calls.size());
   EXPECT_EQ(3u, setpoint.body_rates.size());
+}
+
+TEST_F(Fixture, LandingSafetyLockPermanentlyRejectsCommandsAndRearming) {
+  SetOffboardAndArmed();
+  context.telemetry.position.z = context.config.landing_reference_z;
+  sm.process_event(OnCommand6{});
+  sm.process_event(Tick{});
+
+  ASSERT_TRUE(context.permanent_landing_lock);
+  ASSERT_TRUE(sm.is(boost::sml::state<Landing>));
+  ASSERT_EQ(1u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.back());
+
+  context.telemetry.armed = false;
+  sm.process_event(OnCommand0{});
+  sm.process_event(OnCommand2{});
+  sm.process_event(OnCommand3{});
+  sm.process_event(OnCommand9{});
+  EXPECT_TRUE(sm.is(boost::sml::state<Landing>));
+
+  clock.value = 6.0;
+  sm.process_event(Tick{});
+  EXPECT_EQ(1u, setpoint.body_rates.size());
+  EXPECT_EQ(1u, autopilot.calls.size());
+
+  // 即使其他系统在锁定后重新 arm，本状态机也只会请求 disarm。
+  context.telemetry.armed = true;
+  sm.process_event(Tick{});
+  ASSERT_EQ(2u, autopilot.calls.size());
+  EXPECT_EQ("disarm", autopilot.calls.back());
+  EXPECT_EQ(2u, setpoint.body_rates.size());
+  EXPECT_TRUE(sm.is(boost::sml::state<Landing>));
 }
 
 TEST_F(Fixture, MissionMachineMapsCommandsToArmHoverSuperLanding) {

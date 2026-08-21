@@ -81,6 +81,7 @@ inline bool handleLandingCompletion(Context& context) {
     return false;
   }
   context.landing_reached = true;
+  context.permanent_landing_lock = true;
   if (context.telemetry.armed) {
     publishLowThrust(context);
     context.ensureDisarm();
@@ -117,7 +118,6 @@ struct TickLanding {
       return;
     }
 
-    context.ensureOffboardArm();
     std::vector<ReferencePoint> horizon;
     const bool prepared = context.landing.prepareLanding(
         context.clock.now(), context.telemetry, horizon);
@@ -130,8 +130,7 @@ struct TickLanding {
   }
 };
 
-// 活动任务使用的视觉闭环版本。旧 TickLanding 保留给 MissionMachine，
-// 便于独立回退和对比。
+// 备用视觉闭环版本；当前两个状态机都使用 TickLanding。
 struct TickClosedLoopLanding {
   void operator()(Context& context) const {
     if (context.landing_reached) {
@@ -139,7 +138,6 @@ struct TickClosedLoopLanding {
       return;
     }
 
-    context.ensureOffboardArm();
     std::vector<ReferencePoint> horizon;
     const bool prepared = context.landing.prepareClosedLoopLanding(
         context.clock.now(), context.telemetry, horizon);
@@ -177,6 +175,13 @@ struct NewTargetAvailable {
     return !event.label.empty() &&
            (context.recognized_targets[0].empty() ||
             event.label != context.recognized_targets[0]);
+  }
+};
+
+// 永久落地锁置位后拒绝所有状态命令，使状态机无法离开 Landing。
+struct TerminalSafetyUnlocked {
+  bool operator()(const Context& context) const {
+    return !context.permanent_landing_lock;
   }
 };
 
@@ -219,15 +224,6 @@ struct ResetLanding {
     context.landing_reached = false;
     context.disarm_request_started = false;
     context.landing.reset();
-  }
-};
-
-struct ResetClosedLoopLanding {
-  void operator()(Context& context) const {
-    context.landing_reached = false;
-    context.disarm_request_started = false;
-    context.landing.reset();
-    context.landing.startClosedLoopLanding(context.telemetry);
   }
 };
 
