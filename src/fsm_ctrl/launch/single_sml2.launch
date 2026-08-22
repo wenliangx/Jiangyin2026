@@ -88,7 +88,7 @@
         <param name="mission_waypoint_validator"
                value="$(find fsm_ctrl)/scripts/validate_super_waypoints.py"
                type="string"/>
-        <param name="mission_super_arrival_tolerance" value="0.8" type="double"/>
+        <param name="mission_super_arrival_tolerance" value="0.6" type="double"/>
         <param name="mission_segment_timeout_seconds" value="5.0" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>
 

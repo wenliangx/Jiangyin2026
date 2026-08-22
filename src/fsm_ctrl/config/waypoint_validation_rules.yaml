@@ -25,8 +25,8 @@ relationships:
   - segment: 2
     waypoint_a: 0
     waypoint_b: 1
-    same: [yaw]
-    different: [x, y, z]
+    same: [z, yaw]
+    different: [x, y]
   - segment: 2
     waypoint_a: 1
     waypoint_b: 2
