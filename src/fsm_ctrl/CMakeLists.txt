@@ -8,6 +8,7 @@ add_library(boost_sml INTERFACE)
 target_include_directories(boost_sml SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/third_party/boost_sml/include)
 target_compile_features(boost_sml INTERFACE cxx_std_14)
 find_package(Threads REQUIRED)
+find_package(PythonInterp REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
   message_generation
@@ -153,7 +154,12 @@ target_link_libraries(single_offboard_sml
 catkin_install_python(PROGRAMS
   scripts/pose_monitor.py
   scripts/record_super_waypoints.py
+  scripts/validate_super_waypoints.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(DIRECTORY config/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
 )
 
 ## ------------------------------------------------------------------
@@ -169,4 +175,7 @@ if(CATKIN_ENABLE_TESTING)
   )
   target_compile_features(single_offboard_sml_test PRIVATE cxx_std_14)
   add_rostest(test/single_offboard_sml_smoke.test)
+  add_test(NAME waypoint_validation_test
+    COMMAND ${PYTHON_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/test/test_waypoint_validation.py)
 endif()

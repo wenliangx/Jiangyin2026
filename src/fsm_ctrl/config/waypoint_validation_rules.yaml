@@ -1,0 +1,29 @@
+schema_version: 1
+required_frame_id: "world"
+required_segment_count: 3
+equality_tolerance: 0.0001
+
+segment_rules:
+  - {segment: 0, required_name: "cmd3_segment_1", waypoint_count: 3}
+  - {segment: 1, required_name: "cmd4_segment_2", waypoint_count: 1}
+  - {segment: 2, required_name: "cmd5_segment_3", waypoint_count: 5}
+
+waypoint_rules:
+  required_fields: [id, x, y, z, mode, is_map, yaw, desired_speed]
+  allow_auto_yaw: false
+  require_sequential_ids: true
+  first_id: 0
+  allowed_modes: [0, 1, 2]
+  allowed_is_map: [0, 1]
+  min_z: 0.1
+  max_z: 3.0
+  max_abs_x: 30.0
+  max_abs_y: 30.0
+  min_desired_speed: 0.0
+
+relationships:
+  - segment: 2
+    waypoint_a: 1
+    waypoint_b: 2
+    same: [x, y, yaw]
+    different: [z]

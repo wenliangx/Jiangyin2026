@@ -80,7 +80,13 @@
         <!-- MissionMachine/Super waypoint upload. Generate this file with:
              rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->
         <param name="mission_super_waypoints_file"
-               value="$(find fsm_ctrl)/config/mission_super_waypoints.yaml"
+               value="$(find fsm_ctrl)/config/validated/mission_super_waypoints.validated.yaml"
+               type="string"/>
+        <param name="mission_waypoint_manifest"
+               value="$(find fsm_ctrl)/config/validated/waypoint_validation_manifest.yaml"
+               type="string"/>
+        <param name="mission_waypoint_validator"
+               value="$(find fsm_ctrl)/scripts/validate_super_waypoints.py"
                type="string"/>
         <param name="mission_super_arrival_tolerance" value="0.60" type="double"/>
         <param name="vision_control_topic" value="/vision/control" type="string"/>

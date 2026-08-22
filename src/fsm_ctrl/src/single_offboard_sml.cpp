@@ -56,6 +56,19 @@ namespace smlfsm = fsm_ctrl::single_sml;
 
 namespace {
 
+std::string shellQuote(const std::string& value) {
+  std::string quoted("'");
+  for (const char character : value) {
+    if (character == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += '\'';
+  return quoted;
+}
+
 // 主循环频率，与原 single_offboard_fsm 的 50Hz 控制节奏保持一致。
 constexpr double kRateHz = 50.0;
 // 单个控制周期时长，传给 NMPC 控制器。
@@ -716,11 +729,16 @@ class RosMissionPort final : public smlfsm::MissionPort {
             "/super/flag_waypoint", 10)) {
     private_node.param("mission_super_waypoints_file", waypoints_file_,
                        waypoints_file_);
+    private_node.param("mission_waypoint_manifest", waypoint_manifest_,
+                       waypoint_manifest_);
+    private_node.param("mission_waypoint_validator", waypoint_validator_,
+                       waypoint_validator_);
     ROS_INFO("Mission super waypoints file: %s", waypoints_file_.c_str());
     private_node.param("mission_super_arrival_tolerance",
                        arrival_tolerance_, arrival_tolerance_);
     private_node.param("mission_segment_timeout_seconds",
                        segment_timeout_seconds_, segment_timeout_seconds_);
+    verifyWaypointPreflight();
     loadSuperTrajectory();
     reset();
     // 构造阶段只初始化状态，不消耗第一段的全局航点 id。
@@ -874,9 +892,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
   void loadSuperTrajectory() {
 
     if (waypoints_file_.empty()) {
-      std::cout<<"waypoints_file_ is empty\n";
-      super_segments_ = createSuperTrajectorySegments();
-      return;
+      throw std::runtime_error(
+          "mission_super_waypoints_file is empty; refusing built-in fallback");
     }
     try {
       super_segments_ = loadSuperTrajectorySegmentsFile(waypoints_file_);
@@ -887,11 +904,27 @@ class RosMissionPort final : public smlfsm::MissionPort {
       ROS_INFO("Loaded %zu mission super waypoints in %zu segments from %s",
                waypoint_count, super_segments_.size(), waypoints_file_.c_str());
     } catch (const std::exception& error) {
-      ROS_ERROR("Failed to load mission super waypoints from %s: %s; "
-                "falling back to built-in waypoints",
-                waypoints_file_.c_str(), error.what());
-      super_segments_ = createSuperTrajectorySegments();
+      throw std::runtime_error(
+          "failed to load sealed mission waypoints " + waypoints_file_ +
+          ": " + error.what());
     }
+  }
+
+  void verifyWaypointPreflight() const {
+    if (waypoint_validator_.empty() || waypoint_manifest_.empty() ||
+        waypoints_file_.empty()) {
+      throw std::runtime_error(
+          "sealed waypoint preflight parameters are incomplete");
+    }
+    const std::string command =
+        "python3 " + shellQuote(waypoint_validator_) +
+        " --verify-manifest " + shellQuote(waypoint_manifest_) +
+        " --expected-waypoints " + shellQuote(waypoints_file_);
+    if (std::system(command.c_str()) != 0) {
+      throw std::runtime_error(
+          "sealed waypoint validation failed; flight is prohibited");
+    }
+    ROS_INFO("Sealed waypoint preflight validation passed");
   }
 
   bool reached(const smlfsm::Vec3& target, const smlfsm::Vec3& position) const {
@@ -950,6 +983,8 @@ class RosMissionPort final : public smlfsm::MissionPort {
   double segment_completed_at_{-1.0};   // 到达末点时刻，负值表示未到达。
   bool super_planner_valid_{false};   // 是否已有 super planner 输出。
   std::string waypoints_file_;     // mission super waypoint YAML 文件。
+  std::string waypoint_manifest_;  // 封存文件及规则双哈希清单。
+  std::string waypoint_validator_; // 起飞前复用的独立校验工具。
   std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
   std::vector<smlfsm::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。
 };
@@ -1225,7 +1260,12 @@ class SingleOffboardNode {
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "single_offboard_fsm");
-  SingleOffboardNode node;
-  node.run();
-  return 0;
+  try {
+    SingleOffboardNode node;
+    node.run();
+    return 0;
+  } catch (const std::exception& error) {
+    ROS_FATAL("Waypoint preflight/startup failed: %s", error.what());
+    return 2;
+  }
 }
