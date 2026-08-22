@@ -103,7 +103,7 @@
         <param name="landing_descent_rate" value="0.3" type="double"/>
         <param name="landing_min_z" value="-0.03" type="double"/>
         <param name="landing_reference_z" value="-0.15" type="double"/>
-        <param name="landing_tolerance_z" value="-0=90.25" type="double"/>
+        <param name="landing_tolerance_z" value="0.25" type="double"/>
 
         <!-- For NMPC -->
         <!-- <param name = "nmpc_Qposx" type = "double" value = "40.0" />
