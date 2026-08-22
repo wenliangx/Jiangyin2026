@@ -10,6 +10,7 @@ from sensor_msgs.msg import Image
 from uav_vision_msgs.msg import TargetMatch, TargetMatchArray, VisionControl
 
 from uav_vision.board_pipeline import DetectorConfig, TargetRecognitionPipeline
+from uav_vision.control_state import DelayedDisableState
 from uav_vision.target_matcher import MatcherConfig
 from uav_vision.temporal_vote import TemporalVoter
 from uav_vision.video_recorder import (
@@ -68,7 +69,12 @@ class TargetMatchNode:
         self._always_enabled = bool(
             rospy.get_param("~always_enabled", False)
         )
-        self._enabled = self._always_enabled
+        self._control_state = DelayedDisableState(
+            initial_enabled=self._always_enabled,
+            disable_delay_seconds=float(
+                rospy.get_param("~stop_grace_seconds", 0.0)
+            ),
+        )
         self._publish_debug = bool(
             rospy.get_param("~publish_debug_image", True)
         )
@@ -125,7 +131,7 @@ class TargetMatchNode:
             image_topic,
             result_topic,
             control_topic,
-            self._enabled,
+            self._control_state.effective_enabled,
             templates_dir,
             model_path,
         )
@@ -156,16 +162,28 @@ class TargetMatchNode:
     def _control_callback(self, message):
         requested = requested_camera_enabled(message, self._camera_role)
         enabled = self._always_enabled or requested
-        if enabled == self._enabled:
+        changed, enabled = self._control_state.update(enabled)
+        if not changed:
             return
-        self._enabled = enabled
-        self._reset_matching_state()
-        if not enabled:
+        if enabled:
+            self._reset_matching_state()
+            state_description = "enabled"
+        else:
+            # Clear the downstream latch immediately. During the grace window
+            # inference, debug output and recording continue, but no valid
+            # result from the previous camera stage may reach the state machine.
             self._publish_invalid(message.header.stamp)
+            if self._control_state.grace_active:
+                state_description = "stopping after %.1f s grace" % (
+                    self._control_state.grace_remaining_seconds,
+                )
+            else:
+                self._reset_matching_state()
+                state_description = "disabled"
         rospy.loginfo(
             "%s target matcher %s",
             self._camera_role,
-            "enabled" if enabled else "disabled",
+            state_description,
         )
 
     @staticmethod
@@ -190,7 +208,7 @@ class TargetMatchNode:
         return message
 
     def _image_callback(self, image_message):
-        if not self._enabled:
+        if not self._control_state.effective_enabled:
             return
         if not self._should_process(image_message.header.stamp):
             return
@@ -240,7 +258,11 @@ class TargetMatchNode:
         except (CvBridgeError, ValueError, RuntimeError, cv2.error) as error:
             rospy.logwarn_throttle(2.0, "target matching failed: %s", error)
 
-        self._result_publisher.publish(output)
+        # A stop request may arrive while inference is running. Re-check the
+        # immediate request here so a late valid result cannot advance the FSM.
+        self._control_state.run_if_requested_enabled(
+            lambda: self._result_publisher.publish(output)
+        )
 
         if (
             self._publish_debug

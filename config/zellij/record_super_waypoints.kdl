@@ -36,7 +36,7 @@ layout {
     tab name="视觉" {
         pane split_direction="vertical" {
             pane name="双相机" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 5; exec roslaunch uav_vision dual_target_vision.launch always_enabled:=true recording_enabled:=false"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 5; exec roslaunch uav_vision dual_target_vision_uav1.launch always_enabled:=true recording_enabled:=false"
             }
         }
     }

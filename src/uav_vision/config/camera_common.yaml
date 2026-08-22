@@ -6,4 +6,7 @@ exposure: 150
 gain: 5
 control_topic: /vision/control
 always_enabled: false
+# Keep publishing briefly after a stop request so the result video includes
+# the recognition moment and one second of visual context.
+stop_grace_seconds: 1.0
 reopen_retry_seconds: 1.0

@@ -5,6 +5,8 @@ import unittest
 
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
+PACKAGE_SRC_DIR = pathlib.Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(PACKAGE_SRC_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import v4l2_camera_node
@@ -54,6 +56,16 @@ class CameraSettingsTest(unittest.TestCase):
 
 
 class CameraControlStateTest(unittest.TestCase):
+    class FakeClock:
+        def __init__(self):
+            self.now = 100.0
+
+        def __call__(self):
+            return self.now
+
+        def advance(self, seconds):
+            self.now += seconds
+
     def test_rejects_unknown_camera_role(self):
         with self.assertRaises(ValueError):
             v4l2_camera_node.CameraControlState("side")
@@ -117,6 +129,24 @@ class CameraControlStateTest(unittest.TestCase):
         state.update(FakeVisionControl(front=False))
         self.assertFalse(state.run_if_enabled(lambda: calls.append("frame")))
         self.assertEqual(["frame"], calls)
+
+    def test_stop_grace_keeps_camera_publish_enabled_for_one_second(self):
+        clock = self.FakeClock()
+        state = v4l2_camera_node.CameraControlState(
+            "front",
+            stop_grace_seconds=1.0,
+            monotonic=clock,
+        )
+        state.update(FakeVisionControl(front=True))
+        state.update(FakeVisionControl(front=False))
+
+        self.assertFalse(state.requested_enabled)
+        self.assertTrue(state.desired_enabled)
+        self.assertTrue(state.grace_active)
+        clock.advance(0.99)
+        self.assertTrue(state.desired_enabled)
+        clock.advance(0.01)
+        self.assertFalse(state.desired_enabled)
 
 
 class ControlApplicationTest(unittest.TestCase):

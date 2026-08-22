@@ -4,8 +4,9 @@
 import fcntl
 import os
 import struct
-import threading
 import time
+
+from uav_vision.control_state import DelayedDisableState
 
 
 V4L2_CID_GAIN = 0x00980913
@@ -111,32 +112,45 @@ def requested_camera_enabled(message, camera_role):
 class CameraControlState:
     """Thread-safe desired camera state selected from VisionControl."""
 
-    def __init__(self, camera_role, always_enabled=False):
+    def __init__(
+        self,
+        camera_role,
+        always_enabled=False,
+        stop_grace_seconds=0.0,
+        monotonic=None,
+    ):
         self._camera_role = validate_camera_role(camera_role)
         self._always_enabled = bool(always_enabled)
-        self._desired_enabled = self._always_enabled
-        self._lock = threading.Lock()
+        self._state = DelayedDisableState(
+            initial_enabled=self._always_enabled,
+            disable_delay_seconds=stop_grace_seconds,
+            monotonic=monotonic,
+        )
 
     @property
     def desired_enabled(self):
-        with self._lock:
-            return self._desired_enabled
+        return self._state.effective_enabled
+
+    @property
+    def requested_enabled(self):
+        return self._state.requested_enabled
+
+    @property
+    def grace_active(self):
+        return self._state.grace_active
+
+    @property
+    def grace_remaining_seconds(self):
+        return self._state.grace_remaining_seconds
 
     def update(self, message):
         requested = requested_camera_enabled(message, self._camera_role)
         desired = self._always_enabled or requested
-        with self._lock:
-            changed = desired != self._desired_enabled
-            self._desired_enabled = desired
-        return changed, desired
+        return self._state.update(desired)
 
     def run_if_enabled(self, action):
         """Run a short action atomically with the final enabled check."""
-        with self._lock:
-            if not self._desired_enabled:
-                return False
-            action()
-            return True
+        return self._state.run_if_effectively_enabled(action)
 
 
 def open_capture(
@@ -198,6 +212,9 @@ def main():
         "~control_topic", "/vision/control"
     )
     always_enabled = bool(rospy.get_param("~always_enabled", False))
+    stop_grace_seconds = float(
+        rospy.get_param("~stop_grace_seconds", 0.0)
+    )
     reopen_retry_seconds = float(
         rospy.get_param("~reopen_retry_seconds", 1.0)
     )
@@ -216,16 +233,27 @@ def main():
 
     publisher = rospy.Publisher(image_topic, Image, queue_size=1)
     bridge = CvBridge()
-    camera_control = CameraControlState(camera_role, always_enabled)
+    camera_control = CameraControlState(
+        camera_role,
+        always_enabled,
+        stop_grace_seconds=stop_grace_seconds,
+    )
 
     def control_callback(message):
         changed, enabled = camera_control.update(message)
         if changed:
-            rospy.loginfo(
-                "%s camera requested %s",
-                camera_role,
-                "enabled" if enabled else "disabled",
-            )
+            if not enabled and camera_control.grace_active:
+                rospy.loginfo(
+                    "%s camera stop requested; continuing for %.1f s",
+                    camera_role,
+                    camera_control.grace_remaining_seconds,
+                )
+            else:
+                rospy.loginfo(
+                    "%s camera requested %s",
+                    camera_role,
+                    "enabled" if enabled else "disabled",
+                )
 
     control_subscriber = rospy.Subscriber(
         control_topic,

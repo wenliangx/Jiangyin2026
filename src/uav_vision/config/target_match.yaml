@@ -104,6 +104,9 @@ temporal:
   target_lost_frames: 3
 
 publish_debug_image: true
+# Continue inference/debug/recording after disable, while suppressing valid ROS
+# results during this tail so the previous camera cannot advance the next stage.
+stop_grace_seconds: 1.0
 
 # Raw/result recording runs on a bounded background queue. Each classifier
 # overrides the stream name to front_target or rear_target.
