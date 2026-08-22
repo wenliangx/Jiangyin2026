@@ -1,28 +1,34 @@
 layout {
+      default_tab_template {
+    pane size=1 borderless=true {
+      plugin location="zellij:tab-bar"
+    }
+    children
+    pane size=2 borderless=true {
+      plugin location="zellij:status-bar"
+    }
+  }
     tab name="打点" focus=true {
         pane split_direction="vertical" {
             pane name="航点记录（等待融合位姿）" focus=true command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; echo '[waypoint] 等待 /mavros/local_position/pose ...'; until rostopic info /mavros/local_position/pose >/dev/null 2>&1; do sleep 1; done; echo '[waypoint] 融合位姿已就绪，启动打点程序'; exec rosrun fsm_ctrl record_super_waypoints.py _output_file:=${JY_WAYPOINT_OUTPUT}"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 3;echo '[waypoint] 等待 /mavros/local_position/pose ...'; until rostopic info /mavros/local_position/pose >/dev/null 2>&1; do sleep 1; done; echo '[waypoint] 融合位姿已就绪，启动打点程序'; exec rosrun fsm_ctrl record_super_waypoints.py _output_file:=/home/flag/Jiangyin2026/src/fsm_ctrl/config/mission_super_waypoints_test.yaml  _segment_count:=3"
             }
             pane name="图像识别结果" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec rosrun uav_vision vision_result_monitor.py"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 3; exec rostopic echo /vision/target/result"
             }
         }
     }
 
     tab name="定位" {
         pane split_direction="vertical" {
-            pane name="ROS Master" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; if rostopic list >/dev/null 2>&1; then echo '[roscore] 使用已有 ROS master'; exec tail -f /dev/null; else exec roscore; fi"
-            }
             pane name="MID360 驱动" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait ra_lio msg_MID360.launch"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash;  exec roslaunch --wait ra_lio msg_MID360.launch"
             }
             pane name="RA-LIO" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait ra_lio mapping_mid360.launch rviz:=false"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash;  sleep 3; exec roslaunch --wait ra_lio mapping_mid360.launch rviz:=false"
             }
             pane name="PX4 融合" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; echo '[px4] 等待 /Odometry ...'; until rostopic info /Odometry >/dev/null 2>&1; do sleep 1; done; exec roslaunch --wait fsm_ctrl px4_estimator.launch"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 2; roslaunch fsm_ctrl single_sml.launch"
             }
         }
     }
@@ -30,13 +36,7 @@ layout {
     tab name="视觉" {
         pane split_direction="vertical" {
             pane name="双相机" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision dual_camera.launch always_enabled:=true"
-            }
-            pane name="下视 AprilTag" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision landing_tag.launch"
-            }
-            pane name="前视目标分类" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source devel/setup.bash; exec roslaunch --wait uav_vision target_match.launch"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 5; exec roslaunch uav_vision dual_target_vision.launch always_enabled:=true recording_enabled:=false"
             }
         }
     }
