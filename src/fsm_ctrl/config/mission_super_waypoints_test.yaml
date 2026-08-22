@@ -5,16 +5,16 @@ frame_id: "world"
 segments:
   - name: "cmd3_segment_1"
     waypoints:
-      - {id: 0, x: 3.353178, y: 0.972022, z: 1.174920, mode: 2, is_map: 1, yaw: -0.024005, desired_speed: 0.000000}
-      - {id: 1, x: 6.264108, y: 2.196632, z: 1.247151, mode: 2, is_map: 1, yaw: -0.877414, desired_speed: 0.000000}
-      - {id: 2, x: 9.998982, y: 1.057061, z: 1.320488, mode: 2, is_map: 1, yaw: 1.501177, desired_speed: 0.000000}
+      - {id: 0, x: 1.753602, y: 0.725558, z: 1.219772, mode: 2, is_map: 1, yaw: -0.029451, desired_speed: 0.000000}
+      - {id: 1, x: 7.220011, y: 0.992192, z: 1.197334, mode: 2, is_map: 1, yaw: -0.649311, desired_speed: 0.000000}
+      - {id: 2, x: 10.076149, y: 0.883932, z: 1.252813, mode: 2, is_map: 1, yaw: 1.598098, desired_speed: 0.000000}
   - name: "cmd4_segment_2"
-    waypoints: 
-      - {id: 0, x: 9.765553, y: 4.604281, z: 1.328142, mode: 2, is_map: 1, yaw: 1.694612, desired_speed: 0.000000}
+    waypoints:
+      - {id: 0, x: 9.861983, y: 4.854254, z: 1.356432, mode: 2, is_map: 1, yaw: 1.648100, desired_speed: 0.000000}
   - name: "cmd5_segment_3"
-    waypoints: 
-      - {id: 0, x: 4.426720, y: 11.764405, z: 1.447226, mode: 2, is_map: 1, yaw: 2.943788, desired_speed: 0.000000}
-      - {id: 1, x: 3.490275, y: 11.851586, z: 1.486805, mode: 2, is_map: 1, yaw: 2.948252, desired_speed: 0.000000}
-      - {id: 2, x: 3.490275, y: 11.851586, z: 0.447055, mode: 2, is_map: 1, yaw: 2.948252, desired_speed: 0.000000}
-      - {id: 3, x: 2.424335, y: 11.947452, z: 0.431641, mode: 2, is_map: 1, yaw: -3.059511, desired_speed: 0.000000}
-      - {id: 4, x: -0.670557, y: 10.033984, z: 0.287581, mode: 2, is_map: 1, yaw: -3.127789, desired_speed: 0.000000}
+    waypoints:
+      - {id: 0, x: 4.679676, y: 11.597519, z: 1.503203, mode: 2, is_map: 1, yaw: 3.015590, desired_speed: 0.000000}
+      - {id: 1, x: 3.768367, y: 11.741263, z: 1.500803, mode: 2, is_map: 1, yaw: 3.015590, desired_speed: 0.000000}
+      - {id: 2, x: 3.768367, y: 11.741263, z: 0.500794, mode: 2, is_map: 1, yaw: 3.015590, desired_speed: 0.000000}
+      - {id: 3, x: 2.486939, y: 11.976707, z: 0.501547, mode: 2, is_map: 1, yaw: 3.015590, desired_speed: 0.000000}
+      - {id: 4, x: -0.485963, y: 9.932480, z: 0.30706, mode: 2, is_map: 1, yaw: 3.125188, desired_speed: 0.000000}

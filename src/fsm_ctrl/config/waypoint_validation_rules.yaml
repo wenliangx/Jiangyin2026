@@ -23,7 +23,17 @@ waypoint_rules:
 
 relationships:
   - segment: 2
+    waypoint_a: 0
+    waypoint_b: 1
+    same: [yaw]
+    different: [x, y, z]
+  - segment: 2
     waypoint_a: 1
     waypoint_b: 2
     same: [x, y, yaw]
     different: [z]
+  - segment: 2  
+    waypoint_a: 2
+    waypoint_b: 3
+    same: [z, yaw]
+    different: [x, y]
