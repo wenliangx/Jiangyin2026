@@ -3,10 +3,14 @@
   "dockerComposeFile": "../docker-compose.yml",
   "service": "jy-dev",
   "workspaceFolder": "/ws",
+  "overrideCommand": true,
+  "shutdownAction": "stopCompose",
   "mounts": [
-    "source=${localWorkspaceFolder},target=/ws,type=bind"
+    "source=jiangyin2026-dev-build,target=/ws/build,type=volume",
+    "source=jiangyin2026-dev-devel,target=/ws/devel,type=volume",
+    "source=jiangyin2026-dev-ralio-build,target=/ws/src/RA-LIO/build,type=volume"
   ],
-  "postCreateCommand": "source /opt/ros/noetic/setup.bash && cd /ws && rm -f src/ego-planner-v2/CATKIN_IGNORE && cp -f src/libs/livox_ros_driver2/package_ROS1.xml src/libs/livox_ros_driver2/package.xml && catkin_make -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DROS_EDITION=ROS1 -j$(nproc) && ln -sf /ws/build/compile_commands.json /ws/compile_commands.json && source /ws/devel/setup.bash && mkdir -p src/RA-LIO/build && cd src/RA-LIO/build && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -Dlivox_ros_driver2_DIR=/ws/devel/share/livox_ros_driver2/cmake && make -j$(nproc) && cp -rn devel/bin/* /ws/devel/bin/ 2>/dev/null || true && cp -rn devel/lib/* /ws/devel/lib/ 2>/dev/null || true && cp -rn devel/share/* /ws/devel/share/ 2>/dev/null || true && echo 'Dev build complete!'",
+  "postCreateCommand": "bash /ws/docker/dev/scripts/start_jy2026.sh --dev --build-only && ln -sf /ws/build/compile_commands.json /ws/compile_commands.json",
   "customizations": {
     "vscode": {
       "extensions": [

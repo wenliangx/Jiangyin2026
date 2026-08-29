@@ -16,10 +16,15 @@
 set -euo pipefail
 
 DEV_MODE=false
-if [[ "${1:-}" == "--dev" ]]; then
-  DEV_MODE=true
+BUILD_ONLY=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dev) DEV_MODE=true ;;
+    --build-only) BUILD_ONLY=true ;;
+    *) printf '[jy2026 ERROR] Unknown option: %s\n' "$1" >&2; exit 2 ;;
+  esac
   shift
-fi
+done
 
 if [[ "${DEV_MODE}" == "true" ]]; then
   export ROS_MASTER_URI="${ROS_MASTER_URI:-http://localhost:11311}"
@@ -85,14 +90,19 @@ if [[ "${DEV_MODE}" == "true" ]]; then
 
   if [[ -f /ws/build/Makefile || -f /ws/build/CMakeCache.txt ]]; then
     cached_cmake=""
+    cached_source=""
     if [[ -f /ws/build/Makefile ]]; then
       cached_cmake="$(sed -n 's/^CMAKE_COMMAND = //p' /ws/build/Makefile)"
     fi
     if [[ -z "${cached_cmake}" && -f /ws/build/CMakeCache.txt ]]; then
       cached_cmake="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' /ws/build/CMakeCache.txt)"
     fi
-    if [[ -n "${cached_cmake}" && ! -x "${cached_cmake}" ]]; then
-      log_info "Removing stale catkin build cache (missing ${cached_cmake})"
+    if [[ -f /ws/build/CMakeCache.txt ]]; then
+      cached_source="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' /ws/build/CMakeCache.txt)"
+    fi
+    if [[ -n "${cached_cmake}" && ! -x "${cached_cmake}" ]] ||
+       [[ -n "${cached_source}" && "${cached_source}" != "/ws/src" ]]; then
+      log_info "Removing stale catkin build cache (cmake=${cached_cmake:-unknown}, source=${cached_source:-unknown})"
       rm -rf /ws/build
     fi
   fi
@@ -107,6 +117,13 @@ if [[ "${DEV_MODE}" == "true" ]]; then
   source /ws/devel/setup.bash
 
   log_info "Building RA-LIO..."
+  if [[ -f /ws/src/RA-LIO/build/CMakeCache.txt ]]; then
+    ralio_cached_source="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' /ws/src/RA-LIO/build/CMakeCache.txt)"
+    if [[ -n "${ralio_cached_source}" && "${ralio_cached_source}" != "/ws/src/RA-LIO" ]]; then
+      log_info "Removing stale RA-LIO build cache (source=${ralio_cached_source})"
+      rm -rf /ws/src/RA-LIO/build
+    fi
+  fi
   mkdir -p /ws/src/RA-LIO/build && cd /ws/src/RA-LIO/build
   cmake .. -DCMAKE_BUILD_TYPE=Release \
     -Dlivox_ros_driver2_DIR="${livox_driver_cmake}" 2>&1 | tail -3
@@ -116,6 +133,9 @@ if [[ "${DEV_MODE}" == "true" ]]; then
   cp -rn devel/share/* /ws/devel/share/ 2>/dev/null || true
 
   log_info "Dev build complete."
+  if [[ "${BUILD_ONLY}" == "true" ]]; then
+    exit 0
+  fi
 else
   source /ws/devel/setup.bash
 fi
