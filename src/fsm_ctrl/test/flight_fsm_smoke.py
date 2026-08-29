@@ -8,7 +8,7 @@ import math
 
 import rosnode
 import rospy
-from fsm_ctrl.msg import nmpc_state
+from fsm_ctrl.msg import NmpcState
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import AttitudeTarget
 from mavros_msgs.msg import RCIn
@@ -41,7 +41,7 @@ class FlightFsmSmoke(unittest.TestCase):
             "/nmpc_posfdb", PoseStamped,
             self._feedback_callback, queue_size=100)
         self._nmpc_state_sub = rospy.Subscriber(
-            "/nmpc_state", nmpc_state,
+            "/nmpc_state", NmpcState,
             self._nmpc_state_callback, queue_size=100)
         self._attitude_sub = rospy.Subscriber(
             "/mavros/setpoint_raw/attitude", AttitudeTarget,

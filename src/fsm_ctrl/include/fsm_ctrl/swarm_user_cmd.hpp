@@ -1,5 +1,5 @@
-#ifndef _SWARM_USER_CMD_HPP_
-#define _SWARM_USER_CMD_HPP_
+#ifndef FSM_CTRL_SWARM_USER_CMD_HPP_
+#define FSM_CTRL_SWARM_USER_CMD_HPP_
 
 
 
@@ -22,4 +22,4 @@
 
 
 
-#endif
+#endif  // FSM_CTRL_SWARM_USER_CMD_HPP_

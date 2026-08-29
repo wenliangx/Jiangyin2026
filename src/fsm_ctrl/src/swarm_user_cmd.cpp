@@ -22,11 +22,11 @@ static Eigen::Vector3d euler_fcu, euler_vio;
  * @param  _msg: geometry_msgs::PoseStamped from FCU
  * @return NULL
  */
-void Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
+void poseCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     pos_fcu = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
     Eigen::Quaterniond q(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
-    euler_fcu = QuatToEuler(q);
+    euler_fcu = quaternionToEuler(q);
 }
 
 
@@ -35,18 +35,18 @@ void Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
  * @param  msg: geometry_msgs::PoseStamped from odometry
  * @return NULL
  */
-void Odom_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
+void odometryCallback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     pos_vio = Eigen::Vector3d(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
     Eigen::Quaterniond q(msg->pose.orientation.w, msg->pose.orientation.x, msg->pose.orientation.y, msg->pose.orientation.z);
-    euler_vio = QuatToEuler(q);
+    euler_vio = quaternionToEuler(q);
 }
 
 
 
-void UdpServer(const char* ip, const uint16_t cport, const int UAVID)
+void udpServer(const char* ip, const uint16_t client_port, const int uav_id)
 {
-    // ROS_INFO("UDP %d", UAVID);
+    // ROS_INFO("UDP %d", uav_id);
     string ss;
     geometry_msgs::PoseStamped offset;
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -60,9 +60,9 @@ void UdpServer(const char* ip, const uint16_t cport, const int UAVID)
     memset(&addr_client, 0, sizeof(struct sockaddr_in));
     addr_client.sin_family = AF_INET;
     addr_client.sin_addr.s_addr = inet_addr(ip);
-    addr_client.sin_port = htons(cport);
+    addr_client.sin_port = htons(client_port);
     len = sizeof(addr_client);
-    switch(UAVID)
+    switch(uav_id)
     {
         case 1:
         {
@@ -122,7 +122,7 @@ void UdpServer(const char* ip, const uint16_t cport, const int UAVID)
         send_num = sendto(sock_fd, send_buf, ssize_t(strlen(send_buf)), 0, (struct sockaddr*)&addr_client, len);
         if(send_num < 0)
         {
-            ROS_ERROR("Send Fail!, UAV = %d",UAVID);
+            ROS_ERROR("Send Fail!, UAV = %d", uav_id);
             // perror("sendto error:");
             // exit(1);
         }
@@ -139,13 +139,13 @@ void UdpServer(const char* ip, const uint16_t cport, const int UAVID)
  * @param  NULL
  * @return NULL
  */
-void UserCmd()
+void readUserCommand()
 {
     cin >> cmd;
     cout << "\033[A";
     // switch(cmd)
     // {
-    //     case 1: 
+    //     case 1:
     //         ROS_INFO("Arm publish!");
     //         break;
     //     case 2:
@@ -166,12 +166,12 @@ void UserCmd()
  * @param  NULL
  * @return NULL
  */
-void CmdListener()
+void commandListener()
 {
     ros::Rate rate(10.0);
     while(ros::ok())
     {
-        UserCmd();
+        readUserCommand();
         if(cmd == 0) {break;}
         rate.sleep();
     }
@@ -185,19 +185,19 @@ int main(int argc, char **argv)
     ros::NodeHandle nh("~");
 
     ros::Subscriber pose_suber = nh.subscribe<geometry_msgs::PoseStamped>
-        ("/mavros/local_position/pose", 1, Pose_Callback);
+        ("/mavros/local_position/pose", 1, poseCallback);
     ros::Subscriber odom_suber = nh.subscribe<geometry_msgs::PoseStamped>
-        ("/mavros/vision_pose/pose", 1, Odom_Callback);
-    
-    new thread(&CmdListener);
-    new thread(&UdpServer, "127.0.0.1", 12001, 1);
-    // new std::thread(&UdpServer,"192.168.1.11",12001,1);
-    // new std::thread(&UdpServer,"192.168.1.12",12001,2);
-    // new std::thread(&UdpServer,"192.168.1.13",12001,3);
-    // new std::thread(&UdpServer,"192.168.1.14",12001,4);
-    
+        ("/mavros/vision_pose/pose", 1, odometryCallback);
+
+    new thread(&commandListener);
+    new thread(&udpServer, "127.0.0.1", 12001, 1);
+    // new std::thread(&udpServer,"192.168.1.11",12001,1);
+    // new std::thread(&udpServer,"192.168.1.12",12001,2);
+    // new std::thread(&udpServer,"192.168.1.13",12001,3);
+    // new std::thread(&udpServer,"192.168.1.14",12001,4);
+
     for(int i = 0; i < 9; i++) {cout << endl;}
-    
+
     ros::Rate rate(10.0);
     while(ros::ok())
     {
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
         cout << "1: Arm         2: Disarm      3: Takeoff     4: Land        5: Debug" << endl;
         cout << "\r" << "\x1B[0K";
         cout << "6:             7:             8:             9:             0: Exit" << endl;
-        
+
         cout.unsetf(ios::showpos);
         if(cmd == -1)
         {
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
         }
         cout << "\r" << "\x1B[0K";
         cout << "Enter User Command: " << endl;
-        
+
         if(cmd == 0) {break;}
         ros::spinOnce();
         rate.sleep();

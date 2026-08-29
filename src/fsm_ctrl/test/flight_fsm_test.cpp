@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <fsm_ctrl/flight_fsm.hpp>
 #include <limits>
 #include <string>
 #include <vector>
-
-#include <fsm_ctrl/flight_fsm.hpp>
 
 namespace {
 using namespace fsm_ctrl::flight_fsm;
@@ -45,11 +44,11 @@ class FakeSetpoint final : public SetpointPort {
     attitudes.push_back(value);
   }
   void publishReferencePosition(const Vec3& value,
-                                 const Quaternion& /*attitude*/) override {
+                                const Quaternion& /*attitude*/) override {
     reference_positions.push_back(value);
   }
   void publishFeedbackPosition(const Vec3& value,
-                                const Quaternion& /*attitude*/) override {
+                               const Quaternion& /*attitude*/) override {
     feedback_positions.push_back(value);
   }
   void publishNmpcMonitor(const NmpcMonitor& value) override {
@@ -83,10 +82,10 @@ class FakeNmpc final : public NmpcPort {
 
 class FakeMission final : public MissionPort {
  public:
-  void selectCommand(int command) override { selected_commands.push_back(command); }
-  void reset() override {
-    ++resets;
+  void selectCommand(int command) override {
+    selected_commands.push_back(command);
   }
+  void reset() override { ++resets; }
   bool prepareSuper(double value, const TelemetrySnapshot& telemetry,
                     std::vector<ReferencePoint>& output) override {
     ++super_calls;
@@ -122,8 +121,7 @@ class FakeLanding final : public PrecisionLandingPort {
   void updateObservation(const LandingObservation& value) override {
     last_observation = value;
   }
-  void startClosedLoopLanding(
-      const TelemetrySnapshot& telemetry) override {
+  void startClosedLoopLanding(const TelemetrySnapshot& telemetry) override {
     ++start_closed_loop_calls;
     start_telemetry = telemetry;
   }
@@ -135,9 +133,9 @@ class FakeLanding final : public PrecisionLandingPort {
     output = points;
     return result;
   }
-  bool prepareClosedLoopLanding(
-      double value, const TelemetrySnapshot& telemetry,
-      std::vector<ReferencePoint>& output) override {
+  bool prepareClosedLoopLanding(double value,
+                                const TelemetrySnapshot& telemetry,
+                                std::vector<ReferencePoint>& output) override {
     ++closed_loop_prepare_calls;
     return prepareLanding(value, telemetry, output);
   }
@@ -168,7 +166,7 @@ struct Fixture : testing::Test {
                 camera_control),
         sm(context) {}
 
-  void ClearOutputs() {
+  void clearOutputs() {
     autopilot.calls.clear();
     setpoint.positions.clear();
     setpoint.body_rates.clear();
@@ -185,18 +183,16 @@ struct Fixture : testing::Test {
     camera_control.controls.clear();
   }
 
-  void SetOffboardAndArmed() {
+  void setOffboardAndArmed() {
     context.telemetry.mode = "OFFBOARD";
     context.telemetry.armed = true;
   }
 
-  void ExpectLatestCameraControl(bool front_enabled,
-                                 bool down_enabled) const {
+  void expectLatestCameraControl(bool front_enabled, bool down_enabled) const {
     ASSERT_FALSE(camera_control.controls.empty());
     EXPECT_EQ(front_enabled,
               camera_control.controls.back().front_camera_enabled);
-    EXPECT_EQ(down_enabled,
-              camera_control.controls.back().down_camera_enabled);
+    EXPECT_EQ(down_enabled, camera_control.controls.back().down_camera_enabled);
   }
 
   FakeClock clock;
@@ -245,11 +241,11 @@ TEST_F(Fixture, InitialStatePublishesBothCamerasEnabledOnEveryTick) {
 
   sm.process_event(Tick{});
   ASSERT_EQ(1u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  expectLatestCameraControl(true, true);
 
   sm.process_event(Tick{});
   ASSERT_EQ(2u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  expectLatestCameraControl(true, true);
 }
 
 TEST_F(Fixture, ActiveDispatcherSuppressesRepeatedCommands) {
@@ -270,14 +266,14 @@ TEST_F(Fixture, RecognitionSlotsAdvanceOnlyForFirstAndDifferentSecondTarget) {
   sm.process_event(OnCommand3{});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment1>));
   sm.process_event(Tick{});
-  ExpectLatestCameraControl(true, false);
+  expectLatestCameraControl(true, false);
 
   sm.process_event(OnTargetRecognized{"plane"});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
   EXPECT_EQ("plane", context.recognized_targets[0]);
   EXPECT_TRUE(context.recognized_targets[1].empty());
   sm.process_event(Tick{});
-  ExpectLatestCameraControl(false, true);
+  expectLatestCameraControl(false, true);
 
   sm.process_event(OnTargetRecognized{"plane"});
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment2>));
@@ -287,7 +283,7 @@ TEST_F(Fixture, RecognitionSlotsAdvanceOnlyForFirstAndDifferentSecondTarget) {
   EXPECT_TRUE(sm.is(boost::sml::state<SuperSegment3>));
   EXPECT_EQ("car", context.recognized_targets[1]);
   sm.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
   EXPECT_EQ(3, mission.resets);
 }
 
@@ -334,11 +330,11 @@ TEST_F(Fixture, IdleAndSafeNoopTicksHaveNoFlightOutput) {
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.attitudes.empty());
   ASSERT_EQ(2u, camera_control.controls.size());
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 }
 
 TEST_F(Fixture, ArmOnlyTickPublishesLowThrust) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.config.low_thrust = 0.123;
   sm.process_event(OnCommand1{});
   sm.process_event(Tick{});
@@ -354,7 +350,7 @@ TEST_F(Fixture, ArmOnlyTickPublishesLowThrust) {
 TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
   for (const int command : {1, 2, 3, 4, 5}) {
     SCOPED_TRACE(command);
-    ClearOutputs();
+    clearOutputs();
     context.telemetry.mode = "MANUAL";
     context.telemetry.armed = false;
     context.landing_reached = false;
@@ -370,7 +366,7 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
 
   for (const int command : {0, 7, 8, 9}) {
     SCOPED_TRACE(command);
-    ClearOutputs();
+    clearOutputs();
     context.telemetry.mode = "MANUAL";
     context.telemetry.armed = false;
     context.landing_reached = false;
@@ -387,8 +383,8 @@ TEST_F(Fixture, OffboardArmSharedLogicRunsOnlyInActiveOffboardStates) {
 TEST_F(Fixture, ActiveOffboardStatesDoNotRequestServicesWhenAlreadyReady) {
   for (const int command : {1, 2, 3, 4, 5}) {
     SCOPED_TRACE(command);
-    ClearOutputs();
-    SetOffboardAndArmed();
+    clearOutputs();
+    setOffboardAndArmed();
     context.landing_reached = false;
     clock.value = 100.0;
     ActiveStateMachine machine(context);
@@ -444,7 +440,7 @@ TEST_F(Fixture, OffboardThenArmRequestsAreOrderedAndShareTimestamp) {
 
 TEST_F(Fixture, MissionSuperUsesMissionReferenceAndNmpcMonitor) {
   MissionStateMachine machine(context);
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.telemetry.position = {1.0, 2.0, 3.0};
   context.telemetry.velocity = {4.0, 5.0, 6.0};
   mission.super_points = {ReferencePoint{}};
@@ -480,7 +476,7 @@ TEST_F(Fixture, MissionSuperUsesMissionReferenceAndNmpcMonitor) {
 
 TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
   MissionStateMachine machine(context);
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   machine.process_event(OnCommand3{});
 
   mission.super_result = false;
@@ -503,7 +499,7 @@ TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_EQ(1u, setpoint.reference_positions.size());
   EXPECT_EQ(1u, setpoint.feedback_positions.size());
 
-  ClearOutputs();
+  clearOutputs();
   mission.super_points = {ReferencePoint{}};
   nmpc.track_result = true;
   nmpc.track_output.thrust = std::numeric_limits<double>::quiet_NaN();
@@ -516,7 +512,7 @@ TEST_F(Fixture, MissionSuperRejectsMissingReferenceSolveFailureAndBadOutput) {
 }
 
 TEST_F(Fixture, LandingUsesDescentHorizonAndNmpcMonitor) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.telemetry.position = {2.0, 3.0, 0.11};
   landing.points[0].position = {2.1, 2.9, 0.10};
   nmpc.track_output = BodyRateThrust{{0.2, 0.3, 0.4}, 0.5};
@@ -557,7 +553,7 @@ TEST_F(Fixture, LandingNeverRequestsOffboardOrArm) {
 }
 
 TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.telemetry.position.z = 1.0;
   sm.process_event(OnCommand6{});
 
@@ -568,21 +564,21 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
   EXPECT_TRUE(setpoint.body_rates.empty());
   EXPECT_TRUE(setpoint.monitors.empty());
 
-  ClearOutputs();
+  clearOutputs();
   landing.result = true;
   landing.points.clear();
   sm.process_event(Tick{});
   EXPECT_EQ(1, landing.prepare_calls);
   EXPECT_EQ(0, nmpc.track_calls);
 
-  ClearOutputs();
+  clearOutputs();
   landing.points = {ReferencePoint{}};
   nmpc.track_result = false;
   sm.process_event(Tick{});
   EXPECT_EQ(1, nmpc.track_calls);
   EXPECT_TRUE(setpoint.body_rates.empty());
 
-  ClearOutputs();
+  clearOutputs();
   nmpc.track_result = true;
   nmpc.track_output.thrust = std::numeric_limits<double>::quiet_NaN();
   sm.process_event(Tick{});
@@ -592,10 +588,9 @@ TEST_F(Fixture, LandingRejectsMissingReferenceSolveFailureAndBadOutput) {
 }
 
 TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.config.low_thrust = 0.031;
-  context.telemetry.position =
-      {2.0, 3.0, context.config.landing_reference_z};
+  context.telemetry.position = {2.0, 3.0, context.config.landing_reference_z};
   sm.process_event(OnCommand6{});
   landing.result = false;
   sm.process_event(Tick{});
@@ -621,7 +616,7 @@ TEST_F(Fixture, LandingCompletionIgnoresPreparedResultAndKeepsLowThrust) {
 }
 
 TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.config.landing_reference_z = 0.05;
   context.config.landing_tolerance_z = 0.05;
   context.telemetry.position = {4.0, 5.0, 0.10};
@@ -694,7 +689,7 @@ TEST_F(Fixture, LandingDisarmRetriesUntilTelemetryReportsDisarmed) {
 }
 
 TEST_F(Fixture, LandingSafetyLockPermanentlyRejectsCommandsAndRearming) {
-  SetOffboardAndArmed();
+  setOffboardAndArmed();
   context.telemetry.position.z = context.config.landing_reference_z;
   sm.process_event(OnCommand6{});
   sm.process_event(Tick{});
@@ -783,52 +778,52 @@ TEST_F(Fixture, SegmentedMissionPublishesCameraStateOnEveryTick) {
 
   machine.process_event(Tick{});
   ASSERT_EQ(1u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, true);
+  expectLatestCameraControl(true, true);
 
   EXPECT_TRUE(dispatcher.update(2));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 
   const std::size_t initial_count = camera_control.controls.size();
   EXPECT_TRUE(dispatcher.update(3));
   EXPECT_EQ(initial_count, camera_control.controls.size());
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 1u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, false);
+  expectLatestCameraControl(true, false);
 
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 2u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, false);
+  expectLatestCameraControl(true, false);
 
   EXPECT_FALSE(dispatcher.update(3));
   EXPECT_EQ(initial_count + 2u, camera_control.controls.size());
   machine.process_event(Tick{});
   ASSERT_EQ(initial_count + 3u, camera_control.controls.size());
-  ExpectLatestCameraControl(true, false);
+  expectLatestCameraControl(true, false);
 
   EXPECT_TRUE(dispatcher.update(4));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, true);
+  expectLatestCameraControl(false, true);
 
   EXPECT_TRUE(dispatcher.update(5));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(6));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(9));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(7));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 
   EXPECT_TRUE(dispatcher.update(0));
   machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, false);
+  expectLatestCameraControl(false, false);
 }
 
 TEST_F(Fixture, MissionMachinePublishesCameraStateOnTick) {
@@ -836,10 +831,10 @@ TEST_F(Fixture, MissionMachinePublishesCameraStateOnTick) {
   MissionCommandDispatcher mission_dispatcher(mission_machine, &mission);
   EXPECT_TRUE(mission_dispatcher.update(3));
   mission_machine.process_event(Tick{});
-  ExpectLatestCameraControl(true, false);
+  expectLatestCameraControl(true, false);
   EXPECT_TRUE(mission_dispatcher.update(4));
   mission_machine.process_event(Tick{});
-  ExpectLatestCameraControl(false, true);
+  expectLatestCameraControl(false, true);
 }
 
 TEST(ClosedLoopLandingPlannerTest, HoldsEntryPositionWithoutVision) {
@@ -871,8 +866,7 @@ TEST(ClosedLoopLandingPlannerTest,
   TelemetrySnapshot telemetry;
   telemetry.position = {1.0, 2.0, 1.5};
   planner.start(telemetry);
-  planner.updateObservation(
-      LandingObservation{true, 80.0, 20.0, 5, 9.9, 0.0});
+  planner.updateObservation(LandingObservation{true, 80.0, 20.0, 5, 9.9, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(10.0, telemetry, horizon));
@@ -896,8 +890,7 @@ TEST(ClosedLoopLandingPlannerTest, SupportsAxisSwapAndIndependentSigns) {
   TelemetrySnapshot telemetry;
   telemetry.position = {4.0, 5.0, 1.0};
   planner.start(telemetry);
-  planner.updateObservation(
-      LandingObservation{true, -80.0, 90.0, 5, 2.0, 0.0});
+  planner.updateObservation(LandingObservation{true, -80.0, 90.0, 5, 2.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(2.1, telemetry, horizon));
@@ -915,8 +908,7 @@ TEST(ClosedLoopLandingPlannerTest, LocksCurrentXyAndDescendsWhenAligned) {
   TelemetrySnapshot telemetry;
   telemetry.position = {1.5, 2.5, 2.0};
   planner.start(TelemetrySnapshot{});
-  planner.updateObservation(
-      LandingObservation{true, 50.0, -50.0, 5, 4.0, 0.0});
+  planner.updateObservation(LandingObservation{true, 50.0, -50.0, 5, 4.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(4.1, telemetry, horizon));
@@ -941,8 +933,7 @@ TEST(ClosedLoopLandingPlannerTest, FourAlignedTagsLockXyAndStartDescent) {
   TelemetrySnapshot telemetry;
   telemetry.position = {2.0, 3.0, 1.5};
   planner.start(telemetry);
-  planner.updateObservation(
-      LandingObservation{true, 40.0, -30.0, 4, 5.0, 0.0});
+  planner.updateObservation(LandingObservation{true, 40.0, -30.0, 4, 5.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(5.1, telemetry, horizon));
@@ -963,8 +954,7 @@ TEST(ClosedLoopLandingPlannerTest,
   TelemetrySnapshot telemetry;
   telemetry.position = {1.0, 2.0, 1.5};
   planner.start(telemetry);
-  planner.updateObservation(
-      LandingObservation{true, 80.0, 20.0, 3, 10.0, 0.0});
+  planner.updateObservation(LandingObservation{true, 80.0, 20.0, 3, 10.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(10.1, telemetry, horizon));
@@ -985,24 +975,21 @@ TEST(ClosedLoopLandingPlannerTest,
   TelemetrySnapshot telemetry;
   telemetry.position = {1.0, 2.0, 1.5};
   planner.start(telemetry);
-  planner.updateObservation(
-      LandingObservation{true, 80.0, 0.0, 1, 10.0, 0.0});
+  planner.updateObservation(LandingObservation{true, 80.0, 0.0, 1, 10.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(planner.prepare(10.1, telemetry, horizon));
   ASSERT_TRUE(planner.adjusting());
   EXPECT_DOUBLE_EQ(1.1, horizon.front().position.x);
 
-  planner.updateObservation(
-      LandingObservation{true, 0.0, 0.0, 5, 10.5, 0.0});
+  planner.updateObservation(LandingObservation{true, 0.0, 0.0, 5, 10.5, 0.0});
   telemetry.position = {1.08, 2.0, 1.5};
   ASSERT_TRUE(planner.prepare(11.2, telemetry, horizon));
   EXPECT_FALSE(planner.adjusting());
   EXPECT_FALSE(planner.descending());
   EXPECT_DOUBLE_EQ(1.1, horizon.front().position.x);
 
-  planner.updateObservation(
-      LandingObservation{true, 0.0, 0.0, 5, 11.25, 0.0});
+  planner.updateObservation(LandingObservation{true, 0.0, 0.0, 5, 11.25, 0.0});
   ASSERT_TRUE(planner.prepare(11.3, telemetry, horizon));
   EXPECT_TRUE(planner.descending());
   EXPECT_DOUBLE_EQ(1.08, horizon.front().position.x);

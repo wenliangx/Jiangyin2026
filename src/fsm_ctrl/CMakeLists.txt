@@ -40,8 +40,8 @@ endif()
 
 add_message_files(
   FILES
-  nmpc_params.msg
-  nmpc_state.msg
+  NmpcParams.msg
+  NmpcState.msg
 )
 
 generate_messages(
@@ -86,8 +86,8 @@ add_library(ctrl_math
   src/ctrl_math.cpp
 )
 
-add_library(nmpc_ctrl
-  src/NMPC_Controller.cpp
+add_library(nmpc_controller
+  src/nmpc_controller.cpp
 )
 
 add_executable(px4_estimator
@@ -117,7 +117,7 @@ add_dependencies(flight_fsm
 )
 target_link_libraries(flight_fsm
   boost_sml
-  nmpc_ctrl ctrl_math
+  nmpc_controller ctrl_math
   ${catkin_LIBRARIES}
   ${FSM_CTRL_YAML_CPP_TARGET}
   boost_system boost_filesystem

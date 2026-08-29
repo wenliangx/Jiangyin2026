@@ -1,280 +1,144 @@
-/**
- * @file    ctrl_math
- * @brief   math functions used for control
- * @author  FLAG Lab, BIT
- * @version 1.1 add thrust estimation
- * @date    2024-07-09
- * @note    Based on actual flight conditions, roll and pitch are within -PI/2 ~ PI/2. 
- *          Due to the range limit of atan2(), conversions to yaw only yield -PI ~ PI.
- *          If yaw is within -PI ~ PI, quaternion will have the limit of w > 0 with a singular point.
- */
+#include "fsm_ctrl/ctrl_math.hpp"
 
-#include <fsm_ctrl/ctrl_math.hpp>
+#include <cmath>
 
+namespace {
 
+constexpr double kGravity = 9.8015;
 
-/**
- * @brief  convert quaternion to euler angle
- * @param  _w, _x, _y, _z: quaternion
- * @return euler angle
- */
-Eigen::Vector3d QuatToEuler(double _w, double _x, double _y, double _z)
-{
-    Eigen::Vector3d euler;
+}  // namespace
 
-    double sinr = 2.0*(_w*_x + _y*_z);
-    double cosr = 1.0 - 2.0*(_x*_x + _y*_y);
-    euler[0] = std::atan2(sinr, cosr);
+Eigen::Vector3d quaternionToEuler(double w, double x, double y, double z) {
+  Eigen::Vector3d euler;
 
-    double sinp = 2.0*(_w*_y - _z*_x);
-    if(std::abs(sinp) >= 1) {euler[1] = std::copysign(M_PI/2, sinp);}
-    else                    {euler[1] = std::asin(sinp);}
+  const double sin_roll = 2.0 * (w * x + y * z);
+  const double cos_roll = 1.0 - 2.0 * (x * x + y * y);
+  euler[0] = std::atan2(sin_roll, cos_roll);
 
-    double siny = 2.0*(_w*_z + _x*_y);
-    double cosy = 1.0 - 2.0*(_y*_y + _z*_z);
-    euler[2] = std::atan2(siny, cosy);
-    
-    return euler;
+  const double sin_pitch = 2.0 * (w * y - z * x);
+  if (std::abs(sin_pitch) >= 1.0) {
+    euler[1] = std::copysign(M_PI / 2.0, sin_pitch);
+  } else {
+    euler[1] = std::asin(sin_pitch);
+  }
+
+  const double sin_yaw = 2.0 * (w * z + x * y);
+  const double cos_yaw = 1.0 - 2.0 * (y * y + z * z);
+  euler[2] = std::atan2(sin_yaw, cos_yaw);
+  return euler;
 }
 
-Eigen::Vector3d QuatToEuler(Eigen::Quaterniond _quat)
-{
-    Eigen::Vector3d euler = QuatToEuler(_quat.w(), _quat.x(), _quat.y(), _quat.z());
-    return euler;
+Eigen::Vector3d quaternionToEuler(const Eigen::Quaterniond& quaternion) {
+  return quaternionToEuler(quaternion.w(), quaternion.x(), quaternion.y(),
+                           quaternion.z());
 }
 
-
-/**
- * @brief  convert euler angle to quaternion 
- * @param  _roll, _pitch, _yaw: euler angle
- * @return quaternion
- */
-Eigen::Quaterniond EulerToQuat(double _roll, double _pitch, double _yaw)
-{
-    Eigen::Quaterniond quat;
-    double cr = std::cos(_roll*0.5);
-    double sr = std::sin(_roll*0.5);
-    double cp = std::cos(_pitch*0.5);
-    double sp = std::sin(_pitch*0.5);
-    double cy = std::cos(_yaw*0.5);
-    double sy = std::sin(_yaw*0.5);
-    quat.w() = cr*cp*cy + sr*sp*sy;
-    quat.x() = sr*cp*cy - cr*sp*sy;
-    quat.y() = cr*sp*cy + sr*cp*sy;
-    quat.z() = cr*cp*sy - sr*sp*cy;
-    return quat;
+Eigen::Quaterniond eulerToQuaternion(double roll, double pitch, double yaw) {
+  Eigen::Quaterniond quaternion;
+  const double cos_roll = std::cos(roll * 0.5);
+  const double sin_roll = std::sin(roll * 0.5);
+  const double cos_pitch = std::cos(pitch * 0.5);
+  const double sin_pitch = std::sin(pitch * 0.5);
+  const double cos_yaw = std::cos(yaw * 0.5);
+  const double sin_yaw = std::sin(yaw * 0.5);
+  quaternion.w() =
+      cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw;
+  quaternion.x() =
+      sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw;
+  quaternion.y() =
+      cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw;
+  quaternion.z() =
+      cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw;
+  return quaternion;
 }
 
-Eigen::Quaterniond EulerToQuat(Eigen::Vector3d _euler)
-{
-    Eigen::Quaterniond quat = EulerToQuat(_euler[0], _euler[1], _euler[2]);
-    return quat;
+Eigen::Quaterniond eulerToQuaternion(const Eigen::Vector3d& euler) {
+  return eulerToQuaternion(euler[0], euler[1], euler[2]);
 }
 
-
-/**
- * @brief  convert quaternion to rotation matrix
- * @param  _w, _x, _y, _z: quaternion
- * @return rotation matrix
- */
-Eigen::Matrix3d QuatToMat(double _w, double _x, double _y, double _z)
-{
-    Eigen::Matrix3d mat;
-    mat << _w*_w + _x*_x - _y*_y - _z*_z, 2*(_x*_y - _w*_z), 2*(_x*_z + _w*_y),
-           2*(_x*_y + _w*_z), _w*_w - _x*_x + _y*_y - _z*_z, 2*(_y*_z - _w*_x),
-           2*(_x*_z - _w*_y), 2*(_y*_z + _w*_x), _w*_w - _x*_x - _y*_y + _z*_z;
-    return mat;
+Eigen::Matrix3d quaternionToRotationMatrix(double w, double x, double y,
+                                           double z) {
+  Eigen::Matrix3d matrix;
+  matrix << w * w + x * x - y * y - z * z, 2.0 * (x * y - w * z),
+      2.0 * (x * z + w * y), 2.0 * (x * y + w * z),
+      w * w - x * x + y * y - z * z, 2.0 * (y * z - w * x),
+      2.0 * (x * z - w * y), 2.0 * (y * z + w * x),
+      w * w - x * x - y * y + z * z;
+  return matrix;
 }
 
-Eigen::Matrix3d QuatToMat(Eigen::Quaterniond _quat)
-{
-    Eigen::Matrix3d mat;
-    mat = QuatToMat(_quat.w(), _quat.x(), _quat.y(), _quat.z());
-    return mat;
+Eigen::Matrix3d quaternionToRotationMatrix(
+    const Eigen::Quaterniond& quaternion) {
+  return quaternionToRotationMatrix(quaternion.w(), quaternion.x(),
+                                    quaternion.y(), quaternion.z());
 }
 
-
-/**
- * @brief  convert euler angle to rotation matrix
- * @param  _roll, _pitch, _yaw: euler angle
- * @return rotation matrix
- */
-Eigen::Matrix3d EulerToMat(double _roll, double _pitch, double _yaw)
-{
-    Eigen::Matrix3d mat_r, mat_p, mat_y;
-    mat_r << 1.0,    0.0,         0.0,
-             0.0, cos(_roll), -sin(_roll),
-             0.0, sin(_roll),  cos(_roll);
-    mat_p << cos(_pitch), 0.0, sin(_pitch),
-                0.0,      1.0,    0.0,
-            -sin(_pitch), 0.0, cos(_pitch);
-    mat_y << cos(_yaw), -sin(_yaw), 0.0,
-             sin(_yaw),  cos(_yaw), 0.0,
-                0.0,        0.0,    1.0;
-    Eigen::Matrix3d mat = mat_y*mat_p*mat_r;
-    return mat;
+Eigen::Matrix3d eulerToRotationMatrix(double roll, double pitch, double yaw) {
+  Eigen::Matrix3d roll_matrix;
+  Eigen::Matrix3d pitch_matrix;
+  Eigen::Matrix3d yaw_matrix;
+  roll_matrix << 1.0, 0.0, 0.0, 0.0, std::cos(roll), -std::sin(roll), 0.0,
+      std::sin(roll), std::cos(roll);
+  pitch_matrix << std::cos(pitch), 0.0, std::sin(pitch), 0.0, 1.0, 0.0,
+      -std::sin(pitch), 0.0, std::cos(pitch);
+  yaw_matrix << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw),
+      std::cos(yaw), 0.0, 0.0, 0.0, 1.0;
+  return yaw_matrix * pitch_matrix * roll_matrix;
 }
 
-Eigen::Matrix3d EulerToMat(Eigen::Vector3d _euler)
-{
-    Eigen::Matrix3d mat = EulerToMat(_euler[0], _euler[1], _euler[2]);
-    return mat;
+Eigen::Matrix3d eulerToRotationMatrix(const Eigen::Vector3d& euler) {
+  return eulerToRotationMatrix(euler[0], euler[1], euler[2]);
 }
 
-
-/**
- * @brief  convert rotation matrix to euler angle
- * @param  _mat: rotation matrix
- * @return euler angle
- */
-Eigen::Vector3d MatToEuler(Eigen::Matrix3d _mat)
-{
-    Eigen::Vector3d euler;
-    euler[0] = atan2(_mat(2,1), _mat(2,2));
-    euler[1] = asin(-_mat(2,0));
-    euler[2] = atan2(_mat(1,0), _mat(0,0));
-    return euler;
+Eigen::Vector3d rotationMatrixToEuler(const Eigen::Matrix3d& matrix) {
+  Eigen::Vector3d euler;
+  euler[0] = std::atan2(matrix(2, 1), matrix(2, 2));
+  euler[1] = std::asin(-matrix(2, 0));
+  euler[2] = std::atan2(matrix(1, 0), matrix(0, 0));
+  return euler;
 }
 
-
-/**
- * @brief  convert rotation matrix to quaternion
- * @param  _mat: rotation matrix
- * @return quaternion
- */
-Eigen::Quaterniond MatToQuat(Eigen::Matrix3d _mat)
-{
-    Eigen::Quaterniond quat;
-    quat.w() = sqrt(1.0 + _mat(0,0) + _mat(1,1) + _mat(2,2))*0.5;
-    quat.x() = ( _mat(2,1) - _mat(1,2) )/(4*quat.w());
-    quat.y() = ( _mat(0,2) - _mat(2,0) )/(4*quat.w());
-    quat.z() = ( _mat(1,0) - _mat(0,1) )/(4*quat.w());
-    return quat;
+Eigen::Quaterniond rotationMatrixToQuaternion(const Eigen::Matrix3d& matrix) {
+  Eigen::Quaterniond quaternion;
+  quaternion.w() =
+      std::sqrt(1.0 + matrix(0, 0) + matrix(1, 1) + matrix(2, 2)) * 0.5;
+  quaternion.x() = (matrix(2, 1) - matrix(1, 2)) / (4.0 * quaternion.w());
+  quaternion.y() = (matrix(0, 2) - matrix(2, 0)) / (4.0 * quaternion.w());
+  quaternion.z() = (matrix(1, 0) - matrix(0, 1)) / (4.0 * quaternion.w());
+  return quaternion;
 }
 
-
-/**
- * @brief  clamp with single limit 
- * @param  _data: raw value
- * @param  _max: limit
- * @return clamped value
- */
-double Clamp_Single(double _data, double _max)
-{
-    double data = Clamp_Double(_data, -_max, _max);
-    return data;
+void ThrustEstimator::configure(int control_rate, double hover_thrust) {
+  control_period_ = 1.0 / control_rate;
+  thrust_to_acceleration_ = kGravity / hover_thrust;
 }
 
+double ThrustEstimator::estimateThrust(double acceleration) {
+  const ros::Time now = ros::Time::now();
+  if (thrust_history_.empty()) {
+    const double thrust = acceleration / thrust_to_acceleration_;
+    thrust_history_.push({now, thrust});
+    ROS_WARN("No data for thrust estimation! Slope unchanged!");
+    return thrust;
+  }
 
-/**
- * @brief  clamp with double limit 
- * @param  _data: raw value
- * @param  _min, _max: lower & upper limit
- * @return clamped value
- */
-double Clamp_Double(double _data, double _min, double _max)
-{
-    if(_data < _min) {return _min;}
-    if(_data > _max) {return _max;}
-    return _data;
-}
+  const std::pair<ros::Time, double> time_thrust = thrust_history_.front();
+  const double elapsed = (now - time_thrust.first).toSec();
+  if (elapsed > 1.5 * control_period_) {
+    ROS_WARN("Control frequency lower than ROS rate!");
+  }
 
+  double thrust = time_thrust.second;
+  thrust_history_.pop();
 
-/**
- * @brief  sign function
- * @param  _data: raw value
- * @return sign of the value
- */
-double Sign(double _data)
-{
-    if(_data > 0.0) {return 1.0;}
-    if(_data < 0.0) {return -1.0;}
-    return 0.0;
-}
+  const double gamma =
+      1.0 / (forgetting_factor_ + thrust * covariance_ * thrust);
+  const double gain = gamma * covariance_ * thrust;
+  thrust_to_acceleration_ +=
+      gain * (acceleration - thrust * thrust_to_acceleration_);
+  covariance_ = (1.0 - gain * thrust) * covariance_ / forgetting_factor_;
+  thrust = acceleration / thrust_to_acceleration_;
 
-
-/**
- * @brief  thrust estimator setup 
- * @param  _ctrl_interv: control interval
- * @param  _hover_thrust: hover thrust
- * @return NULL
- */
-void ThrEst::Set_Estor(int _ctrl_rate, double _hover_thr)
-{
-    ctrl_dt = 1.0/_ctrl_rate;
-    hover_thr = _hover_thr;
-    thr_to_acc = GRAVITY/_hover_thr;
-}
-
-
-/**
- * @brief  recursive least squares thrust estimation with forgetting factor
- * @param  _acc: acceleration
- * @return thrust
- */
-double ThrEst::LSE(double _acc)
-{
-    ros::Time now = ros::Time::now();
-    if(thr_stamped.size() == 0)
-    {
-        thr_stamped.push(std::pair<ros::Time, double>(now, _acc/thr_to_acc));
-        ROS_WARN("No data for thrust estimation! Slope unchanged!");
-        return _acc/thr_to_acc;
-    }
-    else
-    {
-        std::pair<ros::Time, double> time_thr_pair = thr_stamped.front();
-        double time_pass = (now - time_thr_pair.first).toSec();
-        // std::cout << "time_pass: " << time_pass << std::endl;
-        if(time_pass > 1.5*ctrl_dt) {ROS_WARN("Control frequency lower than ROS rate!");}
-        
-        /* successful estimation */
-        double thr = time_thr_pair.second;
-        thr_stamped.pop();
-
-        /* model: acc = thrust_to_acc * thrust */
-        double gamma = 1.0/(rho + thr*p_est*thr);
-        double k_est = gamma*p_est*thr;
-        thr_to_acc = thr_to_acc + k_est*(_acc - thr*thr_to_acc);
-        p_est = (1.0 - k_est*thr)*p_est/rho;
-        thr = _acc/thr_to_acc;
-
-        thr_stamped.push(std::pair<ros::Time, double>(now, thr));
-        return thr;
-    }
-}
-
-/**
- * @brief  command to only arm
- * @param  NULL
- * @return mavros_msgs::AttitudeTarget command
- */
-mavros_msgs::AttitudeTarget ArmCmd()
-{
-    mavros_msgs::AttitudeTarget cmd;
-	cmd.header.frame_id = "FCU";
-	cmd.type_mask = mavros_msgs::AttitudeTarget::IGNORE_ROLL_RATE |
-					mavros_msgs::AttitudeTarget::IGNORE_PITCH_RATE |
-					mavros_msgs::AttitudeTarget::IGNORE_YAW_RATE;
-	cmd.orientation.w = 1.0;
-    cmd.orientation.x = 0.0;
-	cmd.orientation.y = 0.0;
-	cmd.orientation.z = 0.0;
-	cmd.thrust = 0.05;
-    return cmd;
-}
-
-
-/**
- * @brief  approach yaw reference smoothly
- * @param  _yaw: current yaw command
- * @param  _yaw_ref: yaw reference
- * @return updated yaw command
- */
-double YawSmooth(double &_yaw, double _yaw_ref)
-{
-    if(_yaw_ref - _yaw > M_PI/200) {_yaw += M_PI/200;}
-    else if(_yaw_ref - _yaw < -M_PI/200) {_yaw -= M_PI/200;}
-    else {_yaw = _yaw_ref;}
-    return _yaw;
+  thrust_history_.push({now, thrust});
+  return thrust;
 }

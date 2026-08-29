@@ -1,65 +1,40 @@
-#ifndef _CTRL_MATH_HPP_
-#define _CTRL_MATH_HPP_
+#ifndef FSM_CTRL_CTRL_MATH_HPP_
+#define FSM_CTRL_CTRL_MATH_HPP_
 
-#include <iostream>
-#include <cmath>
-#include <vector>
-#include <queue>
 #include <ros/ros.h>
+
 #include <eigen3/Eigen/Eigen>
-#include <mavros_msgs/AttitudeTarget.h>
+#include <queue>
+#include <utility>
 
-#define GRAVITY 9.8015
+class ThrustEstimator {
+ public:
+  void configure(int control_rate, double hover_thrust);
+  double estimateThrust(double acceleration);
 
-
-
-class CtrlPt
-{
-    public:
-        Eigen::Vector3d pos, vel, acc;
-        Eigen::Quaterniond quat;
-        Eigen::Vector3d euler;
-        Eigen::Vector3d rate;
-        double thrust;
+ private:
+  double covariance_{1e6};
+  const double forgetting_factor_{0.998};
+  double control_period_{0.0};
+  double thrust_to_acceleration_{0.0};
+  std::queue<std::pair<ros::Time, double>> thrust_history_;
 };
 
+Eigen::Vector3d quaternionToEuler(double w, double x, double y, double z);
+Eigen::Vector3d quaternionToEuler(const Eigen::Quaterniond& quaternion);
 
-class ThrEst
-{
-    public:
-        double p_est = 1e6;
-        double rho = 0.998;         // forgetting factor, Do Not Change!!!
-        double ctrl_dt;
-        double hover_thr;
-        double thr_to_acc;
-        std::queue<std::pair<ros::Time, double>> thr_stamped;
-        
-        void Set_Estor(int _ctrl_rate, double _hover_thr);
-        double LSE(double _acc);
-};
+Eigen::Quaterniond eulerToQuaternion(double roll, double pitch, double yaw);
+Eigen::Quaterniond eulerToQuaternion(const Eigen::Vector3d& euler);
 
-Eigen::Vector3d QuatToEuler(double _w, double _x, double _y, double _z);
-Eigen::Vector3d QuatToEuler(Eigen::Quaterniond _quat);
+Eigen::Matrix3d quaternionToRotationMatrix(double w, double x, double y,
+                                           double z);
+Eigen::Matrix3d quaternionToRotationMatrix(
+    const Eigen::Quaterniond& quaternion);
 
-Eigen::Quaterniond EulerToQuat(double _roll, double _pitch, double _yaw);
-Eigen::Quaterniond EulerToQuat(Eigen::Vector3d _euler);
+Eigen::Matrix3d eulerToRotationMatrix(double roll, double pitch, double yaw);
+Eigen::Matrix3d eulerToRotationMatrix(const Eigen::Vector3d& euler);
 
-Eigen::Matrix3d QuatToMat(double _w, double _x, double _y, double _z);
-Eigen::Matrix3d QuatToMat(Eigen::Quaterniond _quat);
+Eigen::Vector3d rotationMatrixToEuler(const Eigen::Matrix3d& matrix);
+Eigen::Quaterniond rotationMatrixToQuaternion(const Eigen::Matrix3d& matrix);
 
-Eigen::Matrix3d EulerToMat(double _roll, double _pitch, double _yaw);
-Eigen::Matrix3d EulerToMat(Eigen::Vector3d _euler);
-
-Eigen::Vector3d MatToEuler(Eigen::Matrix3d _mat);
-Eigen::Quaterniond MatToQuat(Eigen::Matrix3d _mat);
-
-double Clamp_Single(double data, double max);
-double Clamp_Double(double data, double min, double max);
-double Sign(double _data);
-
-mavros_msgs::AttitudeTarget ArmCmd();
-double YawSmooth(double &_yaw, double _yaw_ref);
-
-
-
-#endif
+#endif  // FSM_CTRL_CTRL_MATH_HPP_
