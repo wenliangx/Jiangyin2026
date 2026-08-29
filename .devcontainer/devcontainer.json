@@ -1,6 +1,6 @@
 {
   "name": "Jiangyin 2026",
-  "dockerComposeFile": "../docker-compose.yml",
+  "dockerComposeFile": "docker-compose.yml",
   "service": "jy-dev",
   "workspaceFolder": "/ws",
   "overrideCommand": true,

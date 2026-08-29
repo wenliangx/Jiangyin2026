@@ -1,0 +1,24 @@
+version: "3"
+
+# Dev Containers must not load the root Compose stack: podman-compose starts
+# every merged service, including simulation/production images that are not
+# required for editing or building this workspace.
+services:
+  jy-dev:
+    image: localhost/jiangyin_jy-dev:latest
+    environment:
+      ROS_MASTER_URI: http://localhost:11311
+      ROS_IP: jy-dev
+      DISPLAY: ${DISPLAY:-:11.0}
+      QT_QPA_PLATFORM: xcb
+      QT_X11_NO_MITSHM: "1"
+      XAUTHORITY: /root/.Xauthority
+      GZ_MOCAP_ENABLED: "1"
+      GZ_MOCAP_MODEL: iris_mid360
+      GZ_MOCAP_ZERO_ORIGIN: "true"
+    volumes:
+      - ..:/ws:Z
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/root/.Xauthority:ro
+    command: tail -f /dev/null
+    restart: "no"
