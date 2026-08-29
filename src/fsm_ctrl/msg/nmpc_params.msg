@@ -1,4 +1,4 @@
-# NMPC 实际生效参数的只读镜像，由 single_offboard_fsm 启动时发布，
+# NMPC 实际生效参数的只读镜像，由 flight_fsm 启动时发布，
 # 仅用于录包/回放观察，不参与任何控制回路。
 float64 q_pos_x
 float64 q_pos_y

@@ -110,4 +110,4 @@ done
 
 log_info "=== All tests complete ==="
 log_info "Review height data and choose the best hover_thrust value."
-log_info "Update nmpc_hover_tune.yaml or single.launch with the chosen value."
+log_info "Update nmpc_hover_tune.yaml or flight_fsm.launch with the chosen value."

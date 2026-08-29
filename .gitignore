@@ -21,5 +21,9 @@ __pycache__/
 !src/uav_vision/templates/
 !src/uav_vision/templates/*.png
 *.ipynb
-/docs/superpowers
+AGENTS.md
+.omo/
+.opencode/
+.superpowers/
+/docs/superpowers/
 src/fsm_ctrl/config/validated/

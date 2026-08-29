@@ -19,11 +19,11 @@ echo "Ignored Catkin packages:"
 find src -name CATKIN_IGNORE -print | sort
 
 echo
-echo "Legacy control references:"
-rg -n 'single_offboard_fsm|swarm_user_cmd|single\.launch|swarm\.launch' \
-  --glob '!src/fsm_ctrl/src/single_offboard_fsm.cpp' \
-  --glob '!src/fsm_ctrl/include/fsm_ctrl/single_offboard_fsm.hpp' \
-  --glob '!src/fsm_ctrl/src/swarm_user_cmd.cpp' \
-  --glob '!src/fsm_ctrl/include/fsm_ctrl/swarm_user_cmd.hpp' \
-  --glob '!docs/repository_cleanup.md' \
-  . || true
+echo "Removed legacy control references:"
+legacy_node='single_offboard_'fsm
+legacy_launch='single.'launch
+rg -n "${legacy_node}|${legacy_launch}" . || true
+
+echo
+echo "Tracked assistant artifacts:"
+git ls-files | rg '(^|/)(AGENTS\.md|\.omo/|\.opencode/|\.superpowers/|docs/superpowers/)' || true

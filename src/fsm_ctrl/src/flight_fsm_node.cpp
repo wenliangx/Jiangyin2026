@@ -68,7 +68,7 @@ std::string shellQuote(const std::string& value) {
   return quoted;
 }
 
-// 主循环频率，与原 single_offboard_fsm 的 50Hz 控制节奏保持一致。
+// 主循环频率：50Hz。
 constexpr double kRateHz = 50.0;
 // 单个控制周期时长，传给 NMPC 控制器。
 constexpr double kInterval = 1.0 / kRateHz;

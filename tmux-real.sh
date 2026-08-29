@@ -64,7 +64,7 @@ tmux send-keys "roslaunch plane_Det det.launch" C-m
 tmux select-pane -t flag:egov2.5
 tmux send-keys "sleep 2s" C-m 
 tmux send-keys "source devel/setup.bash" C-m  
-tmux send-keys "roslaunch --wait fsm_ctrl single.launch" C-m 
+tmux send-keys "roslaunch --wait fsm_ctrl flight_fsm.launch" C-m
 
 # running egoV2-planner
 tmux select-pane -t flag:egov2.6

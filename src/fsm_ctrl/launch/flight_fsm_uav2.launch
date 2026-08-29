@@ -4,6 +4,7 @@
 
     <arg name="start_mavros" default="true"/>
     <arg name="fcu_url" default="/dev/ttyACM0:921600"/>
+    <arg name="nmpc_hover_thrust" default="0.550"/>
 
     <include if="$(arg start_mavros)" file="$(find mavros)/launch/px4.launch">
        
@@ -75,7 +76,7 @@
         <param name = "nmpc_mR_pitch" type = "double" value = "0.1" />
         <param name = "nmpc_mR_yaw" type = "double"   value = "0.1" />
 
-        <param name = "nmpc_hover_thrust" type = "double"  value = "0.550" />
+        <param name = "nmpc_hover_thrust" type = "double" value = "$(arg nmpc_hover_thrust)" />
 
         <!-- MissionMachine/Super waypoint upload. Generate this file with:
              rosrun fsm_ctrl record_super_waypoints.py _output_file:=/path/to/mission.yaml -->

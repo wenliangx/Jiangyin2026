@@ -96,7 +96,7 @@ start_stack() {
     "roslaunch fsm_ctrl px4_estimator.launch" 3
 
   launch_service "fsm_nmpc" \
-    "roslaunch fsm_ctrl single.launch start_mavros:=false use_external_odom:=true" 8
+    "roslaunch fsm_ctrl flight_fsm.launch start_mavros:=false" 8
 
   log_info "Stack started. Logs are in ${LOG_DIR}."
 }
@@ -110,7 +110,6 @@ stop_stack() {
     /gazebo_pose_to_vrpn \
     /laserMapping \
     /px4_estimator \
-    /single_offboard_fsm \
     /flight_fsm; do
     rosnode kill "${node}" >/dev/null 2>&1 || true
   done

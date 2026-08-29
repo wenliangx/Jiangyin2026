@@ -106,16 +106,6 @@ add_library(traj_gen
   src/traj_gen.cpp
 )
 
-add_executable(single_offboard_fsm
-  src/single_offboard_fsm.cpp
-)
-target_link_libraries(single_offboard_fsm
-  ctrl_math dfbc att_nmpc nmpc_ctrl FLAG_NMPC traj_gen ${catkin_LIBRARIES} boost_system boost_filesystem
-)
-target_link_libraries(single_offboard_fsm 
-  /usr/local/lib/libcasadi.so.3.7
-) 
-
 add_executable(px4_estimator
   src/px4_estimator.cpp
 )

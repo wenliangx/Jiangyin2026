@@ -34,7 +34,7 @@ tmux send-keys "roslaunch --wait fsm_ctrl swarm.launch" C-m
 tmux select-pane -t flag:egov2.2
 tmux send-keys "sleep 1s" C-m 
 tmux send-keys "source devel/setup.bash" C-m 
-tmux send-keys "roslaunch --wait fsm_ctrl single.launch" C-m 
+tmux send-keys "roslaunch --wait fsm_ctrl flight_fsm.launch" C-m
 
 
 # running egoV2-planner node
@@ -49,4 +49,4 @@ tmux send-keys "source devel/setup.bash" C-m
 #tmux send-keys "rosbag record /mavros/local_position/pose /drone_0_planning/pos_cmd /ego_planner/flag_msg"
 
 
-tmux attach-session -t flag 
+tmux attach-session -t flag

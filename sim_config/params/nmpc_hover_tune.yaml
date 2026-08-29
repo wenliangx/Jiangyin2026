@@ -2,10 +2,11 @@
 # NMPC 悬停推力调试参数
 # =============================================================================
 # 使用方法:
-#   roslaunch fsm_ctrl single.launch    # 默认 nmpc_hover_thrust=0.400
-#   或:
-#   rosparam load sim_config/params/nmpc_hover_tune.yaml
-#   rosrun fsm_ctrl single_offboard_fsm
+#   roslaunch fsm_ctrl flight_fsm.launch nmpc_hover_thrust:=0.400
+#
+# 如需批量调参，可将本文件加载到节点私有命名空间:
+#   rosparam load sim_config/params/nmpc_hover_tune.yaml /flight_fsm
+#   roslaunch fsm_ctrl flight_fsm.launch
 #
 # 调整策略:
 #   1. 无人机起飞后悬停，观察高度保持情况

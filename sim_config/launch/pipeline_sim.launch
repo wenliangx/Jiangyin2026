@@ -14,7 +14,6 @@
       hover_thrust:   NMPC 悬停推力 (默认 0.400)
       use_mocap:      是否使用 Gazebo 真值 (代替 RA-LIO, 默认 false)
       use_ra_lio:     是否启动 RA-LIO (默认 true)
-      params_file:    参数 YAML 文件路径
   =============================================================================
 -->
 
@@ -23,8 +22,6 @@
     <arg name="hover_thrust"   default="0.400" />
     <arg name="use_mocap"      default="false" />
     <arg name="use_ra_lio"     default="true"  />
-    <arg name="use_traj_gen"   default="true"  />
-    <arg name="params_file" default="$(env PWD)/sim_config/params/nmpc_hover_tune.yaml" />
 
     <!-- ==================== Step 1: mid360_bridge ==================== -->
     <node pkg="mid360_gazebo" type="mid360_bridge.py" name="mid360_bridge"
@@ -57,11 +54,9 @@
     <include file="$(find fsm_ctrl)/launch/px4_estimator.launch" />
 
     <!-- ==================== Step 6: FSM + NMPC ==================== -->
-    <node pkg="fsm_ctrl" type="single_offboard_fsm" name="single_offboard_fsm"
-          output="screen">
-        <rosparam command="load" file="$(arg params_file)" />
-        <param name="nmpc_hover_thrust" value="$(arg hover_thrust)" />
-        <param name="use_traj_gen" value="$(arg use_traj_gen)" />
-    </node>
+    <include file="$(find fsm_ctrl)/launch/flight_fsm.launch">
+        <arg name="start_mavros" value="false" />
+        <arg name="nmpc_hover_thrust" value="$(arg hover_thrust)" />
+    </include>
 
 </launch>

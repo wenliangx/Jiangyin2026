@@ -180,7 +180,7 @@ class PoseMonitor:
                 "FSM输出", "--", "--", "--", "--")))
 
         # 悬停参考线
-        hover_ref = rospy.get_param("/single_offboard_fsm/nmpc_hover_thrust", 0.385) * 100
+        hover_ref = rospy.get_param("/flight_fsm/nmpc_hover_thrust", 0.385) * 100
         lines.append(self._cln("  " + "-" * 64))
         lines.append(self._cln("  悬停参考推力: {:.1f}%   (高于此值=上升, 低于=下降)".format(hover_ref)))
 

@@ -180,7 +180,7 @@ launch_service "px4_estimator" \
   "roslaunch fsm_ctrl px4_estimator.launch" 3
 
 launch_service "FSM+NMPC" \
-  "roslaunch fsm_ctrl single.launch start_mavros:=false use_external_odom:=true" 8
+  "roslaunch fsm_ctrl flight_fsm.launch start_mavros:=false" 8
 
 log_info "Pipeline ready: mid360_bridge -> RA-LIO -> px4_estimator -> FSM+NMPC -> PX4 EKF2"
 
