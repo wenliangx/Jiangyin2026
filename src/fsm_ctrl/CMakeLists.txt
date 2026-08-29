@@ -86,24 +86,8 @@ add_library(ctrl_math
   src/ctrl_math.cpp
 )
 
-add_library(dfbc
-  src/dfbc.cpp
-)
-
-add_library(att_nmpc
-  src/att_nmpc.cpp
-)
-
 add_library(nmpc_ctrl
   src/NMPC_Controller.cpp
-)
-
-add_library(FLAG_NMPC
-  src/NMPC_test.cpp
-)
-
-add_library(traj_gen
-  src/traj_gen.cpp
 )
 
 add_executable(px4_estimator
@@ -133,7 +117,7 @@ add_dependencies(flight_fsm
 )
 target_link_libraries(flight_fsm
   boost_sml
-  dfbc att_nmpc FLAG_NMPC traj_gen nmpc_ctrl ctrl_math
+  nmpc_ctrl ctrl_math
   ${catkin_LIBRARIES}
   ${FSM_CTRL_YAML_CPP_TARGET}
   boost_system boost_filesystem

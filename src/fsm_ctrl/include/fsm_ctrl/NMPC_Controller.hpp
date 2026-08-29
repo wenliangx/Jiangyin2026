@@ -8,10 +8,6 @@
 #include <eigen3/Eigen/Dense>
 #include <fsm_ctrl/ctrl_math.hpp>
 
-#define G 9.8015
-#define GRAVITY 9.8015
-#define COSDEGREE 0.7071067811865475
-
 class NMPC_Ctrller_simple
 {
     private:
@@ -93,12 +89,6 @@ class NMPC_Ctrller_simple
         void setNLPCostRacc_z(double _NLP_costR_acc_z) {NLP_costR_acc_z = _NLP_costR_acc_z;}  // 
         
         void optimal_solution(std::vector<double> _current_states, std::vector<double> _desired_params);
-};
-
-class NMPC
-{
-    public:
-        void Set_Solver();
 };
 
 #endif

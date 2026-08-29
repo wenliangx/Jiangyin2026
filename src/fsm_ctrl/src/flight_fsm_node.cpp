@@ -1,19 +1,10 @@
 #include <fsm_ctrl/flight_fsm.hpp>
 #include <fsm_ctrl/NMPC_Controller.hpp>
-#include <fsm_ctrl/NMPC_test.hpp>
 #include <fsm_ctrl/ctrl_math.hpp>
 #include <fsm_ctrl/nmpc_params.h>
 #include <fsm_ctrl/nmpc_state.h>
 #include <iostream>
 #include <ostream>
-
-// 旧版 NMPC 头文件会导出通用重力宏；这里清掉，避免污染 Boost.SML 和适配层头文件。
-#ifdef G
-#undef G
-#endif
-#ifdef GRAVITY
-#undef GRAVITY
-#endif
 
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
@@ -364,7 +355,7 @@ class RosSetpointPort final : public flight::SetpointPort {
   ros::Publisher nmpc_state_pub_;   // NMPC 完整监视消息输出。
 };
 
-// NmpcPort 的 ROS adapter 实现，封装 simple NMPC 和旧 younger_ctrl NMPC。
+// NmpcPort 的 ROS adapter 实现，封装当前唯一的 NMPC 控制器。
 class RosNmpcPort final : public flight::NmpcPort {
  public:
   explicit RosNmpcPort(ros::NodeHandle& private_node) {
@@ -450,7 +441,7 @@ class RosNmpcPort final : public flight::NmpcPort {
   }
 
  private:
-  // simple NMPC 共用求解路径：把遥测和参考 horizon 展平成旧控制器输入。
+  // 把遥测和参考 horizon 展平为控制器输入。
   bool solve(const flight::TelemetrySnapshot& telemetry,
              const std::vector<flight::ReferencePoint>& horizon,
              flight::BodyRateThrust& command) {

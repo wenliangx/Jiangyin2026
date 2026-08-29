@@ -34,7 +34,7 @@ bag = rosbag.Bag(BAG_PATH)
 
 # /mavros/local_position/odom — EKF融合里程计 (位置+姿态+速度)
 # /mavros/local_position/pose — EKF融合位姿 (位置+姿态)
-# /mavros/setpoint_position/local — 位置设定点 (DFBC/降落用)
+# /mavros/setpoint_position/local — 位置设定点
 # /Odometry — 自定义里程计
 
 data = {

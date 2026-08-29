@@ -20,7 +20,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 CONFIG_DIR="${WORKSPACE_DIR}/sim_config"
-PARAMS_DIR="${CONFIG_DIR}/params"
 LAUNCH_DIR="${CONFIG_DIR}/launch"
 
 HOVER_THRUST=0.400
@@ -142,8 +141,7 @@ launch "fsm_nmpc" \
     "roslaunch ${LAUNCH_DIR}/pipeline_sim.launch \
         hover_thrust:=${HOVER_THRUST} \
         use_mocap:=${USE_MOCAP} \
-        use_ra_lio:=${USE_RA_LIO} \
-        params_file:=${PARAMS_DIR}/nmpc_hover_tune.yaml" 5
+        use_ra_lio:=${USE_RA_LIO}" 5
 
 log_info ""
 log_info "=== Pipeline ready ==="

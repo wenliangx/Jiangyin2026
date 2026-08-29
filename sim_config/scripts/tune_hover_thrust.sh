@@ -18,7 +18,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-PARAMS_DIR="${WORKSPACE_DIR}/sim_config/params"
 
 log_info()  { printf '[tune] %s\n' "$*"; }
 log_error() { printf '[tune ERROR] %s\n' "$*" >&2; }
@@ -55,15 +54,7 @@ for thrust in "${THRUST_VALUES[@]}"; do
     log_info "Testing hover_thrust = ${thrust}"
     log_info "========================================"
 
-    # 1. 更新参数文件中的 hover_thrust
-    PARAM_FILE="${PARAMS_DIR}/nmpc_hover_tune.yaml"
-    if [[ -f "${PARAM_FILE}" ]]; then
-        # 替换 YAML 中的 hover_thrust 值
-        sed -i "s/^nmpc_hover_thrust:.*/nmpc_hover_thrust: ${thrust}/" "${PARAM_FILE}"
-        log_info "Updated ${PARAM_FILE} → nmpc_hover_thrust: ${thrust}"
-    fi
-
-    # 2. 启动 pipeline
+    # 1. 启动 pipeline；悬停推力通过 launch 参数直接传入。
     log_info "Starting pipeline with hover_thrust=${thrust}..."
     "${WORKSPACE_DIR}/sim_config/scripts/start_sim_pipeline.sh" \
         --hover "${thrust}" &
@@ -71,7 +62,7 @@ for thrust in "${THRUST_VALUES[@]}"; do
     PIPELINE_PID=$!
     sleep 15  # 等待 pipeline 就绪 + RA-LIO 初始化
 
-    # 3. 发送起飞命令 (cmd=3)
+    # 2. 发送起飞命令 (cmd=3)
     log_info "Sending takeoff (cmd=3)..."
     python3 -c "
 import socket, time
@@ -80,7 +71,7 @@ s.sendto(b'3,0.000,0.000,0.000', ('127.0.0.1', 12001))
 print('Takeoff sent')
 "
 
-    # 4. 悬停 15 秒并记录信息
+    # 3. 悬停 15 秒并记录信息
     log_info "Hovering for 15s..."
     for i in $(seq 1 15); do
         sleep 1
@@ -89,7 +80,7 @@ print('Takeoff sent')
         # log_info "  t=${i}s height=${height}"
     done
 
-    # 5. 发送降落命令 (cmd=4)
+    # 4. 发送降落命令 (cmd=4)
     log_info "Sending land (cmd=4)..."
     python3 -c "
 import socket
@@ -100,7 +91,7 @@ print('Land sent')
 
     sleep 5  # 等待降落完成
 
-    # 6. 停止 pipeline
+    # 5. 停止 pipeline
     kill "${PIPELINE_PID}" 2>/dev/null || true
     sleep 3
 
@@ -110,4 +101,4 @@ done
 
 log_info "=== All tests complete ==="
 log_info "Review height data and choose the best hover_thrust value."
-log_info "Update nmpc_hover_tune.yaml or flight_fsm.launch with the chosen value."
+log_info "Update the nmpc_hover_thrust default in flight_fsm.launch with the chosen value."
