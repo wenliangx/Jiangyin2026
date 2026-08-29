@@ -9,6 +9,7 @@ devel
 .container
 .catkin_workspace
 sim_logs
+/logs/
 vrpn
 *.bag
 compile_commands.json

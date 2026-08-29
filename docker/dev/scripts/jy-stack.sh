@@ -110,7 +110,8 @@ stop_stack() {
     /gazebo_pose_to_vrpn \
     /laserMapping \
     /px4_estimator \
-    /single_offboard_fsm; do
+    /single_offboard_fsm \
+    /flight_fsm; do
     rosnode kill "${node}" >/dev/null 2>&1 || true
   done
 

@@ -28,7 +28,7 @@ layout {
                 args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash;  sleep 3; exec roslaunch --wait ra_lio mapping_mid360.launch rviz:=false"
             }
             pane name="PX4 融合" command="bash" {
-                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 2; roslaunch fsm_ctrl single_sml.launch"
+                args "-lc" "source /opt/ros/noetic/setup.bash; source /home/flag/Jiangyin2026/devel/setup.bash; sleep 2; roslaunch fsm_ctrl flight_fsm.launch"
             }
         }
     }

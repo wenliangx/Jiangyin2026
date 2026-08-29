@@ -43,14 +43,14 @@ Jiangyin2026 — autonomous UAV competition code. ROS Noetic (Catkin) monorepo w
 
 | Task | Location | Notes |
 |------|----------|-------|
-| FSM + NMPC controller | `src/fsm_ctrl/` | single_offboard_sml.cpp (959L), single_offboard_fsm.cpp (2829L), px4_estimator.cpp (224L) |
+| FSM + NMPC controller | `src/fsm_ctrl/` | flight_fsm_node.cpp, single_offboard_fsm.cpp, px4_estimator.cpp |
 | Local trajectory planning | `src/ego-planner-v2/planner/` | ego_planner_node, path_searching, traj_opt (MINCO) |
 | Mission planning (SUPER) | `src/SUPER/super_planner/` | CIRI corridors, A*, trajectory opt |
 | LiDAR-inertial odometry | `src/RA-LIO/` | ralio_mapping node, FAST-LIO2-style IEKF |
 | Landing vision | `src/uav_vision/` | AprilTag landing + target template matching (C++/Python) |
 | Vision message defs | `src/uav_vision_msgs/` | LandingOffset, TargetMatch, TargetMatchArray |
 | Simulation (PX4 SITL) | `docker/sim/` | start_px4_mid360.sh, Dockerfile |
-| Unit tests | `src/fsm_ctrl/test/` | GTest (36 TEST_F), rostest smoke test |
+| Unit tests | `src/fsm_ctrl/test/` | 40 GTests (2 framework + 38 flight), rostest smoke test |
 | Vision tests | `src/uav_vision/test/` | GTest (test_landing_core) + 5 Python tests |
 | ROS msg definitions | `src/*/msg/` | 17+ custom .msg packages |
 | PX4 plugins | `src/libs/px4_plugs/` | px4_link_monitor, px4_log_manager, px4_param_migrator (Python) |
@@ -65,7 +65,7 @@ Core binaries (ROS nodes) — C++:
 | Binary | Package | Source | Role |
 |--------|---------|--------|------|
 | `single_offboard_fsm` | fsm_ctrl | `src/single_offboard_fsm.cpp` (2829L) | Legacy FSM + NMPC controller |
-| `single_offboard_sml` | fsm_ctrl | `src/single_offboard_sml.cpp` (959L) | Boost.SML FSM with precision landing handoff |
+| `flight_fsm` | fsm_ctrl | `src/flight_fsm_node.cpp` | Boost.SML FSM with precision landing handoff |
 | `px4_estimator` | fsm_ctrl | `src/px4_estimator.cpp` (224L) | Odometry fusion for PX4 EKF2 |
 | `ralio_mapping` | RA-LIO | `src/laserMapping.cpp` (~1000L) | LiDAR-inertial SLAM (FAST-LIO2) |
 | `ego_planner_node` | ego-planner | `plan_manage/src/ego_planner_node.cpp` | Local trajectory planner (EGOReplanFSM) |
@@ -93,7 +93,7 @@ Python ROS nodes:
 - **Nulls**: `NULL` preferred over `nullptr` (clang-tidy `NullMacros`)
 - **Optimization**: Aggressive `-O3` with fast-math, loop unrolling in apriltag_ros and SUPER
 - **Package-level AGENTS.md**: Deep-dive docs for `src/`, `src/fsm_ctrl/`, `src/ego-planner-v2/`, `src/SUPER/`, `src/RA-LIO/`.
-- **Testing**: GTest (36 TEST_F in fsm_ctrl) + rostest smoke test + uav_vision (1 CTest + 5 Python tests). Hand-rolled fake classes.
+- **Testing**: 40 GTests in fsm_ctrl + rostest smoke test + uav_vision (1 CTest + 5 Python tests). Hand-rolled fake classes.
 - **ROS package naming**: `*_msgs` suffix for message packages, `<package format="2">` schema
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -110,7 +110,7 @@ Python ROS nodes:
 - **17 CATKIN_IGNORE** packages: ego-planner sim/Utils (12), apriltag_ros, apriltag_echo_message, plane_Det, RA-LIO/build
 - 15+ package.xml files have `<license>TODO</license>` — legal/audit risk
 - RA-LIO build is standalone — no automatic dependency resolution
-- **SML → legacy mismatch**: single_offboard_sml no longer subscribes to `/ego_planner/flag_state`, `/target_pose`, or `/tf_output`. Replaced with `uav_vision_msgs/LandingOffset`. Legacy callbacks removed.
+- **SML → legacy mismatch**: flight_fsm no longer subscribes to `/ego_planner/flag_state`, `/target_pose`, or `/tf_output`. Replaced with `uav_vision_msgs/LandingOffset`. Legacy callbacks removed.
 
 ## COMMANDS
 
@@ -131,8 +131,8 @@ docker build -t jiangyin_px4_mid360:latest -f docker/sim/Dockerfile docker/sim/
 docker build -t jiangyin_jy2026:latest -f docker/Dockerfile.prod .
 
 # Tests
-catkin_make run_tests single_offboard_sml_test       # FSM unit tests (36 GTest)
-rostest fsm_ctrl single_offboard_sml_smoke.test      # ROS integration test
+catkin_make run_tests flight_fsm_test       # FSM unit tests (36 GTest)
+rostest fsm_ctrl flight_fsm_smoke.test      # ROS integration test
 
 # Stack / analysis
 jy-start-stack                                       # Start all algorithm nodes
@@ -144,6 +144,6 @@ python3 analyze_bag.py /path/to/robot.bag            # Bag analysis
 
 - **3 planners coexist**: ego-planner-v2 (local replanning), SUPER (corridor-based), NMPC (in fsm_ctrl). Pipeline: RA-LIO (odom) → px4_estimator (fusion) → FSM (guidance) → PX4 (actuation)
 - **No CI/CD** — manual build verification via Docker images
-- **Test coverage**: Only fsm_ctrl (36 GTest) and uav_vision (1 CTest + 5 Python) have active tests. SUPER, ego-planner, RA-LIO have none.
+- **Test coverage**: Only fsm_ctrl (40 GTests plus smoke/validator tests) and uav_vision (1 CTest + 5 Python) have active tests. SUPER, ego-planner, RA-LIO have none.
 - **Ubuntu 20.04 + ROS Noetic** is Tier 1; ROS2 is experimental
 - **Latest changes**: SML FSM uses `CoreFlightStateMachine` (not raw SML); precision landing via `LandingObservation` from `uav_vision_msgs/LandingOffset`; removed ego/mission legacy tracking (ring2, apriltag prepoint, TimedPose cache)

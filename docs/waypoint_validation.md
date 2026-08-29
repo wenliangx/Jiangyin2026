@@ -20,8 +20,8 @@ limits, and configured same/different field relationships. It then writes a
 read-only waypoint snapshot, a read-only rules snapshot, and a read-only
 SHA-256 manifest.
 
-`single_sml.launch` and `single_sml2.launch` load only the sealed waypoint
-snapshot. At startup `single_offboard_sml` invokes the same validator in
+`flight_fsm.launch` and `flight_fsm_uav2.launch` load only the sealed waypoint
+snapshot. At startup `flight_fsm` invokes the same validator in
 manifest verification mode. A writable file, hash mismatch, invalid rule, or
 invalid waypoint aborts node startup; there is no built-in waypoint fallback.
 

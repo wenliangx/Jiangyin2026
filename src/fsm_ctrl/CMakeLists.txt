@@ -131,17 +131,17 @@ target_link_libraries(swarm_user_cmd
 )
 
 # ------------------------------------------------------------------
-# single_offboard_sml  (C++14, Boost.SML FSM)
+# flight_fsm  (C++14, Boost.SML FSM)
 # ------------------------------------------------------------------
-add_executable(single_offboard_sml
-  src/single_offboard_sml.cpp
+add_executable(flight_fsm
+  src/flight_fsm_node.cpp
 )
-target_compile_features(single_offboard_sml PRIVATE cxx_std_14)
-add_dependencies(single_offboard_sml
+target_compile_features(flight_fsm PRIVATE cxx_std_14)
+add_dependencies(flight_fsm
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
-target_link_libraries(single_offboard_sml
+target_link_libraries(flight_fsm
   boost_sml
   dfbc att_nmpc FLAG_NMPC traj_gen nmpc_ctrl ctrl_math
   ${catkin_LIBRARIES}
@@ -162,19 +162,80 @@ install(DIRECTORY config/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
 )
 
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+# StateMachine 公开头依赖 vendored Boost.SML；一并安装后，下游包无需复制
+# third_party 目录或依赖系统版本。
+install(DIRECTORY third_party/boost_sml/include/boost/
+  DESTINATION ${CATKIN_GLOBAL_INCLUDE_DESTINATION}/boost
+)
+
 ## ------------------------------------------------------------------
 ## Tests  (GTest, no CasADi / no ROS control linkage)
 ## ------------------------------------------------------------------
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
-  catkin_add_gtest(single_offboard_sml_test
-    test/single_offboard_sml_test.cpp
+
+  set(FSM_CTRL_TEST_WAYPOINT_DIR
+      ${CMAKE_CURRENT_BINARY_DIR}/test_waypoints)
+  set(FSM_CTRL_TEST_WAYPOINT_FILE
+      ${FSM_CTRL_TEST_WAYPOINT_DIR}/mission_super_waypoints.validated.yaml)
+  set(FSM_CTRL_TEST_WAYPOINT_MANIFEST
+      ${FSM_CTRL_TEST_WAYPOINT_DIR}/waypoint_validation_manifest.yaml)
+  set(FSM_CTRL_TEST_WAYPOINT_RULES
+      ${FSM_CTRL_TEST_WAYPOINT_DIR}/waypoint_validation_rules.validated.yaml)
+  set(FSM_CTRL_WAYPOINT_VALIDATOR
+      ${PROJECT_SOURCE_DIR}/scripts/validate_super_waypoints.py)
+  add_custom_command(
+    OUTPUT
+      ${FSM_CTRL_TEST_WAYPOINT_FILE}
+      ${FSM_CTRL_TEST_WAYPOINT_MANIFEST}
+      ${FSM_CTRL_TEST_WAYPOINT_RULES}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${FSM_CTRL_TEST_WAYPOINT_DIR}
+    COMMAND ${PYTHON_EXECUTABLE} ${FSM_CTRL_WAYPOINT_VALIDATOR}
+            --waypoints
+            ${PROJECT_SOURCE_DIR}/config/mission_super_waypoints_test.yaml
+            --rules
+            ${PROJECT_SOURCE_DIR}/config/waypoint_validation_rules.yaml
+            --output-dir ${FSM_CTRL_TEST_WAYPOINT_DIR}
+    DEPENDS
+      ${FSM_CTRL_WAYPOINT_VALIDATOR}
+      ${PROJECT_SOURCE_DIR}/config/mission_super_waypoints_test.yaml
+      ${PROJECT_SOURCE_DIR}/config/waypoint_validation_rules.yaml
+    VERBATIM
   )
-  target_link_libraries(single_offboard_sml_test
+  add_custom_target(fsm_ctrl_test_waypoints
+    DEPENDS
+      ${FSM_CTRL_TEST_WAYPOINT_FILE}
+      ${FSM_CTRL_TEST_WAYPOINT_MANIFEST}
+      ${FSM_CTRL_TEST_WAYPOINT_RULES}
+  )
+  configure_file(
+    test/flight_fsm_smoke.test.in
+    ${CMAKE_CURRENT_BINARY_DIR}/flight_fsm_smoke.test
+    @ONLY
+  )
+
+  catkin_add_gtest(flight_fsm_test
+    test/flight_fsm_test.cpp
+  )
+  target_link_libraries(flight_fsm_test
     boost_sml
   )
-  target_compile_features(single_offboard_sml_test PRIVATE cxx_std_14)
-  add_rostest(test/single_offboard_sml_smoke.test)
+  target_compile_features(flight_fsm_test PRIVATE cxx_std_14)
+  catkin_add_gtest(state_machine_framework_test
+    test/state_machine_framework_test.cpp
+  )
+  target_link_libraries(state_machine_framework_test
+    boost_sml
+  )
+  target_compile_features(state_machine_framework_test PRIVATE cxx_std_14)
+  add_rostest(
+    ${CMAKE_CURRENT_BINARY_DIR}/flight_fsm_smoke.test
+    DEPENDENCIES fsm_ctrl_test_waypoints
+  )
   add_test(NAME waypoint_validation_test
     COMMAND ${PYTHON_EXECUTABLE}
             ${PROJECT_SOURCE_DIR}/test/test_waypoint_validation.py)

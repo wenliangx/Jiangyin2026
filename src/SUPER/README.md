@@ -31,7 +31,7 @@
 * **Jan. 29, 2025** - The paper of SUPER is now featured on the official website of [*Science Robotics*](https://www.science.org/doi/10.1126/scirobotics.ado6187).
 * **Dec. 12, 2024** - 🎉 Our paper has been accepted by *Science Robotics*! 
 
-Our paper is also aviliable at [here](misc/scirobotics.ado6187.pdf). If our repository supports your academic projects, please cite our work. Thank you!
+The paper is available from [Science Robotics](https://www.science.org/doi/10.1126/scirobotics.ado6187). If our repository supports your academic projects, please cite our work. Thank you!
 
 ```tex
 @article{ren2025super,
@@ -67,16 +67,15 @@ Our paper is also aviliable at [here](misc/scirobotics.ado6187.pdf). If our repo
 # 1 Highlights
 
 ## 1.1 Autonomous Navigation in Challenging Environments
-[![Video Demo](./misc/fig1.gif)](https://www.youtube.com/watch?v=eDkwGXCea7w)
+
+[Video demo](https://www.youtube.com/watch?v=eDkwGXCea7w)
 
 ## 1.2 Applications: Object Tracking & Autonomous Exploration
 
 SUPER has been successfully deployed in various applications, including large-scale autonomous exploration in an ongoing project by [@jackykongfz](https://github.com/jackykongfz) and [@ZbyLGsc](https://github.com/ZbyLGsc) from [STAR Lab](sysu-star.com), among others, as well as object tracking under both day and night conditions.
 
-![exp](./misc/exp.gif)
-> ⬆️ This segment is from an unpublished work by Kong [[@jackykongfz](https://github.com/jackykongfz) ] et al., conducted in collaboration with [STAR Lab](sysu-star.com), using SUPER.
-
-![tracking](./misc/tracking.gif)
+The exploration and object-tracking demonstrations are available in the
+[upstream SUPER repository](https://github.com/hku-mars/SUPER).
 
 
 
@@ -86,7 +85,8 @@ SUPER has been successfully deployed in various applications, including large-sc
 
 Building on SUPER, a similar planning system has been successfully validated in [Autonomous Navigation for Tail-Sitter UAVs](https://github.com/hku-mars/EFOPT)  by [@genegzl](https://github.com/genegzl)  et al.
 
-![tailsitter](./misc/tailsitter.gif)
+See the [EFOPT repository](https://github.com/hku-mars/EFOPT) for the
+tail-sitter demonstration.
 
 ### 1.3.2 FAST-LIVO2 (TRO '24)
 SUPER serves as the flight platform and navigation system in the video demonstration of [FAST-LIVO2: Fast, Direct LiDAR-Inertial-Visual Odometry](https://github.com/hku-mars/FAST-LIVO2) by [@xuankuzcr](https://github.com/xuankuzcr) et al.

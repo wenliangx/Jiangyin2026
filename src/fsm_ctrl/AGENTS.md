@@ -7,7 +7,7 @@
 | Binary | Source | Role |
 |--------|--------|------|
 | `single_offboard_fsm` | `src/single_offboard_fsm.cpp` (2829L) | Legacy FSM + NMPC controller (UDP cmd dispatcher) |
-| `single_offboard_sml` | `src/single_offboard_sml.cpp` | Boost.SML segmented mission FSM (9 states, 50Hz) |
+| `flight_fsm` | `src/flight_fsm_node.cpp` | Boost.SML segmented mission FSM (9 states, 50Hz) |
 | `px4_estimator` | `src/px4_estimator.cpp` | MoCap/RA-LIO pose → `/mavros/odometry/out` for PX4 EKF2 fusion (8 subs) |
 | `swarm_user_cmd` | `src/swarm_user_cmd.cpp` | Multi-drone UDP command parser |
 
@@ -16,7 +16,7 @@
 ```
 src/
 ├── single_offboard_fsm.cpp    # Legacy FSM — UDP recv, mode switching, Set_TargetPosition/Mavros
-├── single_offboard_sml.cpp    # Boost.SML FSM — ROS setpoint, NMPC, mission, landing, camera adapters
+├── flight_fsm_node.cpp       # ROS setpoint, NMPC, mission, landing, camera adapters
 ├── px4_estimator.cpp          # 8 subscribers (mocap, odom, IMU, RC); publishes `/mavros/odometry/out`
 ├── NMPC_controller.cpp        # CasADi NMPC solver wrapper (NMPC_Ctrller / NMPC_Ctrller_simple)
 ├── att_nmpc.cpp               # Attitude-level NMPC (Q/R weights, thrust estimator)
@@ -25,7 +25,13 @@ src/
 ├── traj_gen.cpp               # Internal trajectory generators (circle, parametric)
 └── swarm_user_cmd.cpp         # Multi-drone UDP command parser
 include/fsm_ctrl/
-├── single_offboard_sml.hpp    # SML state definitions, BodyRateThrust, TelemetrySnapshot, Port interfaces
+├── fsm/                       # ROS-independent StateMachine + command edge dispatcher
+├── flight_fsm.hpp            # Flight-domain convenience include
+├── flight_fsm/
+│   ├── types.hpp / ports.hpp / context.hpp
+│   ├── states.hpp / events.hpp
+│   ├── actions.hpp / landing_planner.hpp
+│   └── machine.hpp / command_dispatcher.hpp / command_metadata.hpp
 ├── single_offboard_fsm.hpp    # Legacy FSM class
 ├── nmpc_ctrl.hpp              # NMPC_Ctrller interface (CasADi optimal_solution)
 ├── att_nmpc.hpp               # Attitude NMPC (MatQ, MatR, step_horizon)
@@ -39,23 +45,27 @@ msg/
 ├── nmpc_state.msg             # Full NMPC debug state (pos_ref[], vel_ref[], pos_fdb, vel_fdb, target)
 └── younger_debug.msg          # Legacy debugging output
 launch/
-├── single.launch / single_sml.launch   # Single-drone config
+├── flight_fsm.launch / flight_fsm_uav2.launch # Competition profiles
+├── single.launch                       # Legacy single_offboard_fsm config
 ├── swarm.launch                        # Multi-drone launch
 └── px4_estimator.launch                # px4_estimator node config
 test/
-└── single_offboard_sml_test.cpp    # GTest — 22 TEST_F; smoke test in single_offboard_sml_smoke.test
+├── state_machine_framework_test.cpp # 2 focused tests for the reusable framework
+├── flight_fsm_test.cpp     # 38 competition-machine GTests
+└── flight_fsm_smoke.test.in # configured rostest with sealed test waypoints
 ```
 
 ## CONVENTIONS
 
-- **C++14** (legacy FSM), **C++17** (SML FSM). Links `/usr/local/lib/libcasadi.so.3.7`
+- **C++14** for both legacy and SML targets. Links `/usr/local/lib/libcasadi.so.3.7`
+- **Reusable framework**: `fsm::StateMachine<Definition, TickEvent>` owns the Boost.SML runtime; `fsm::DistinctCommandDispatcher` performs protocol-independent command-edge routing. Both are header-only and ROS/CasADi independent.
 - **SML FSM**: active `SegmentedMissionMachine` has 9 states and a 50Hz tick loop; UDP commands are dispatched as `OnCommand*` events. `MissionMachine` remains for focused tests/alternate composition.
 - **Vision camera control**: every SML Tick publishes a complete latched `uav_vision_msgs/VisionControl` snapshot. In the active segmented mission, `SuperSegment1` enables only the front camera, `SuperSegment2` enables only the rear camera through the legacy `down_camera_enabled` field, and every other state disables both cameras.
 - **Legacy FSM**: `Set_TargetPosition` for cmd1-4, `AttitudeTarget` for cmd5-8
 - **Idle cameras**: both mission machines publish front-camera and down-camera enabled while in Idle; Idle still produces no flight control output and never arms.
 - **Waypoint preflight**: edit `config/mission_super_waypoints.yaml` and the independent `config/waypoint_validation_rules.yaml`, then seal them with `validate_super_waypoints.py`. Flight launch files load only `config/validated/mission_super_waypoints.validated.yaml`. Startup verifies read-only permissions, both SHA-256 hashes, and all rules; failure aborts the node and never falls back to built-in waypoints.
 - **Landing completion**: Landing entry uses `ResetLanding`, matching the active `TickLanding/prepareLanding` path; it does not initialize the unused closed-loop planner. Neither landing Tick path requests OFFBOARD or arm. Completion sets a process-lifetime permanent safety lock, latches low-thrust output, and immediately requests a normal disarm through `/mavros/cmd/arming`, retrying at `service_retry_seconds` while telemetry remains armed. Once telemetry reports disarmed, thrust publication stops. The permanent lock rejects every later state command and blocks all automatic arm requests, so only restarting the process can clear it. Landing vision observations are currently monitor-only and do not participate in the control loop.
-- **Testing**: GTest (`single_offboard_sml_test.cpp`, 23 TEST_F covering active command mapping, mission control, camera heartbeats, and landing low-thrust latching) + rostest smoke test (25s time limit, Python runner). Hand-rolled fakes for 7 interfaces, including `FakeCameraControl`. No gmock.
+- **Testing**: 40 GTests (2 framework + 38 competition machine/planner), 3-case rostest smoke, and 5 waypoint-validator tests. The smoke test generates and verifies an isolated read-only waypoint seal in the build tree. Hand-rolled fakes for 7 interfaces, including `FakeCameraControl`; no gmock.
 - **NMPC_test.cpp** is production controller code (FLAG_NMPC library), NOT a test file despite its name
 - **NMPC weights**: ROS params (`nmpc_Qpos*`, `nmpc_Rwx`). Horizon: 10pt @ 0.05s, 8-step MPC
 - **Thrust estimation**: `ThrEst::LSE()` RLS with `rho=0.998` — DO NOT CHANGE

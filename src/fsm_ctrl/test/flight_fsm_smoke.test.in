@@ -1,0 +1,18 @@
+<launch>
+  <node pkg="fsm_ctrl" type="flight_fsm"
+        name="flight_fsm" output="screen">
+    <!-- Avoid colliding with a real-flight node that may already own 12001. -->
+    <param name="udp_port" value="12991"/>
+    <param name="mission_super_waypoints_file"
+           value="@FSM_CTRL_TEST_WAYPOINT_FILE@"/>
+    <param name="mission_waypoint_manifest"
+           value="@FSM_CTRL_TEST_WAYPOINT_MANIFEST@"/>
+    <param name="mission_waypoint_validator"
+           value="@FSM_CTRL_WAYPOINT_VALIDATOR@"/>
+  </node>
+
+  <test test-name="flight_fsm_smoke"
+        pkg="fsm_ctrl"
+        type="flight_fsm_smoke.py"
+        time-limit="25"/>
+</launch>
