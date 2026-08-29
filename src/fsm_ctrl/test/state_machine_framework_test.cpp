@@ -22,14 +22,13 @@ struct CountTick {
 struct ExampleMachine {
   auto operator()() const {
     using namespace boost::sml;
-    return make_transition_table(
-        *state<Idle> + event<Start> = state<Running>,
-        state<Running> + event<Tick> / CountTick{},
-        state<Running> + event<Stop> = state<Idle>);
+    return make_transition_table(*state<Idle> + event<Start> = state<Running>,
+                                 state<Running> + event<Tick> / CountTick{},
+                                 state<Running> + event<Stop> = state<Idle>);
   }
 };
 
-using Runtime = fsm_ctrl::fsm::StateMachine<ExampleMachine, Tick>;
+using Runtime = fsm_ctrl::StateMachine<ExampleMachine, Tick>;
 
 struct ExampleRouter {
   void operator()(Runtime& machine, int command) const {
@@ -61,9 +60,8 @@ TEST(StateMachineFramework, DispatchesOnlyCommandEdges) {
   Counter counter;
   Runtime machine(counter);
   int observed = -1;
-  fsm_ctrl::fsm::DistinctCommandDispatcher<Runtime, ExampleRouter,
-                                           RecordCommand>
-      dispatcher(machine, ExampleRouter{}, RecordCommand{&observed});
+  fsm_ctrl::DistinctCommandDispatcher<Runtime, ExampleRouter, RecordCommand> dispatcher(
+      machine, ExampleRouter{}, RecordCommand{&observed});
 
   EXPECT_TRUE(dispatcher.update(1));
   EXPECT_TRUE(machine.isState<Running>());

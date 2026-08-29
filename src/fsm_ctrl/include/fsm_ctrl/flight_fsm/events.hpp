@@ -1,10 +1,8 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_EVENTS_HPP_
-#define FSM_CTRL_FLIGHT_FSM_EVENTS_HPP_
+#pragma once
 
 #include <string>
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
 struct OnCommand0 {};
 struct OnCommand1 {};
@@ -24,7 +22,4 @@ struct OnSegmentTimeout {};
 struct OnFinalSegmentComplete {};
 struct Tick {};
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_EVENTS_HPP_

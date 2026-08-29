@@ -35,7 +35,7 @@ struct MachineDefinition {
 };
 
 Context context;
-fsm_ctrl::fsm::StateMachine<MachineDefinition, Tick> machine(context);
+fsm_ctrl::StateMachine<MachineDefinition, Tick> machine(context);
 machine.process(Start{});
 machine.tick();
 ```

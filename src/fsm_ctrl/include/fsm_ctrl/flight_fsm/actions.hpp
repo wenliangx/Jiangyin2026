@@ -1,53 +1,37 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_ACTIONS_HPP_
-#define FSM_CTRL_FLIGHT_FSM_ACTIONS_HPP_
+#pragma once
 
+#include <cmath>
 #include <fsm_ctrl/flight_fsm/context.hpp>
 #include <fsm_ctrl/flight_fsm/events.hpp>
 #include <fsm_ctrl/flight_fsm/landing_planner.hpp>
 #include <fsm_ctrl/flight_fsm/states.hpp>
-
-#include <cmath>
-#include <iostream>
 #include <vector>
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
-inline void publishCameraControl(Context& context, bool front_enabled,
-                                 bool down_enabled) {
-  context.camera_control.publishControl(
-      CameraControlState{front_enabled, down_enabled});
+inline void publishCameraControl(Context& context, bool front_enabled, bool down_enabled) {
+  context.camera_control.publishControl(CameraControlState{front_enabled, down_enabled});
 }
 
 struct DisableCameras {
-  void operator()(Context& context) const {
-    publishCameraControl(context, false, false);
-  }
+  void operator()(Context& context) const { publishCameraControl(context, false, false); }
 };
 
 struct EnableFrontCamera {
-  void operator()(Context& context) const {
-    publishCameraControl(context, true, false);
-  }
+  void operator()(Context& context) const { publishCameraControl(context, true, false); }
 };
 
 struct EnableDownCamera {
-  void operator()(Context& context) const {
-    publishCameraControl(context, false, true);
-  }
+  void operator()(Context& context) const { publishCameraControl(context, false, true); }
 };
 
 struct EnableBothCameras {
-  void operator()(Context& context) const {
-    publishCameraControl(context, true, true);
-  }
+  void operator()(Context& context) const { publishCameraControl(context, true, true); }
 };
 
-inline bool publishTrackCommand(Context& context,
-                                const std::vector<ReferencePoint>& horizon) {
+inline bool publishTrackCommand(Context& context, const std::vector<ReferencePoint>& horizon) {
   BodyRateThrust command;
-  if (horizon.empty() ||
-      !context.nmpc.solveTrack(context.telemetry, horizon, command) ||
+  if (horizon.empty() || !context.nmpc.solveTrack(context.telemetry, horizon, command) ||
       !Context::finite(command)) {
     return false;
   }
@@ -69,16 +53,13 @@ inline std::vector<ReferencePoint> fixedPositionHorizon(const Vec3& position) {
 }
 
 inline void publishLowThrust(Context& context) {
-  context.setpoint.publishBodyRateThrust(
-      BodyRateThrust{Vec3{}, context.config.low_thrust});
+  context.setpoint.publishBodyRateThrust(BodyRateThrust{Vec3{}, context.config.low_thrust});
 }
 
 inline bool handleLandingCompletion(Context& context) {
-  const bool landed =
-      context.landing_reached ||
-      std::abs(context.telemetry.position.z -
-               context.config.landing_reference_z) <
-          context.config.landing_tolerance_z;
+  const bool landed = context.landing_reached ||
+                      std::abs(context.telemetry.position.z - context.config.landing_reference_z) <
+                          context.config.landing_tolerance_z;
   if (!landed) {
     return false;
   }
@@ -121,8 +102,8 @@ struct TickLanding {
     }
 
     std::vector<ReferencePoint> horizon;
-    const bool prepared = context.landing.prepareLanding(
-        context.clock.now(), context.telemetry, horizon);
+    const bool prepared =
+        context.landing.prepareLanding(context.clock.now(), context.telemetry, horizon);
     if (handleLandingCompletion(context)) {
       return;
     }
@@ -141,8 +122,8 @@ struct TickClosedLoopLanding {
     }
 
     std::vector<ReferencePoint> horizon;
-    const bool prepared = context.landing.prepareClosedLoopLanding(
-        context.clock.now(), context.telemetry, horizon);
+    const bool prepared =
+        context.landing.prepareClosedLoopLanding(context.clock.now(), context.telemetry, horizon);
     if (handleLandingCompletion(context)) {
       return;
     }
@@ -153,9 +134,7 @@ struct TickClosedLoopLanding {
 };
 
 struct ResetSuperTrack {
-  void operator()(Context& context) const {
-    context.mission.reset();
-  }
+  void operator()(Context& context) const { context.mission.reset(); }
 };
 
 struct StartSegmentedMission {
@@ -166,25 +145,19 @@ struct StartSegmentedMission {
 };
 
 struct FirstTargetAvailable {
-  bool operator()(const OnTargetRecognized& event) const {
-    return !event.label.empty();
-  }
+  bool operator()(const OnTargetRecognized& event) const { return !event.label.empty(); }
 };
 
 struct NewTargetAvailable {
-  bool operator()(const OnTargetRecognized& event,
-                  const Context& context) const {
+  bool operator()(const OnTargetRecognized& event, const Context& context) const {
     return !event.label.empty() &&
-           (context.recognized_targets[0].empty() ||
-            event.label != context.recognized_targets[0]);
+           (context.recognized_targets[0].empty() || event.label != context.recognized_targets[0]);
   }
 };
 
 // 永久落地锁置位后拒绝所有状态命令，使状态机无法离开 Landing。
 struct TerminalSafetyUnlocked {
-  bool operator()(const Context& context) const {
-    return !context.permanent_landing_lock;
-  }
+  bool operator()(const Context& context) const { return !context.permanent_landing_lock; }
 };
 
 struct StoreFirstTargetAndResetSuper {
@@ -234,13 +207,11 @@ struct TickSuperTrack {
     context.ensureOffboardArm();
     std::vector<ReferencePoint> horizon;
     const bool prepared =
-        context.mission.prepareSuper(context.clock.now(), context.telemetry,
-                                     horizon);
+        context.mission.prepareSuper(context.clock.now(), context.telemetry, horizon);
     if (prepared && !horizon.empty()) {
       context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                                context.telemetry.attitude);
-      context.setpoint.publishReferencePosition(horizon.front().position,
-                                                horizon.front().attitude);
+      context.setpoint.publishReferencePosition(horizon.front().position, horizon.front().attitude);
       publishTrackCommand(context, horizon);
     }
   }
@@ -249,14 +220,12 @@ struct TickSuperTrack {
 inline void tickSuperSegment(Context& context, int segment_index) {
   context.ensureOffboardArm();
   std::vector<ReferencePoint> horizon;
-  if (context.mission.prepareSuperSegment(segment_index, context.clock.now(),
-                                          context.telemetry, horizon) &&
+  if (context.mission.prepareSuperSegment(segment_index, context.clock.now(), context.telemetry,
+                                          horizon) &&
       !horizon.empty()) {
-        std::cout<<"segment_index: "<<segment_index<<"\n";
     context.setpoint.publishFeedbackPosition(context.telemetry.position,
                                              context.telemetry.attitude);
-    context.setpoint.publishReferencePosition(horizon.front().position,
-                                              horizon.front().attitude);
+    context.setpoint.publishReferencePosition(horizon.front().position, horizon.front().attitude);
     publishTrackCommand(context, horizon);
   }
 }
@@ -280,7 +249,4 @@ struct TickEmergency {
   }
 };
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_ACTIONS_HPP_

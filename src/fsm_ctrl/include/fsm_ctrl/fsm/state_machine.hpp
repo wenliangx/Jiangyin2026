@@ -1,12 +1,9 @@
-#ifndef FSM_CTRL_FSM_STATE_MACHINE_HPP_
-#define FSM_CTRL_FSM_STATE_MACHINE_HPP_
+#pragma once
 
 #include <boost/sml.hpp>
-
 #include <utility>
 
 namespace fsm_ctrl {
-namespace fsm {
 
 // Boost.SML 的轻量运行时外壳。Definition 只描述转换表，TickEvent 只描述
 // 周期事件；ROS、时钟、控制器等依赖由构造函数注入，框架本身不依赖 ROS。
@@ -51,7 +48,4 @@ class StateMachine {
   NativeMachine machine_;
 };
 
-}  // namespace fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FSM_STATE_MACHINE_HPP_

@@ -1,21 +1,16 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_CONTEXT_HPP_
-#define FSM_CTRL_FLIGHT_FSM_CONTEXT_HPP_
-
-#include <fsm_ctrl/flight_fsm/ports.hpp>
+#pragma once
 
 #include <array>
 #include <cmath>
+#include <fsm_ctrl/flight_fsm/ports.hpp>
 #include <string>
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
 struct Context {
-  Context(Clock& clock_in, AutopilotPort& autopilot_in,
-          SetpointPort& setpoint_in, NmpcPort& nmpc_in,
-          MissionPort& mission_in, PrecisionLandingPort& landing_in,
-          CameraControlPort& camera_control_in,
-          const Config& config_in = Config{})
+  Context(Clock& clock_in, AutopilotPort& autopilot_in, SetpointPort& setpoint_in,
+          NmpcPort& nmpc_in, MissionPort& mission_in, PrecisionLandingPort& landing_in,
+          CameraControlPort& camera_control_in, const Config& config_in = Config{})
       : clock(clock_in),
         autopilot(autopilot_in),
         setpoint(setpoint_in),
@@ -36,8 +31,7 @@ struct Context {
       autopilot.requestOffboard();
       last_service_request = current_time;
     } else if (!telemetry.armed &&
-               current_time - last_service_request >
-                   config.service_retry_seconds) {
+               current_time - last_service_request > config.service_retry_seconds) {
       autopilot.requestArm();
       last_service_request = current_time;
     }
@@ -48,8 +42,7 @@ struct Context {
       return;
     }
     const double current_time = clock.now();
-    if (!telemetry.armed &&
-        current_time - last_service_request > config.service_retry_seconds) {
+    if (!telemetry.armed && current_time - last_service_request > config.service_retry_seconds) {
       autopilot.requestArm();
       last_service_request = current_time;
     }
@@ -69,10 +62,8 @@ struct Context {
   }
 
   static bool finite(const BodyRateThrust& command) {
-    return std::isfinite(command.body_rate.x) &&
-           std::isfinite(command.body_rate.y) &&
-           std::isfinite(command.body_rate.z) &&
-           std::isfinite(command.thrust);
+    return std::isfinite(command.body_rate.x) && std::isfinite(command.body_rate.y) &&
+           std::isfinite(command.body_rate.z) && std::isfinite(command.thrust);
   }
 
   Clock& clock;
@@ -93,7 +84,4 @@ struct Context {
   std::array<std::string, 2> recognized_targets;
 };
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_CONTEXT_HPP_

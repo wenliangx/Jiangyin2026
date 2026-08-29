@@ -1,5 +1,4 @@
-#ifndef FSM_CTRL_NMPC_CONTROLLER_HPP_
-#define FSM_CTRL_NMPC_CONTROLLER_HPP_
+#pragma once
 
 #include <array>
 #include <casadi/casadi.hpp>
@@ -9,17 +8,18 @@
 #include <string>
 #include <vector>
 
+namespace fsm_ctrl {
+
 class NmpcController {
  public:
   NmpcController(const std::array<double, 2>& vertical_acceleration_limits,
-                 const std::array<double, 2>& angular_rate_limits,
-                 int prediction_steps, double prediction_step_seconds,
-                 int state_size, int input_size,
+                 const std::array<double, 2>& angular_rate_limits, int prediction_steps,
+                 double prediction_step_seconds, int state_size, int input_size,
                  const Eigen::Matrix<float, 3, 1>& position_weights,
                  const Eigen::Matrix<float, 3, 1>& velocity_weights,
                  const Eigen::Matrix<float, 3, 1>& attitude_weights,
-                 const Eigen::Matrix<float, 3, 1>& angular_rate_weights,
-                 double acceleration_weight, double hover_thrust);
+                 const Eigen::Matrix<float, 3, 1>& angular_rate_weights, double acceleration_weight,
+                 double hover_thrust);
 
   void solve(const std::vector<double>& current_states,
              const std::vector<double>& desired_parameters);
@@ -51,4 +51,4 @@ class NmpcController {
   ThrustEstimator thrust_estimator_;
 };
 
-#endif  // FSM_CTRL_NMPC_CONTROLLER_HPP_
+}  // namespace fsm_ctrl

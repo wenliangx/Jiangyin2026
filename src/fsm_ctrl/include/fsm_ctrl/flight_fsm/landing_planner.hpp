@@ -1,16 +1,13 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_LANDING_PLANNER_HPP_
-#define FSM_CTRL_FLIGHT_FSM_LANDING_PLANNER_HPP_
-
-#include <fsm_ctrl/flight_fsm/types.hpp>
+#pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <fsm_ctrl/flight_fsm/types.hpp>
 #include <limits>
 #include <vector>
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
 struct ClosedLoopLandingConfig {
   double observation_timeout{0.25};
@@ -44,23 +41,15 @@ class ClosedLoopLandingPlanner {
 
   void configure(const ClosedLoopLandingConfig& config) {
     config_ = config;
-    config_.observation_timeout =
-        std::max(0.0, config_.observation_timeout);
-    config_.align_px_threshold =
-        std::max(0.0, config_.align_px_threshold);
+    config_.observation_timeout = std::max(0.0, config_.observation_timeout);
+    config_.align_px_threshold = std::max(0.0, config_.align_px_threshold);
     config_.xy_step = std::abs(config_.xy_step);
-    config_.lock_min_tag_count =
-        std::max(1, std::min(5, config_.lock_min_tag_count));
-    config_.adjust_duration_tag1 =
-        std::max(0.0, config_.adjust_duration_tag1);
-    config_.adjust_duration_tag2 =
-        std::max(0.0, config_.adjust_duration_tag2);
-    config_.adjust_duration_tag3 =
-        std::max(0.0, config_.adjust_duration_tag3);
-    config_.adjust_duration_tag4 =
-        std::max(0.0, config_.adjust_duration_tag4);
-    config_.adjust_duration_tag5 =
-        std::max(0.0, config_.adjust_duration_tag5);
+    config_.lock_min_tag_count = std::max(1, std::min(5, config_.lock_min_tag_count));
+    config_.adjust_duration_tag1 = std::max(0.0, config_.adjust_duration_tag1);
+    config_.adjust_duration_tag2 = std::max(0.0, config_.adjust_duration_tag2);
+    config_.adjust_duration_tag3 = std::max(0.0, config_.adjust_duration_tag3);
+    config_.adjust_duration_tag4 = std::max(0.0, config_.adjust_duration_tag4);
+    config_.adjust_duration_tag5 = std::max(0.0, config_.adjust_duration_tag5);
     config_.x_sign = config_.x_sign < 0.0 ? -1.0 : 1.0;
     config_.y_sign = config_.y_sign < 0.0 ? -1.0 : 1.0;
     config_.descent_rate = std::max(0.0, config_.descent_rate);
@@ -107,35 +96,30 @@ class ClosedLoopLandingPlanner {
       target_.x = telemetry.position.x;
       target_.y = telemetry.position.y;
 
-      const bool aligned =
-          last_observation_.tag_count >= config_.lock_min_tag_count &&
-          std::abs(last_observation_.dx) <= config_.align_px_threshold &&
-          std::abs(last_observation_.dy) <= config_.align_px_threshold;
+      const bool aligned = last_observation_.tag_count >= config_.lock_min_tag_count &&
+                           std::abs(last_observation_.dx) <= config_.align_px_threshold &&
+                           std::abs(last_observation_.dy) <= config_.align_px_threshold;
       if (aligned) {
         // 对准时锁住实时位置和高度，从这里开始只沿 z 下降。
         target_.z = telemetry.position.z;
         stage_ = Stage::Descend;
       } else {
-        const double x_error =
-            config_.swap_xy ? last_observation_.dy : last_observation_.dx;
-        const double y_error =
-            config_.swap_xy ? last_observation_.dx : last_observation_.dy;
+        const double x_error = config_.swap_xy ? last_observation_.dy : last_observation_.dx;
+        const double y_error = config_.swap_xy ? last_observation_.dx : last_observation_.dy;
         if (std::abs(x_error) > config_.align_px_threshold) {
           target_.x += config_.x_sign * signedStep(x_error);
         }
         if (std::abs(y_error) > config_.align_px_threshold) {
           target_.y += config_.y_sign * signedStep(y_error);
         }
-        adjust_until_ =
-            now + adjustmentDuration(last_observation_.tag_count);
+        adjust_until_ = now + adjustmentDuration(last_observation_.tag_count);
         stage_ = Stage::Adjust;
       }
     }
 
     if (stage_ == Stage::Descend) {
-      target_.z = std::max(
-          config_.min_z,
-          target_.z - config_.descent_rate / config_.control_rate_hz);
+      target_.z =
+          std::max(config_.min_z, target_.z - config_.descent_rate / config_.control_rate_hz);
     }
 
     horizon.assign(config_.horizon_points, ReferencePoint{});
@@ -149,33 +133,33 @@ class ClosedLoopLandingPlanner {
   bool adjusting() const { return stage_ == Stage::Adjust; }
   bool descending() const { return stage_ == Stage::Descend; }
   const Vec3& target() const { return target_; }
-  const LandingObservation& lastObservation() const {
-    return last_observation_;
-  }
+  const LandingObservation& lastObservation() const { return last_observation_; }
 
  private:
   bool hasNewFreshObservation(double now) const {
     return last_observation_.valid && std::isfinite(last_observation_.stamp) &&
-           last_observation_.tag_count >= 1 &&
-           last_observation_.tag_count <= 5 &&
-           last_observation_.stamp >= 0.0 &&
-           now >= last_observation_.stamp &&
+           last_observation_.tag_count >= 1 && last_observation_.tag_count <= 5 &&
+           last_observation_.stamp >= 0.0 && now >= last_observation_.stamp &&
            now - last_observation_.stamp <= config_.observation_timeout &&
            last_observation_.stamp > last_consumed_stamp_;
   }
 
-  double signedStep(double error) const {
-    return error < 0.0 ? -config_.xy_step : config_.xy_step;
-  }
+  double signedStep(double error) const { return error < 0.0 ? -config_.xy_step : config_.xy_step; }
 
   double adjustmentDuration(int tag_count) const {
     switch (tag_count) {
-      case 1: return config_.adjust_duration_tag1;
-      case 2: return config_.adjust_duration_tag2;
-      case 3: return config_.adjust_duration_tag3;
-      case 4: return config_.adjust_duration_tag4;
-      case 5: return config_.adjust_duration_tag5;
-      default: return config_.adjust_duration_tag1;
+      case 1:
+        return config_.adjust_duration_tag1;
+      case 2:
+        return config_.adjust_duration_tag2;
+      case 3:
+        return config_.adjust_duration_tag3;
+      case 4:
+        return config_.adjust_duration_tag4;
+      case 5:
+        return config_.adjust_duration_tag5;
+      default:
+        return config_.adjust_duration_tag1;
     }
   }
 
@@ -190,7 +174,4 @@ class ClosedLoopLandingPlanner {
   double last_consumed_stamp_{-std::numeric_limits<double>::infinity()};
 };
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_LANDING_PLANNER_HPP_

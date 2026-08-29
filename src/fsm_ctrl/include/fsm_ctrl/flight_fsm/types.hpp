@@ -1,11 +1,9 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_TYPES_HPP_
-#define FSM_CTRL_FLIGHT_FSM_TYPES_HPP_
+#pragma once
 
 #include <string>
 #include <vector>
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
 struct Vec3 {
   double x{0.0};
@@ -81,7 +79,4 @@ struct Config {
   double landing_tolerance_z{0.25};
 };
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_TYPES_HPP_

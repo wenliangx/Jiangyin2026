@@ -1,11 +1,12 @@
-#ifndef FSM_CTRL_CTRL_MATH_HPP_
-#define FSM_CTRL_CTRL_MATH_HPP_
+#pragma once
 
 #include <ros/ros.h>
 
 #include <eigen3/Eigen/Eigen>
 #include <queue>
 #include <utility>
+
+namespace fsm_ctrl {
 
 class ThrustEstimator {
  public:
@@ -26,10 +27,8 @@ Eigen::Vector3d quaternionToEuler(const Eigen::Quaterniond& quaternion);
 Eigen::Quaterniond eulerToQuaternion(double roll, double pitch, double yaw);
 Eigen::Quaterniond eulerToQuaternion(const Eigen::Vector3d& euler);
 
-Eigen::Matrix3d quaternionToRotationMatrix(double w, double x, double y,
-                                           double z);
-Eigen::Matrix3d quaternionToRotationMatrix(
-    const Eigen::Quaterniond& quaternion);
+Eigen::Matrix3d quaternionToRotationMatrix(double w, double x, double y, double z);
+Eigen::Matrix3d quaternionToRotationMatrix(const Eigen::Quaterniond& quaternion);
 
 Eigen::Matrix3d eulerToRotationMatrix(double roll, double pitch, double yaw);
 Eigen::Matrix3d eulerToRotationMatrix(const Eigen::Vector3d& euler);
@@ -37,4 +36,4 @@ Eigen::Matrix3d eulerToRotationMatrix(const Eigen::Vector3d& euler);
 Eigen::Vector3d rotationMatrixToEuler(const Eigen::Matrix3d& matrix);
 Eigen::Quaterniond rotationMatrixToQuaternion(const Eigen::Matrix3d& matrix);
 
-#endif  // FSM_CTRL_CTRL_MATH_HPP_
+}  // namespace fsm_ctrl

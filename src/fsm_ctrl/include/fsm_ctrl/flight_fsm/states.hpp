@@ -1,8 +1,6 @@
-#ifndef FSM_CTRL_FLIGHT_FSM_STATES_HPP_
-#define FSM_CTRL_FLIGHT_FSM_STATES_HPP_
+#pragma once
 
 namespace fsm_ctrl {
-namespace flight_fsm {
 
 struct Idle {};
 struct ArmOnly {};
@@ -15,7 +13,4 @@ struct SuperSegment3 {};
 struct Emergency {};
 struct SafeNoop {};
 
-}  // namespace flight_fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FLIGHT_FSM_STATES_HPP_

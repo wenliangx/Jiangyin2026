@@ -1,10 +1,8 @@
-#ifndef FSM_CTRL_FSM_DISTINCT_COMMAND_DISPATCHER_HPP_
-#define FSM_CTRL_FSM_DISTINCT_COMMAND_DISPATCHER_HPP_
+#pragma once
 
 #include <utility>
 
 namespace fsm_ctrl {
-namespace fsm {
 
 struct IgnoreCommand {
   void operator()(int) const {}
@@ -15,12 +13,9 @@ struct IgnoreCommand {
 template <typename Machine, typename Router, typename Observer = IgnoreCommand>
 class DistinctCommandDispatcher {
  public:
-  explicit DistinctCommandDispatcher(Machine& machine,
-                                     Router router = Router{},
+  explicit DistinctCommandDispatcher(Machine& machine, Router router = Router{},
                                      Observer observer = Observer{})
-      : machine_(machine),
-        router_(std::move(router)),
-        observer_(std::move(observer)) {}
+      : machine_(machine), router_(std::move(router)), observer_(std::move(observer)) {}
 
   bool update(int command) {
     if (has_previous_ && command == previous_) {
@@ -45,7 +40,4 @@ class DistinctCommandDispatcher {
   int previous_{0};
 };
 
-}  // namespace fsm
 }  // namespace fsm_ctrl
-
-#endif  // FSM_CTRL_FSM_DISTINCT_COMMAND_DISPATCHER_HPP_

@@ -1,11 +1,6 @@
-#include <fsm_ctrl/flight_fsm.hpp>
-#include <fsm_ctrl/nmpc_controller.hpp>
-#include <fsm_ctrl/ctrl_math.hpp>
+#include <arpa/inet.h>
 #include <fsm_ctrl/NmpcParams.h>
 #include <fsm_ctrl/NmpcState.h>
-#include <iostream>
-#include <ostream>
-
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <mavros_msgs/AttitudeTarget.h>
@@ -13,28 +8,28 @@
 #include <mavros_msgs/RCIn.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
+#include <netinet/in.h>
 #include <ros/ros.h>
 #include <super_msgs/Flag.h>
+#include <sys/socket.h>
 #include <uav_vision_msgs/LandingOffset.h>
 #include <uav_vision_msgs/TargetMatchArray.h>
 #include <uav_vision_msgs/VisionControl.h>
-#include <yaml-cpp/yaml.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <unistd.h>
+#include <yaml-cpp/yaml.h>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <cmath>
-#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <fsm_ctrl/flight_fsm.hpp>
+#include <fsm_ctrl/nmpc_controller.hpp>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -42,7 +37,7 @@
 #include <thread>
 #include <vector>
 
-namespace flight = fsm_ctrl::flight_fsm;
+namespace flight = fsm_ctrl;
 
 namespace {
 
@@ -70,26 +65,22 @@ constexpr std::size_t kLandingHorizonPoints = 6;
 
 // Super 任务航点的纯 C++ 表示。
 struct MissionPoint {
-  int id{0};              // 任务表内局部编号；发布时替换为全任务递增 id。
-  int mode{0};            // 下游 planner 使用的任务模式。
-  int is_map{0};          // 是否使用 map 坐标。
-  flight::Vec3 position;  // 航点位置。
-  double yaw{0.0};        // 航点期望 yaw。
+  int id{0};                  // 任务表内局部编号；发布时替换为全任务递增 id。
+  int mode{0};                // 下游 planner 使用的任务模式。
+  int is_map{0};              // 是否使用 map 坐标。
+  flight::Vec3 position;      // 航点位置。
+  double yaw{0.0};            // 航点期望 yaw。
   double desired_speed{0.0};  // SUPER 期望速度，0 表示使用下游默认。
-  int perc_mode{0};       // 感知模式字段，保留旧结构含义。
+  int perc_mode{0};           // 感知模式字段，保留旧结构含义。
 };
 
 // 构造 Super 任务航点表。
 std::vector<MissionPoint> createSuperTrajectory() {
   return std::vector<MissionPoint>{
-      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 0.0, 3},
-      {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0.0, 0},
-      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0.0, 0},
-      {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0.0, 0},
-      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0.0, 0},
-      {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0.0, 0},
-      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0.0, 0},
-      {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0.0, 0},
+      {0, 2, 1, {1.4, 1.5, 1.0}, 0.0, 0.0, 3},  {1, 2, 1, {1.6, 1.2, 1.65}, 0.0, 0.0, 0},
+      {2, 2, 1, {2.6, 0.7, 1.7}, 0.0, 0.0, 0},  {3, 2, 1, {3.6, 0.2, 1.65}, 0.0, 0.0, 0},
+      {4, 2, 1, {3.6, 0.2, 0.5}, 3.14, 0.0, 0}, {5, 2, 1, {2.6, 0.7, 0.45}, 3.14, 0.0, 0},
+      {6, 2, 1, {1.6, 1.2, 0.5}, 3.14, 0.0, 0}, {7, 2, 1, {0.0, 0.0, 0.5}, 3.14, 0.0, 0},
   };
 }
 
@@ -111,19 +102,15 @@ double optionalWaypointYaw(const YAML::Node& node) {
   } catch (const YAML::Exception&) {
     std::string value = node.as<std::string>();
     std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) {
-                     return static_cast<char>(std::tolower(c));
-                   });
-    if (value == "nan" || value == ".nan" || value == "free" ||
-        value == "auto") {
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (value == "nan" || value == ".nan" || value == "free" || value == "auto") {
       return std::numeric_limits<double>::quiet_NaN();
     }
     throw;
   }
 }
 
-MissionPoint parseMissionPoint(const YAML::Node& node,
-                               std::size_t fallback_id) {
+MissionPoint parseMissionPoint(const YAML::Node& node, std::size_t fallback_id) {
   MissionPoint point;
   point.id = node["id"] ? node["id"].as<int>() : static_cast<int>(fallback_id);
   point.mode = node["mode"] ? node["mode"].as<int>() : 2;
@@ -132,8 +119,7 @@ MissionPoint parseMissionPoint(const YAML::Node& node,
   point.position.y = node["y"].as<double>();
   point.position.z = node["z"].as<double>();
   point.yaw = optionalWaypointYaw(node["yaw"]);
-  point.desired_speed =
-      node["desired_speed"] ? node["desired_speed"].as<double>() : 0.0;
+  point.desired_speed = node["desired_speed"] ? node["desired_speed"].as<double>() : 0.0;
 
   if (point.mode < 0 || point.mode > 2) {
     throw std::runtime_error("waypoint mode must be 0, 1, or 2");
@@ -141,14 +127,12 @@ MissionPoint parseMissionPoint(const YAML::Node& node,
   if (point.is_map != 0 && point.is_map != 1) {
     throw std::runtime_error("waypoint is_map must be 0 or 1");
   }
-  if (!std::isfinite(point.position.x) ||
-      !std::isfinite(point.position.y) ||
+  if (!std::isfinite(point.position.x) || !std::isfinite(point.position.y) ||
       !std::isfinite(point.position.z)) {
     throw std::runtime_error("waypoint x/y/z must be finite");
   }
   if (!std::isfinite(point.desired_speed) || point.desired_speed < 0.0) {
-    throw std::runtime_error(
-        "waypoint desired_speed must be finite and non-negative");
+    throw std::runtime_error("waypoint desired_speed must be finite and non-negative");
   }
   return point;
 }
@@ -156,8 +140,7 @@ MissionPoint parseMissionPoint(const YAML::Node& node,
 std::vector<MissionPoint> loadSuperTrajectoryFile(const std::string& path) {
   const YAML::Node root = YAML::LoadFile(path);
   const YAML::Node waypoint_nodes = root["waypoints"];
-  if (!waypoint_nodes || !waypoint_nodes.IsSequence() ||
-      waypoint_nodes.size() == 0) {
+  if (!waypoint_nodes || !waypoint_nodes.IsSequence() || waypoint_nodes.size() == 0) {
     throw std::runtime_error("waypoint file must contain non-empty waypoints");
   }
 
@@ -169,13 +152,11 @@ std::vector<MissionPoint> loadSuperTrajectoryFile(const std::string& path) {
   return waypoints;
 }
 
-std::vector<std::vector<MissionPoint>> loadSuperTrajectorySegmentsFile(
-    const std::string& path) {
+std::vector<std::vector<MissionPoint>> loadSuperTrajectorySegmentsFile(const std::string& path) {
   const YAML::Node root = YAML::LoadFile(path);
   const YAML::Node segment_nodes = root["segments"];
   if (!segment_nodes || !segment_nodes.IsSequence()) {
-    return std::vector<std::vector<MissionPoint>>{
-        loadSuperTrajectoryFile(path)};
+    return std::vector<std::vector<MissionPoint>>{loadSuperTrajectoryFile(path)};
   }
 
   std::vector<std::vector<MissionPoint>> segments;
@@ -188,10 +169,8 @@ std::vector<std::vector<MissionPoint>> loadSuperTrajectorySegmentsFile(
 
     std::vector<MissionPoint> segment;
     segment.reserve(waypoints.size());
-    for (std::size_t waypoint_index = 0;
-         waypoint_index < waypoints.size(); ++waypoint_index) {
-      segment.push_back(parseMissionPoint(waypoints[waypoint_index],
-                                          waypoint_index));
+    for (std::size_t waypoint_index = 0; waypoint_index < waypoints.size(); ++waypoint_index) {
+      segment.push_back(parseMissionPoint(waypoints[waypoint_index], waypoint_index));
     }
     segments.push_back(segment);
   }
@@ -208,10 +187,8 @@ class RosClock final : public flight::Clock {
 class RosAutopilotPort final : public flight::AutopilotPort {
  public:
   explicit RosAutopilotPort(ros::NodeHandle& node)
-      : arming_client_(
-            node.serviceClient<mavros_msgs::CommandBool>("mavros/cmd/arming")),
-        mode_client_(node.serviceClient<mavros_msgs::SetMode>(
-            "mavros/set_mode")) {}
+      : arming_client_(node.serviceClient<mavros_msgs::CommandBool>("mavros/cmd/arming")),
+        mode_client_(node.serviceClient<mavros_msgs::SetMode>("mavros/set_mode")) {}
 
   bool requestOffboard() override {
     mavros_msgs::SetMode request;
@@ -221,6 +198,7 @@ class RosAutopilotPort final : public flight::AutopilotPort {
 
   bool requestArm() override { return requestArmed(true); }
   bool requestDisarm() override { return requestArmed(false); }
+
  private:
   // 根据 armed 参数复用 MAVROS arming 服务。
   bool requestArmed(bool armed) {
@@ -237,16 +215,13 @@ class RosAutopilotPort final : public flight::AutopilotPort {
 class RosSetpointPort final : public flight::SetpointPort {
  public:
   explicit RosSetpointPort(ros::NodeHandle& node)
-      : position_pub_(node.advertise<geometry_msgs::PoseStamped>(
-            "/mavros/setpoint_position/local", 10)),
-        attitude_pub_(node.advertise<mavros_msgs::AttitudeTarget>(
-            "/mavros/setpoint_raw/attitude", 10)),
-        nmpc_posref_pub_(node.advertise<geometry_msgs::PoseStamped>(
-            "/nmpc_posref", 10)),
-        nmpc_posfdb_pub_(node.advertise<geometry_msgs::PoseStamped>(
-            "/nmpc_posfdb", 10)),
-        nmpc_state_pub_(
-            node.advertise<fsm_ctrl::NmpcState>("/nmpc_state", 10)) {}
+      : position_pub_(
+            node.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10)),
+        attitude_pub_(
+            node.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/attitude", 10)),
+        nmpc_posref_pub_(node.advertise<geometry_msgs::PoseStamped>("/nmpc_posref", 10)),
+        nmpc_posfdb_pub_(node.advertise<geometry_msgs::PoseStamped>("/nmpc_posfdb", 10)),
+        nmpc_state_pub_(node.advertise<fsm_ctrl::NmpcState>("/nmpc_state", 10)) {}
 
   void publishPosition(const flight::PositionSetpoint& setpoint) override {
     geometry_msgs::PoseStamped message;
@@ -260,8 +235,7 @@ class RosSetpointPort final : public flight::SetpointPort {
     position_pub_.publish(message);
   }
 
-  void publishBodyRateThrust(
-      const flight::BodyRateThrust& setpoint) override {
+  void publishBodyRateThrust(const flight::BodyRateThrust& setpoint) override {
     mavros_msgs::AttitudeTarget message;
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "FCU";
@@ -294,7 +268,7 @@ class RosSetpointPort final : public flight::SetpointPort {
   }
 
   void publishFeedbackPosition(const flight::Vec3& position,
-                                const flight::Quaternion& attitude) override {
+                               const flight::Quaternion& attitude) override {
     nmpc_posfdb_pub_.publish(toPose(position, attitude));
   }
 
@@ -333,8 +307,8 @@ class RosSetpointPort final : public flight::SetpointPort {
  private:
   // 将纯 C++ 位置向量转换为 ROS PoseStamped，供监视/参考 topic 复用。
   static geometry_msgs::PoseStamped toPose(const flight::Vec3& position,
-                                           const flight::Quaternion& attitude =
-                                               {1.0, 0.0, 0.0, 0.0}) {
+                                           const flight::Quaternion& attitude = {1.0, 0.0, 0.0,
+                                                                                 0.0}) {
     geometry_msgs::PoseStamped message;
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
@@ -392,11 +366,10 @@ class RosNmpcPort final : public flight::NmpcPort {
     q_velocity << q_vel_x, q_vel_y, q_vel_z;
     q_attitude << q_quat_x, q_quat_y, q_quat_z;
     r_angular << r_w_x, r_w_y, r_w_z;
-    std::cout << q_pos_x << q_pos_y << q_pos_z << std::endl;
-    controller_.reset(new NmpcController(
-        kVerticalAccelerationLimits, kAngularRateLimits, kPredictionSteps,
-        kPredictionStepSeconds, kStateSize, kInputSize, q_position, q_velocity,
-        q_attitude, r_angular, r_thrust, hover_thrust));
+    controller_.reset(new fsm_ctrl::NmpcController(kVerticalAccelerationLimits, kAngularRateLimits,
+                                                   kPredictionSteps, kPredictionStepSeconds,
+                                                   kStateSize, kInputSize, q_position, q_velocity,
+                                                   q_attitude, r_angular, r_thrust, hover_thrust));
 
     // 镜像实际生效的 NMPC 参数到 /nmpc_params，仅用于录包观察，
     // 不参与任何控制计算。
@@ -425,13 +398,11 @@ class RosNmpcPort final : public flight::NmpcPort {
     params_msg_.nlp_input_num = kInputSize;
 
     // 锁存发布：后启动的录包/echo 也能立即收到当前参数。
-    params_pub_ = private_node.advertise<fsm_ctrl::NmpcParams>(
-        "/nmpc_params", 10, true);
+    params_pub_ = private_node.advertise<fsm_ctrl::NmpcParams>("/nmpc_params", 10, true);
     params_pub_.publish(params_msg_);
     // 1Hz 低频重发，保证 bag 中任意时间段都能看到这段参数。
     params_timer_ = private_node.createTimer(
-        ros::Duration(1.0),
-        [this](const ros::TimerEvent&) { params_pub_.publish(params_msg_); });
+        ros::Duration(1.0), [this](const ros::TimerEvent&) { params_pub_.publish(params_msg_); });
   }
 
   bool solveTrack(const flight::TelemetrySnapshot& telemetry,
@@ -443,27 +414,23 @@ class RosNmpcPort final : public flight::NmpcPort {
  private:
   // 把遥测和参考 horizon 展平为控制器输入。
   bool solve(const flight::TelemetrySnapshot& telemetry,
-             const std::vector<flight::ReferencePoint>& horizon,
-             flight::BodyRateThrust& command) {
+             const std::vector<flight::ReferencePoint>& horizon, flight::BodyRateThrust& command) {
     if (!controller_ || horizon.empty()) {
       return false;
     }
 
     const std::vector<double> current{
-        telemetry.position.x, telemetry.position.y, telemetry.position.z,
-        telemetry.velocity.x, telemetry.velocity.y, telemetry.velocity.z,
-        telemetry.attitude.w, telemetry.attitude.x, telemetry.attitude.y,
-        telemetry.attitude.z};
+        telemetry.position.x, telemetry.position.y, telemetry.position.z, telemetry.velocity.x,
+        telemetry.velocity.y, telemetry.velocity.z, telemetry.attitude.w, telemetry.attitude.x,
+        telemetry.attitude.y, telemetry.attitude.z};
     std::vector<double> desired;
     desired.reserve(kHorizonPoints * 10 + (kHorizonPoints - 1) * 4);
     for (std::size_t index = 0; index < kHorizonPoints; ++index) {
       const auto& point = horizon[std::min(index, horizon.size() - 1)];
-      std::cout<<"x:"<<point.position.x<<", y:"<<point.position.y<<"\n";
       desired.insert(desired.end(),
-                     {point.position.x, point.position.y, point.position.z,
-                      point.velocity.x, point.velocity.y, point.velocity.z,
-                      point.attitude.w, point.attitude.x, point.attitude.y,
-                      point.attitude.z});
+                     {point.position.x, point.position.y, point.position.z, point.velocity.x,
+                      point.velocity.y, point.velocity.z, point.attitude.w, point.attitude.x,
+                      point.attitude.y, point.attitude.z});
     }
     for (std::size_t index = 0; index + 1 < kHorizonPoints; ++index) {
       desired.insert(desired.end(), {0.0, 0.0, 0.0, 9.8015});
@@ -480,54 +447,40 @@ class RosNmpcPort final : public flight::NmpcPort {
     return flight::Context::finite(command);
   }
 
-  std::unique_ptr<NmpcController> controller_;  // cmd3/5/6 使用的 simple NMPC。
-  ros::Publisher params_pub_;          // /nmpc_params 参数镜像观察 topic。
-  ros::Timer params_timer_;            // 参数镜像 1Hz 重发定时器。
-  fsm_ctrl::NmpcParams params_msg_;   // 已加载 NMPC 参数的镜像消息。
+  std::unique_ptr<fsm_ctrl::NmpcController> controller_;
+  ros::Publisher params_pub_;        // /nmpc_params 参数镜像观察 topic。
+  ros::Timer params_timer_;          // 参数镜像 1Hz 重发定时器。
+  fsm_ctrl::NmpcParams params_msg_;  // 已加载 NMPC 参数的镜像消息。
 };
 
 class RosPrecisionLandingPort final : public flight::PrecisionLandingPort {
  public:
   explicit RosPrecisionLandingPort(ros::NodeHandle& private_node) {
-    private_node.param("landing_valid_timeout", valid_timeout_,
-                       valid_timeout_);
-    private_node.param("landing_align_px_threshold", align_px_threshold_,
-                       align_px_threshold_);
-    private_node.param("landing_stable_frames", stable_frames_,
-                       stable_frames_);
+    private_node.param("landing_valid_timeout", valid_timeout_, valid_timeout_);
+    private_node.param("landing_align_px_threshold", align_px_threshold_, align_px_threshold_);
+    private_node.param("landing_stable_frames", stable_frames_, stable_frames_);
     private_node.param("landing_pixel_gain_x", pixel_gain_x_, pixel_gain_x_);
     private_node.param("landing_pixel_gain_y", pixel_gain_y_, pixel_gain_y_);
     private_node.param("landing_max_xy_step", max_xy_step_, max_xy_step_);
-    private_node.param("landing_xy_step", closed_loop_config_.xy_step,
-                       closed_loop_config_.xy_step);
-    private_node.param("landing_lock_min_tag_count",
-                       closed_loop_config_.lock_min_tag_count,
+    private_node.param("landing_xy_step", closed_loop_config_.xy_step, closed_loop_config_.xy_step);
+    private_node.param("landing_lock_min_tag_count", closed_loop_config_.lock_min_tag_count,
                        closed_loop_config_.lock_min_tag_count);
-    private_node.param("landing_adjust_duration_tag1",
-                       closed_loop_config_.adjust_duration_tag1,
+    private_node.param("landing_adjust_duration_tag1", closed_loop_config_.adjust_duration_tag1,
                        closed_loop_config_.adjust_duration_tag1);
-    private_node.param("landing_adjust_duration_tag2",
-                       closed_loop_config_.adjust_duration_tag2,
+    private_node.param("landing_adjust_duration_tag2", closed_loop_config_.adjust_duration_tag2,
                        closed_loop_config_.adjust_duration_tag2);
-    private_node.param("landing_adjust_duration_tag3",
-                       closed_loop_config_.adjust_duration_tag3,
+    private_node.param("landing_adjust_duration_tag3", closed_loop_config_.adjust_duration_tag3,
                        closed_loop_config_.adjust_duration_tag3);
-    private_node.param("landing_adjust_duration_tag4",
-                       closed_loop_config_.adjust_duration_tag4,
+    private_node.param("landing_adjust_duration_tag4", closed_loop_config_.adjust_duration_tag4,
                        closed_loop_config_.adjust_duration_tag4);
-    private_node.param("landing_adjust_duration_tag5",
-                       closed_loop_config_.adjust_duration_tag5,
+    private_node.param("landing_adjust_duration_tag5", closed_loop_config_.adjust_duration_tag5,
                        closed_loop_config_.adjust_duration_tag5);
-    private_node.param("landing_swap_xy", closed_loop_config_.swap_xy,
-                       closed_loop_config_.swap_xy);
-    private_node.param("landing_x_sign", closed_loop_config_.x_sign,
-                       closed_loop_config_.x_sign);
-    private_node.param("landing_y_sign", closed_loop_config_.y_sign,
-                       closed_loop_config_.y_sign);
+    private_node.param("landing_swap_xy", closed_loop_config_.swap_xy, closed_loop_config_.swap_xy);
+    private_node.param("landing_x_sign", closed_loop_config_.x_sign, closed_loop_config_.x_sign);
+    private_node.param("landing_y_sign", closed_loop_config_.y_sign, closed_loop_config_.y_sign);
     private_node.param("landing_descent_rate", descent_rate_, descent_rate_);
     private_node.param("landing_min_z", min_z_, min_z_);
-    private_node.param("landing_loss_hold_seconds", loss_hold_seconds_,
-                       loss_hold_seconds_);
+    private_node.param("landing_loss_hold_seconds", loss_hold_seconds_, loss_hold_seconds_);
     closed_loop_config_.observation_timeout = valid_timeout_;
     closed_loop_config_.align_px_threshold = align_px_threshold_;
     closed_loop_config_.descent_rate = descent_rate_;
@@ -550,30 +503,25 @@ class RosPrecisionLandingPort final : public flight::PrecisionLandingPort {
     closed_loop_planner_.reset();
   }
 
-  void updateObservation(
-      const flight::LandingObservation& observation) override {
+  void updateObservation(const flight::LandingObservation& observation) override {
     last_observation_ = observation;
     closed_loop_planner_.updateObservation(observation);
   }
 
-  void startClosedLoopLanding(
-      const flight::TelemetrySnapshot& telemetry) override {
+  void startClosedLoopLanding(const flight::TelemetrySnapshot& telemetry) override {
     closed_loop_planner_.start(telemetry);
   }
 
   bool prepareLanding(double now, const flight::TelemetrySnapshot& telemetry,
                       std::vector<flight::ReferencePoint>& horizon) override {
-    const double observation_age =
-        last_observation_.stamp > 0.0 && now >= last_observation_.stamp
-            ? now - last_observation_.stamp
-            : -1.0;
-    ROS_INFO_THROTTLE(
-        0.5,
-        "Landing vision monitor only: valid=%s tags=%d dx=%.2f dy=%.2f "
-        "age=%.3fs",
-        last_observation_.valid ? "true" : "false",
-        last_observation_.tag_count, last_observation_.dx,
-        last_observation_.dy, observation_age);
+    const double observation_age = last_observation_.stamp > 0.0 && now >= last_observation_.stamp
+                                       ? now - last_observation_.stamp
+                                       : -1.0;
+    ROS_INFO_THROTTLE(0.5,
+                      "Landing vision monitor only: valid=%s tags=%d dx=%.2f dy=%.2f "
+                      "age=%.3fs",
+                      last_observation_.valid ? "true" : "false", last_observation_.tag_count,
+                      last_observation_.dx, last_observation_.dy, observation_age);
 
     // const bool observation_fresh =
     //     last_observation_.valid && now >= last_observation_.stamp &&
@@ -593,8 +541,7 @@ class RosPrecisionLandingPort final : public flight::PrecisionLandingPort {
     }
 
     target_z_ = std::max(min_z_, target_z_ - descent_rate_ / kRateHz);
-    buildConstantHorizon({lock_x_, lock_y_, target_z_}, telemetry.attitude,
-                         horizon);
+    buildConstantHorizon({lock_x_, lock_y_, target_z_}, telemetry.attitude, horizon);
     return true;
 
     /*
@@ -608,37 +555,29 @@ class RosPrecisionLandingPort final : public flight::PrecisionLandingPort {
     */
   }
 
-  bool prepareClosedLoopLanding(
-      double now, const flight::TelemetrySnapshot& telemetry,
-      std::vector<flight::ReferencePoint>& horizon) override {
-    const bool prepared =
-        closed_loop_planner_.prepare(now, telemetry, horizon);
-    const flight::LandingObservation& observation =
-        closed_loop_planner_.lastObservation();
+  bool prepareClosedLoopLanding(double now, const flight::TelemetrySnapshot& telemetry,
+                                std::vector<flight::ReferencePoint>& horizon) override {
+    const bool prepared = closed_loop_planner_.prepare(now, telemetry, horizon);
+    const flight::LandingObservation& observation = closed_loop_planner_.lastObservation();
     const flight::Vec3& target = closed_loop_planner_.target();
     const double observation_age =
-        observation.stamp > 0.0 && now >= observation.stamp
-            ? now - observation.stamp
-            : -1.0;
-    ROS_INFO_THROTTLE(
-        0.5,
-        "Closed-loop landing: stage=%s valid=%s tags=%d dx=%.2f dy=%.2f "
-        "age=%.3fs target=(%.3f, %.3f, %.3f)",
-        closed_loop_planner_.descending()
-            ? "descend"
-            : (closed_loop_planner_.adjusting() ? "adjust" : "observe"),
-        observation.valid ? "true" : "false", observation.tag_count,
-        observation.dx, observation.dy, observation_age, target.x, target.y,
-        target.z);
+        observation.stamp > 0.0 && now >= observation.stamp ? now - observation.stamp : -1.0;
+    ROS_INFO_THROTTLE(0.5,
+                      "Closed-loop landing: stage=%s valid=%s tags=%d dx=%.2f dy=%.2f "
+                      "age=%.3fs target=(%.3f, %.3f, %.3f)",
+                      closed_loop_planner_.descending()
+                          ? "descend"
+                          : (closed_loop_planner_.adjusting() ? "adjust" : "observe"),
+                      observation.valid ? "true" : "false", observation.tag_count, observation.dx,
+                      observation.dy, observation_age, target.x, target.y, target.z);
     return prepared;
   }
 
  private:
   enum class Stage { Acquire, Align, Descend, Touchdown };
 
-  void buildConstantHorizon(
-      const flight::Vec3& target, const flight::Quaternion& attitude,
-      std::vector<flight::ReferencePoint>& horizon) const {
+  void buildConstantHorizon(const flight::Vec3& target, const flight::Quaternion& attitude,
+                            std::vector<flight::ReferencePoint>& horizon) const {
     horizon.assign(kLandingHorizonPoints, flight::ReferencePoint{});
     for (auto& point : horizon) {
       point.position = target;
@@ -673,12 +612,10 @@ class RosPrecisionLandingPort final : public flight::PrecisionLandingPort {
 // 获得当前模式，而不依赖可能丢失的一次性启停脉冲。
 class RosCameraControlPort final : public flight::CameraControlPort {
  public:
-  RosCameraControlPort(ros::NodeHandle& node,
-                       ros::NodeHandle& private_node) {
+  RosCameraControlPort(ros::NodeHandle& node, ros::NodeHandle& private_node) {
     std::string topic = "/vision/control";
     private_node.param("vision_control_topic", topic, topic);
-    publisher_ =
-        node.advertise<uav_vision_msgs::VisionControl>(topic, 1, true);
+    publisher_ = node.advertise<uav_vision_msgs::VisionControl>(topic, 1, true);
   }
 
   void publishControl(const flight::CameraControlState& control) override {
@@ -688,10 +625,9 @@ class RosCameraControlPort final : public flight::CameraControlPort {
     message.down_camera_enabled = control.down_camera_enabled;
     publisher_.publish(message);
 
-    const bool changed =
-        !has_last_control_ ||
-        last_control_.front_camera_enabled != control.front_camera_enabled ||
-        last_control_.down_camera_enabled != control.down_camera_enabled;
+    const bool changed = !has_last_control_ ||
+                         last_control_.front_camera_enabled != control.front_camera_enabled ||
+                         last_control_.down_camera_enabled != control.down_camera_enabled;
     if (changed) {
       ROS_INFO("Camera control: front=%s down=%s",
                message.front_camera_enabled ? "enabled" : "disabled",
@@ -715,19 +651,14 @@ class RosCameraControlPort final : public flight::CameraControlPort {
 class RosMissionPort final : public flight::MissionPort {
  public:
   RosMissionPort(ros::NodeHandle& node, ros::NodeHandle& private_node)
-      : super_waypoint_pub_(node.advertise<super_msgs::Flag>(
-            "/super/flag_waypoint", 10)) {
-    private_node.param("mission_super_waypoints_file", waypoints_file_,
-                       waypoints_file_);
-    private_node.param("mission_waypoint_manifest", waypoint_manifest_,
-                       waypoint_manifest_);
-    private_node.param("mission_waypoint_validator", waypoint_validator_,
-                       waypoint_validator_);
+      : super_waypoint_pub_(node.advertise<super_msgs::Flag>("/super/flag_waypoint", 10)) {
+    private_node.param("mission_super_waypoints_file", waypoints_file_, waypoints_file_);
+    private_node.param("mission_waypoint_manifest", waypoint_manifest_, waypoint_manifest_);
+    private_node.param("mission_waypoint_validator", waypoint_validator_, waypoint_validator_);
     ROS_INFO("Mission super waypoints file: %s", waypoints_file_.c_str());
-    private_node.param("mission_super_arrival_tolerance",
-                       arrival_tolerance_, arrival_tolerance_);
-    private_node.param("mission_segment_timeout_seconds",
-                       segment_timeout_seconds_, segment_timeout_seconds_);
+    private_node.param("mission_super_arrival_tolerance", arrival_tolerance_, arrival_tolerance_);
+    private_node.param("mission_segment_timeout_seconds", segment_timeout_seconds_,
+                       segment_timeout_seconds_);
     verifyWaypointPreflight();
     loadSuperTrajectory();
     reset();
@@ -747,11 +678,10 @@ class RosMissionPort final : public flight::MissionPort {
     super_waypoint_upload_active_ = true;
     super_waypoint_upload_index_ = 0u;
     if (active_segment_index_ >= 0 &&
-        static_cast<std::size_t>(active_segment_index_) <
-            super_segments_.size()) {
+        static_cast<std::size_t>(active_segment_index_) < super_segments_.size()) {
       current_batch_start_id_ = next_super_waypoint_id_;
-      current_batch_end_id_ = current_batch_start_id_ +
-          static_cast<int>(super_segments_[active_segment_index_].size());
+      current_batch_end_id_ =
+          current_batch_start_id_ + static_cast<int>(super_segments_[active_segment_index_].size());
       next_super_waypoint_id_ = current_batch_end_id_;
     }
     segment_arrived_ = false;
@@ -766,26 +696,21 @@ class RosMissionPort final : public flight::MissionPort {
     return prepareSuperSegment(active_segment_index_, now, telemetry, horizon);
   }
 
-  bool prepareSuperSegment(
-      int segment_index, double now,
-      const flight::TelemetrySnapshot& telemetry,
-      std::vector<flight::ReferencePoint>& horizon) override {
+  bool prepareSuperSegment(int segment_index, double now,
+                           const flight::TelemetrySnapshot& telemetry,
+                           std::vector<flight::ReferencePoint>& horizon) override {
     active_segment_index_ = segment_index;
-    std::cout<<"active_segment_index_:"<<active_segment_index_<<"\n";
     if (super_segments_.empty()) {
-      std::cout<<"here\n";
       loadSuperTrajectory();
     }
-    if (segment_index < 0 ||
-        static_cast<std::size_t>(segment_index) >= super_segments_.size() ||
+    if (segment_index < 0 || static_cast<std::size_t>(segment_index) >= super_segments_.size() ||
         super_segments_[segment_index].empty()) {
       horizon.clear();
       return false;
     }
 
     const MissionPoint& last = super_segments_[segment_index].back();
-    if (!segment_arrived_ && super_goal_reached_ &&
-        reached(last.position, telemetry.position)) {
+    if (!segment_arrived_ && super_goal_reached_ && reached(last.position, telemetry.position)) {
       segment_arrived_ = true;
       segment_completed_at_ = now;
     }
@@ -804,8 +729,7 @@ class RosMissionPort final : public flight::MissionPort {
   }
 
   bool isSuperSegmentTimedOut(double now) const override {
-    return active_segment_index_ < 2 && segment_arrived_ &&
-           segment_completed_at_ >= 0.0 &&
+    return active_segment_index_ < 2 && segment_arrived_ && segment_completed_at_ >= 0.0 &&
            now - segment_completed_at_ >= segment_timeout_seconds_;
   }
 
@@ -818,11 +742,9 @@ class RosMissionPort final : public flight::MissionPort {
     super_planner_.clear();
     for (std::size_t index = 0; index < kHorizonPoints; ++index) {
       flight::ReferencePoint point;
-      point.position = {message.cmd[index].position.x,
-                        message.cmd[index].position.y,
+      point.position = {message.cmd[index].position.x, message.cmd[index].position.y,
                         message.cmd[index].position.z};
-      point.velocity = {message.cmd[index].velocity.x,
-                        message.cmd[index].velocity.y,
+      point.velocity = {message.cmd[index].velocity.x, message.cmd[index].velocity.y,
                         message.cmd[index].velocity.z};
       // 将 yaw 归一化到 [-π, π]，避免 super planner 输出的越界 yaw
       // （如 230°）导致四元数表示歧义和 NMPC 优化跳变。
@@ -834,7 +756,6 @@ class RosMissionPort final : public flight::MissionPort {
       yaw -= M_PI;
       point.attitude = {std::cos(yaw * 0.5), 0.0, 0.0, std::sin(yaw * 0.5)};
       super_planner_.push_back(point);
-      
     }
     super_goal_reached_ = message.touch_goal != 0;
     super_planner_valid_ = true;
@@ -850,12 +771,10 @@ class RosMissionPort final : public flight::MissionPort {
       loadSuperTrajectory();
     }
     if (active_segment_index_ < 0 ||
-        static_cast<std::size_t>(active_segment_index_) >=
-            super_segments_.size()) {
+        static_cast<std::size_t>(active_segment_index_) >= super_segments_.size()) {
       return;
     }
-    const std::vector<MissionPoint>& segment =
-        super_segments_[active_segment_index_];
+    const std::vector<MissionPoint>& segment = super_segments_[active_segment_index_];
     if (super_waypoint_upload_index_ < segment.size()) {
       publishSuperWaypoint(segment[super_waypoint_upload_index_]);
       ++super_waypoint_upload_index_;
@@ -872,18 +791,17 @@ class RosMissionPort final : public flight::MissionPort {
     fillCommonFlag1(point, message);
     message.total_waypoint = static_cast<int16_t>(current_batch_end_id_);
     super_waypoint_pub_.publish(message);
-    ROS_INFO("Published mission super waypoint id=%d segment=%d index=%zu "
-             "position=(%.3f, %.3f, %.3f) yaw=%.3f source=%s",
-             message.id, active_segment_index_, super_waypoint_upload_index_,
-             point.position.x, point.position.y, point.position.z, point.yaw,
-             waypoints_file_.empty() ? "built-in" : waypoints_file_.c_str());
+    ROS_INFO(
+        "Published mission super waypoint id=%d segment=%d index=%zu "
+        "position=(%.3f, %.3f, %.3f) yaw=%.3f source=%s",
+        message.id, active_segment_index_, super_waypoint_upload_index_, point.position.x,
+        point.position.y, point.position.z, point.yaw,
+        waypoints_file_.empty() ? "built-in" : waypoints_file_.c_str());
   }
 
   void loadSuperTrajectory() {
-
     if (waypoints_file_.empty()) {
-      throw std::runtime_error(
-          "mission_super_waypoints_file is empty; refusing built-in fallback");
+      throw std::runtime_error("mission_super_waypoints_file is empty; refusing built-in fallback");
     }
     try {
       super_segments_ = loadSuperTrajectorySegmentsFile(waypoints_file_);
@@ -891,28 +809,23 @@ class RosMissionPort final : public flight::MissionPort {
       for (const auto& segment : super_segments_) {
         waypoint_count += segment.size();
       }
-      ROS_INFO("Loaded %zu mission super waypoints in %zu segments from %s",
-               waypoint_count, super_segments_.size(), waypoints_file_.c_str());
+      ROS_INFO("Loaded %zu mission super waypoints in %zu segments from %s", waypoint_count,
+               super_segments_.size(), waypoints_file_.c_str());
     } catch (const std::exception& error) {
-      throw std::runtime_error(
-          "failed to load sealed mission waypoints " + waypoints_file_ +
-          ": " + error.what());
+      throw std::runtime_error("failed to load sealed mission waypoints " + waypoints_file_ + ": " +
+                               error.what());
     }
   }
 
   void verifyWaypointPreflight() const {
-    if (waypoint_validator_.empty() || waypoint_manifest_.empty() ||
-        waypoints_file_.empty()) {
-      throw std::runtime_error(
-          "sealed waypoint preflight parameters are incomplete");
+    if (waypoint_validator_.empty() || waypoint_manifest_.empty() || waypoints_file_.empty()) {
+      throw std::runtime_error("sealed waypoint preflight parameters are incomplete");
     }
-    const std::string command =
-        "python3 " + shellQuote(waypoint_validator_) +
-        " --verify-manifest " + shellQuote(waypoint_manifest_) +
-        " --expected-waypoints " + shellQuote(waypoints_file_);
+    const std::string command = "python3 " + shellQuote(waypoint_validator_) +
+                                " --verify-manifest " + shellQuote(waypoint_manifest_) +
+                                " --expected-waypoints " + shellQuote(waypoints_file_);
     if (std::system(command.c_str()) != 0) {
-      throw std::runtime_error(
-          "sealed waypoint validation failed; flight is prohibited");
+      throw std::runtime_error("sealed waypoint validation failed; flight is prohibited");
     }
     ROS_INFO("Sealed waypoint preflight validation passed");
   }
@@ -927,17 +840,16 @@ class RosMissionPort final : public flight::MissionPort {
   void buildHoldHorizon(const MissionPoint& point,
                         std::vector<flight::ReferencePoint>& horizon) const {
     horizon.assign(kHorizonPoints, flight::ReferencePoint{});
-    const flight::Quaternion attitude{
-        std::cos(point.yaw * 0.5), 0.0, 0.0, std::sin(point.yaw * 0.5)};
+    const flight::Quaternion attitude{std::cos(point.yaw * 0.5), 0.0, 0.0,
+                                      std::sin(point.yaw * 0.5)};
     for (auto& reference : horizon) {
       reference.position = point.position;
       reference.attitude = attitude;
     }
   }
 
-  void buildCurrentHoldHorizon(
-      const flight::TelemetrySnapshot& telemetry,
-      std::vector<flight::ReferencePoint>& horizon) const {
+  void buildCurrentHoldHorizon(const flight::TelemetrySnapshot& telemetry,
+                               std::vector<flight::ReferencePoint>& horizon) const {
     horizon.assign(kHorizonPoints, flight::ReferencePoint{});
     for (auto& reference : horizon) {
       reference.position = telemetry.position;
@@ -948,8 +860,7 @@ class RosMissionPort final : public flight::MissionPort {
   void fillCommonFlag1(const MissionPoint& point, super_msgs::Flag& message) {
     message.header.stamp = ros::Time::now();
     message.header.frame_id = "world";
-    message.id = current_batch_start_id_ +
-                 static_cast<int>(super_waypoint_upload_index_);
+    message.id = current_batch_start_id_ + static_cast<int>(super_waypoint_upload_index_);
     message.mode = point.mode;
     message.is_map = point.is_map;
     message.yaw = point.yaw;
@@ -959,24 +870,24 @@ class RosMissionPort final : public flight::MissionPort {
     message.position.z = point.position.z;
   }
 
-  ros::Publisher super_waypoint_pub_;  // 发给 super planner 的 waypoint topic。
-  bool super_waypoint_upload_active_{true};  // 是否正在逐 tick 上传 waypoint。
+  ros::Publisher super_waypoint_pub_;           // 发给 super planner 的 waypoint topic。
+  bool super_waypoint_upload_active_{true};     // 是否正在逐 tick 上传 waypoint。
   std::size_t super_waypoint_upload_index_{0};  // 本组待上传 waypoint 下标。
-  int next_super_waypoint_id_{0};  // 下一个批次可使用的全局 id，切段不归零。
-  int current_batch_start_id_{0}; // 当前分段首个全局 id。
-  int current_batch_end_id_{0};   // 当前分段最后一个 id 的后一位。
-  int active_segment_index_{0};    // cmd3/4/5 选择的当前段。
-  bool segment_arrived_{false};    // 当前段是否已到末点并切为 NMPC 定点。
-  bool super_goal_reached_{false}; // SUPER 是否报告当前轨迹已经完成。
-  double arrival_tolerance_{0.2};  // 判定到达段末点的三维距离阈值。
-  double segment_timeout_seconds_{5.0};  // 末点无识别结果时自动切段等待。
-  double segment_completed_at_{-1.0};   // 到达末点时刻，负值表示未到达。
-  bool super_planner_valid_{false};   // 是否已有 super planner 输出。
-  std::string waypoints_file_;     // mission super waypoint YAML 文件。
-  std::string waypoint_manifest_;  // 封存文件及规则双哈希清单。
-  std::string waypoint_validator_; // 起飞前复用的独立校验工具。
+  int next_super_waypoint_id_{0};               // 下一个批次可使用的全局 id，切段不归零。
+  int current_batch_start_id_{0};               // 当前分段首个全局 id。
+  int current_batch_end_id_{0};                 // 当前分段最后一个 id 的后一位。
+  int active_segment_index_{0};                 // cmd3/4/5 选择的当前段。
+  bool segment_arrived_{false};                 // 当前段是否已到末点并切为 NMPC 定点。
+  bool super_goal_reached_{false};              // SUPER 是否报告当前轨迹已经完成。
+  double arrival_tolerance_{0.2};               // 判定到达段末点的三维距离阈值。
+  double segment_timeout_seconds_{5.0};         // 末点无识别结果时自动切段等待。
+  double segment_completed_at_{-1.0};           // 到达末点时刻，负值表示未到达。
+  bool super_planner_valid_{false};             // 是否已有 super planner 输出。
+  std::string waypoints_file_;                  // mission super waypoint YAML 文件。
+  std::string waypoint_manifest_;               // 封存文件及规则双哈希清单。
+  std::string waypoint_validator_;              // 起飞前复用的独立校验工具。
   std::vector<std::vector<MissionPoint>> super_segments_;  // 分段 Super 航点表。
-  std::vector<flight::ReferencePoint> super_planner_;  // 最近一帧 super planner 轨迹。
+  std::vector<flight::ReferencePoint> super_planner_;      // 最近一帧 super planner 轨迹。
 };
 
 // UDP 命令邮箱：网络线程只更新原子 latest_，状态机仍由 ROS 主线程串行驱动。
@@ -1018,10 +929,8 @@ class UdpCommandMailbox {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_ANY);
     address.sin_port = htons(static_cast<uint16_t>(port_));
-    if (::bind(descriptor, reinterpret_cast<sockaddr*>(&address),
-               sizeof(address)) < 0) {
-      ROS_ERROR("Cannot bind UDP command port %d: %s", port_,
-                std::strerror(errno));
+    if (::bind(descriptor, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0) {
+      ROS_ERROR("Cannot bind UDP command port %d: %s", port_, std::strerror(errno));
       int expected = descriptor;
       if (socket_.compare_exchange_strong(expected, -1)) {
         ::close(descriptor);
@@ -1045,10 +954,10 @@ class UdpCommandMailbox {
   }
 
   int port_;                         // UDP 监听端口，默认 12001。
-  std::atomic<int> latest_{0};        // 最近一次收到的 cmd。
-  std::atomic<int> socket_{-1};       // 当前 UDP socket fd，用于跨线程关闭。
-  std::atomic<bool> running_{true};   // 接收线程运行标志。
-  std::thread worker_;                // UDP 接收线程。
+  std::atomic<int> latest_{0};       // 最近一次收到的 cmd。
+  std::atomic<int> socket_{-1};      // 当前 UDP socket fd，用于跨线程关闭。
+  std::atomic<bool> running_{true};  // 接收线程运行标志。
+  std::thread worker_;               // UDP 接收线程。
 };
 
 // ROS 适配器：负责订阅/发布、命令分发和 50Hz Tick 调度。
@@ -1063,32 +972,25 @@ class FlightFsmNode {
         mission_(node_, private_node_),
         camera_control_(node_, private_node_),
         config_(loadConfig()),
-        context_(clock_, autopilot_, setpoint_, nmpc_, mission_, landing_,
-                 camera_control_, config_),
+        context_(clock_, autopilot_, setpoint_, nmpc_, mission_, landing_, camera_control_,
+                 config_),
         machine_(context_),
         dispatcher_(machine_, &mission_),
         mailbox_(loadUdpPort()) {
-    state_sub_ = node_.subscribe("/mavros/state", 10,
-                                &FlightFsmNode::stateCallback, this);
-    pose_sub_ = node_.subscribe("/mavros/local_position/pose", 10,
-                               &FlightFsmNode::poseCallback, this);
-    velocity_sub_ =
-        node_.subscribe("/mavros/local_position/velocity_local", 10,
-                        &FlightFsmNode::velocityCallback, this);
-    super_planner_sub_ = node_.subscribe(
-        "/super/flag_cmd", 10, &FlightFsmNode::superPlannerCallback, this);
+    state_sub_ = node_.subscribe("/mavros/state", 10, &FlightFsmNode::stateCallback, this);
+    pose_sub_ =
+        node_.subscribe("/mavros/local_position/pose", 10, &FlightFsmNode::poseCallback, this);
+    velocity_sub_ = node_.subscribe("/mavros/local_position/velocity_local", 10,
+                                    &FlightFsmNode::velocityCallback, this);
+    super_planner_sub_ =
+        node_.subscribe("/super/flag_cmd", 10, &FlightFsmNode::superPlannerCallback, this);
     std::string landing_topic = "/vision/landing/offset";
-    private_node_.param("precision_landing_topic", landing_topic,
-                        landing_topic);
-    landing_sub_ = node_.subscribe(landing_topic, 10,
-                                   &FlightFsmNode::landingCallback, this);
+    private_node_.param("precision_landing_topic", landing_topic, landing_topic);
+    landing_sub_ = node_.subscribe(landing_topic, 10, &FlightFsmNode::landingCallback, this);
     std::string target_topic = "/vision/target/result";
-    private_node_.param("target_recognition_topic", target_topic,
-                        target_topic);
-    target_sub_ = node_.subscribe(target_topic, 10,
-                                  &FlightFsmNode::targetCallback, this);
-    rc_sub_ = node_.subscribe("/mavros/rc/in", 10,
-                             &FlightFsmNode::rcCallback, this);
+    private_node_.param("target_recognition_topic", target_topic, target_topic);
+    target_sub_ = node_.subscribe(target_topic, 10, &FlightFsmNode::targetCallback, this);
+    rc_sub_ = node_.subscribe("/mavros/rc/in", 10, &FlightFsmNode::rcCallback, this);
   }
 
   // 节点主循环：先发布 100 个位置 setpoint warmup，再按 UDP cmd 驱动 FSM。
@@ -1111,12 +1013,12 @@ class FlightFsmNode {
       }
       machine_.tick();
       if (mission_.isSuperSegmentTimedOut(clock_.now())) {
-        ROS_WARN("No qualifying target recognized within the segment timeout; "
-                 "advancing to the next SUPER segment");
+        ROS_WARN(
+            "No qualifying target recognized within the segment timeout; "
+            "advancing to the next SUPER segment");
         machine_.process(flight::OnSegmentTimeout{});
       }
-      if (!final_landing_dispatched_ &&
-          mission_.isFinalSuperSegmentComplete()) {
+      if (!final_landing_dispatched_ && mission_.isFinalSuperSegmentComplete()) {
         final_landing_dispatched_ = true;
         ROS_INFO("Final SUPER segment complete; starting landing");
         machine_.process(flight::OnFinalSegmentComplete{});
@@ -1132,12 +1034,9 @@ class FlightFsmNode {
     private_node_.param("service_retry_seconds", config.service_retry_seconds,
                         config.service_retry_seconds);
     private_node_.param("low_thrust", config.low_thrust, config.low_thrust);
-    private_node_.param("nmpc_hover_thrust", config.hover_thrust,
-                        config.hover_thrust);
-    private_node_.param("position_hold_z", config.position_hold_z,
-                        config.position_hold_z);
-    private_node_.param("landing_target_z", config.landing_target_z,
-                        config.landing_target_z);
+    private_node_.param("nmpc_hover_thrust", config.hover_thrust, config.hover_thrust);
+    private_node_.param("position_hold_z", config.position_hold_z, config.position_hold_z);
+    private_node_.param("landing_target_z", config.landing_target_z, config.landing_target_z);
     private_node_.param("landing_reference_z", config.landing_reference_z,
                         config.landing_reference_z);
     private_node_.param("landing_tolerance_z", config.landing_tolerance_z,
@@ -1159,18 +1058,14 @@ class FlightFsmNode {
   }
   // 本地位姿回调：更新位置/姿态。
   void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& message) {
-    context_.telemetry.position = {message->pose.position.x,
-                                   message->pose.position.y,
+    context_.telemetry.position = {message->pose.position.x, message->pose.position.y,
                                    message->pose.position.z};
-    context_.telemetry.attitude = {
-        message->pose.orientation.w, message->pose.orientation.x,
-        message->pose.orientation.y, message->pose.orientation.z};
+    context_.telemetry.attitude = {message->pose.orientation.w, message->pose.orientation.x,
+                                   message->pose.orientation.y, message->pose.orientation.z};
   }
   // 本地速度回调：更新状态机遥测快照中的速度。
-  void velocityCallback(
-      const geometry_msgs::TwistStamped::ConstPtr& message) {
-    context_.telemetry.velocity = {message->twist.linear.x,
-                                   message->twist.linear.y,
+  void velocityCallback(const geometry_msgs::TwistStamped::ConstPtr& message) {
+    context_.telemetry.velocity = {message->twist.linear.x, message->twist.linear.y,
                                    message->twist.linear.z};
   }
   // super planner 回调：短数组直接忽略，防止越界。
@@ -1183,25 +1078,20 @@ class FlightFsmNode {
     mission_.updateSuperPlanner(*message);
   }
   // 下视 AprilTag 像素偏差回调：缓存观测供活动任务的闭环降落使用。
-  void landingCallback(
-      const uav_vision_msgs::LandingOffset::ConstPtr& message) {
+  void landingCallback(const uav_vision_msgs::LandingOffset::ConstPtr& message) {
     flight::LandingObservation observation;
-    observation.valid =
-        message->valid && message->tag_count >= 1 &&
-        message->tag_count <= 5 &&
-        std::isfinite(message->dx) && std::isfinite(message->dy);
+    observation.valid = message->valid && message->tag_count >= 1 && message->tag_count <= 5 &&
+                        std::isfinite(message->dx) && std::isfinite(message->dy);
     observation.dx = message->dx;
     observation.dy = message->dy;
     observation.tag_count = message->tag_count;
-    observation.stamp = message->header.stamp.isZero()
-                            ? ros::Time::now().toSec()
-                            : message->header.stamp.toSec();
+    observation.stamp =
+        message->header.stamp.isZero() ? ros::Time::now().toSec() : message->header.stamp.toSec();
     observation.age = ros::Time::now().toSec() - observation.stamp;
     landing_.updateObservation(observation);
   }
 
-  void targetCallback(
-      const uav_vision_msgs::TargetMatchArray::ConstPtr& message) {
+  void targetCallback(const uav_vision_msgs::TargetMatchArray::ConstPtr& message) {
     const bool valid = message->valid && !message->matches.empty();
     if (!valid) {
       last_target_label_.clear();
@@ -1218,32 +1108,31 @@ class FlightFsmNode {
   // RC 回调当前只做短数组保护，保留旧 topic 契约。
   void rcCallback(const mavros_msgs::RCIn::ConstPtr& message) {
     if (message->channels.size() <= 10) {
-      ROS_WARN_THROTTLE(1.0, "Ignoring short RC array (%zu channels)",
-                        message->channels.size());
+      ROS_WARN_THROTTLE(1.0, "Ignoring short RC array (%zu channels)", message->channels.size());
     }
   }
 
-  ros::NodeHandle node_;          // 全局 ROS 命名空间。
-  ros::NodeHandle private_node_;  // 节点私有参数命名空间。
-  RosClock clock_;                // 状态机时间源。
-  RosAutopilotPort autopilot_;    // 飞控服务适配器。
-  RosSetpointPort setpoint_;      // 控制输出适配器。
-  RosNmpcPort nmpc_;              // NMPC 求解适配器。
-  RosPrecisionLandingPort landing_;  // 下视视觉精准降落适配器。
-  RosMissionPort mission_;        // cmd6/7/8 任务轨迹适配器。
-  RosCameraControlPort camera_control_;  // 前视/下视相机启停状态发布器。
-  flight::Config config_;         // 状态机配置。
-  flight::Context context_;       // 状态机运行上下文。
-  flight::ActiveStateMachine machine_;  // 当前节点使用的状态机实例。
-  flight::ActiveCommandDispatcher dispatcher_;  // 当前节点 cmd 分发器。
-  UdpCommandMailbox mailbox_;     // UDP 命令 mailbox。
+  ros::NodeHandle node_;                                 // 全局 ROS 命名空间。
+  ros::NodeHandle private_node_;                         // 节点私有参数命名空间。
+  RosClock clock_;                                       // 状态机时间源。
+  RosAutopilotPort autopilot_;                           // 飞控服务适配器。
+  RosSetpointPort setpoint_;                             // 控制输出适配器。
+  RosNmpcPort nmpc_;                                     // NMPC 求解适配器。
+  RosPrecisionLandingPort landing_;                      // 下视视觉精准降落适配器。
+  RosMissionPort mission_;                               // cmd6/7/8 任务轨迹适配器。
+  RosCameraControlPort camera_control_;                  // 前视/下视相机启停状态发布器。
+  flight::Config config_;                                // 状态机配置。
+  flight::Context context_;                              // 状态机运行上下文。
+  flight::ActiveStateMachine machine_;                   // 当前节点使用的状态机实例。
+  flight::ActiveCommandDispatcher dispatcher_;           // 当前节点 cmd 分发器。
+  UdpCommandMailbox mailbox_;                            // UDP 命令 mailbox。
   ros::Subscriber state_sub_, pose_sub_, velocity_sub_;  // 基础状态订阅。
-  ros::Subscriber super_planner_sub_;  // super planner 订阅。
-  ros::Subscriber landing_sub_;  // 下视视觉降落偏差订阅。
-  ros::Subscriber target_sub_;   // 前视稳定目标识别结果订阅。
-  ros::Subscriber rc_sub_;        // RC 输入订阅。
-  std::string last_target_label_;  // 抑制分类节点连续发布的同类别结果。
-  bool final_landing_dispatched_{false};  // 防止末段完成事件在 50Hz 重复发送。
+  ros::Subscriber super_planner_sub_;                    // super planner 订阅。
+  ros::Subscriber landing_sub_;                          // 下视视觉降落偏差订阅。
+  ros::Subscriber target_sub_;                           // 前视稳定目标识别结果订阅。
+  ros::Subscriber rc_sub_;                               // RC 输入订阅。
+  std::string last_target_label_;                        // 抑制分类节点连续发布的同类别结果。
+  bool final_landing_dispatched_{false};                 // 防止末段完成事件在 50Hz 重复发送。
 };
 
 }  // namespace

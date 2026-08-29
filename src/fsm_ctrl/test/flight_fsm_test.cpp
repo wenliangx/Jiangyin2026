@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace {
-using namespace fsm_ctrl::flight_fsm;
+using namespace fsm_ctrl;
 
 class FakeClock final : public Clock {
  public:
@@ -34,26 +34,16 @@ class FakeAutopilot final : public AutopilotPort {
 
 class FakeSetpoint final : public SetpointPort {
  public:
-  void publishPosition(const PositionSetpoint& value) override {
-    positions.push_back(value);
-  }
-  void publishBodyRateThrust(const BodyRateThrust& value) override {
-    body_rates.push_back(value);
-  }
-  void publishAttitude(const AttitudeSetpoint& value) override {
-    attitudes.push_back(value);
-  }
-  void publishReferencePosition(const Vec3& value,
-                                const Quaternion& /*attitude*/) override {
+  void publishPosition(const PositionSetpoint& value) override { positions.push_back(value); }
+  void publishBodyRateThrust(const BodyRateThrust& value) override { body_rates.push_back(value); }
+  void publishAttitude(const AttitudeSetpoint& value) override { attitudes.push_back(value); }
+  void publishReferencePosition(const Vec3& value, const Quaternion& /*attitude*/) override {
     reference_positions.push_back(value);
   }
-  void publishFeedbackPosition(const Vec3& value,
-                               const Quaternion& /*attitude*/) override {
+  void publishFeedbackPosition(const Vec3& value, const Quaternion& /*attitude*/) override {
     feedback_positions.push_back(value);
   }
-  void publishNmpcMonitor(const NmpcMonitor& value) override {
-    monitors.push_back(value);
-  }
+  void publishNmpcMonitor(const NmpcMonitor& value) override { monitors.push_back(value); }
   std::vector<PositionSetpoint> positions;
   std::vector<BodyRateThrust> body_rates;
   std::vector<AttitudeSetpoint> attitudes;
@@ -64,8 +54,7 @@ class FakeSetpoint final : public SetpointPort {
 
 class FakeNmpc final : public NmpcPort {
  public:
-  bool solveTrack(const TelemetrySnapshot& value,
-                  const std::vector<ReferencePoint>& points,
+  bool solveTrack(const TelemetrySnapshot& value, const std::vector<ReferencePoint>& points,
                   BodyRateThrust& output) override {
     ++track_calls;
     last_telemetry = value;
@@ -82,9 +71,7 @@ class FakeNmpc final : public NmpcPort {
 
 class FakeMission final : public MissionPort {
  public:
-  void selectCommand(int command) override {
-    selected_commands.push_back(command);
-  }
+  void selectCommand(int command) override { selected_commands.push_back(command); }
   void reset() override { ++resets; }
   bool prepareSuper(double value, const TelemetrySnapshot& telemetry,
                     std::vector<ReferencePoint>& output) override {
@@ -94,8 +81,7 @@ class FakeMission final : public MissionPort {
     output = super_points;
     return super_result;
   }
-  bool prepareSuperSegment(int segment_index, double value,
-                           const TelemetrySnapshot& telemetry,
+  bool prepareSuperSegment(int segment_index, double value, const TelemetrySnapshot& telemetry,
                            std::vector<ReferencePoint>& output) override {
     ++segment_calls;
     last_segment_index = segment_index;
@@ -118,9 +104,7 @@ class FakeMission final : public MissionPort {
 class FakeLanding final : public PrecisionLandingPort {
  public:
   void reset() override { ++resets; }
-  void updateObservation(const LandingObservation& value) override {
-    last_observation = value;
-  }
+  void updateObservation(const LandingObservation& value) override { last_observation = value; }
   void startClosedLoopLanding(const TelemetrySnapshot& telemetry) override {
     ++start_closed_loop_calls;
     start_telemetry = telemetry;
@@ -133,8 +117,7 @@ class FakeLanding final : public PrecisionLandingPort {
     output = points;
     return result;
   }
-  bool prepareClosedLoopLanding(double value,
-                                const TelemetrySnapshot& telemetry,
+  bool prepareClosedLoopLanding(double value, const TelemetrySnapshot& telemetry,
                                 std::vector<ReferencePoint>& output) override {
     ++closed_loop_prepare_calls;
     return prepareLanding(value, telemetry, output);
@@ -153,18 +136,14 @@ class FakeLanding final : public PrecisionLandingPort {
 
 class FakeCameraControl final : public CameraControlPort {
  public:
-  void publishControl(const CameraControlState& value) override {
-    controls.push_back(value);
-  }
+  void publishControl(const CameraControlState& value) override { controls.push_back(value); }
 
   std::vector<CameraControlState> controls;
 };
 
 struct Fixture : testing::Test {
   Fixture()
-      : context(clock, autopilot, setpoint, nmpc, mission, landing,
-                camera_control),
-        sm(context) {}
+      : context(clock, autopilot, setpoint, nmpc, mission, landing, camera_control), sm(context) {}
 
   void clearOutputs() {
     autopilot.calls.clear();
@@ -190,8 +169,7 @@ struct Fixture : testing::Test {
 
   void expectLatestCameraControl(bool front_enabled, bool down_enabled) const {
     ASSERT_FALSE(camera_control.controls.empty());
-    EXPECT_EQ(front_enabled,
-              camera_control.controls.back().front_camera_enabled);
+    EXPECT_EQ(front_enabled, camera_control.controls.back().front_camera_enabled);
     EXPECT_EQ(down_enabled, camera_control.controls.back().down_camera_enabled);
   }
 
@@ -630,8 +608,7 @@ TEST_F(Fixture, LandingHeightToleranceCanStillLatchAsFallback) {
   sm.process_event(Tick{});
   EXPECT_TRUE(context.landing_reached);
   ASSERT_EQ(1u, setpoint.body_rates.size());
-  EXPECT_DOUBLE_EQ(context.config.low_thrust,
-                   setpoint.body_rates.back().thrust);
+  EXPECT_DOUBLE_EQ(context.config.low_thrust, setpoint.body_rates.back().thrust);
   ASSERT_EQ(1u, autopilot.calls.size());
   EXPECT_EQ("disarm", autopilot.calls.front());
 }
@@ -856,8 +833,7 @@ TEST(ClosedLoopLandingPlannerTest, HoldsEntryPositionWithoutVision) {
   EXPECT_FALSE(planner.descending());
 }
 
-TEST(ClosedLoopLandingPlannerTest,
-     AppliesEachFreshObservationOnceAndThenHoldsTarget) {
+TEST(ClosedLoopLandingPlannerTest, AppliesEachFreshObservationOnceAndThenHoldsTarget) {
   ClosedLoopLandingConfig config;
   config.align_px_threshold = 50.0;
   config.xy_step = 0.1;
@@ -944,8 +920,7 @@ TEST(ClosedLoopLandingPlannerTest, FourAlignedTagsLockXyAndStartDescent) {
   EXPECT_NEAR(1.48, horizon.front().position.z, 1e-12);
 }
 
-TEST(ClosedLoopLandingPlannerTest,
-     PartialTagsAdjustButCannotStartBlindDescent) {
+TEST(ClosedLoopLandingPlannerTest, PartialTagsAdjustButCannotStartBlindDescent) {
   ClosedLoopLandingConfig config;
   config.align_px_threshold = 50.0;
   config.xy_step = 0.1;
@@ -964,8 +939,7 @@ TEST(ClosedLoopLandingPlannerTest,
   EXPECT_DOUBLE_EQ(2.0, horizon.front().position.y);
 }
 
-TEST(ClosedLoopLandingPlannerTest,
-     IgnoresVisionDuringAdjustmentAndRequiresANewFrameAfterward) {
+TEST(ClosedLoopLandingPlannerTest, IgnoresVisionDuringAdjustmentAndRequiresANewFrameAfterward) {
   ClosedLoopLandingConfig config;
   config.align_px_threshold = 50.0;
   config.xy_step = 0.1;
@@ -1007,10 +981,8 @@ TEST(ClosedLoopLandingPlannerTest, FewerTagsUseLongerAdjustmentTime) {
   telemetry.position = {1.0, 2.0, 1.5};
   one_tag_planner.start(telemetry);
   five_tag_planner.start(telemetry);
-  one_tag_planner.updateObservation(
-      LandingObservation{true, 80.0, 0.0, 1, 20.0, 0.0});
-  five_tag_planner.updateObservation(
-      LandingObservation{true, 80.0, 0.0, 5, 20.0, 0.0});
+  one_tag_planner.updateObservation(LandingObservation{true, 80.0, 0.0, 1, 20.0, 0.0});
+  five_tag_planner.updateObservation(LandingObservation{true, 80.0, 0.0, 5, 20.0, 0.0});
 
   std::vector<ReferencePoint> horizon;
   ASSERT_TRUE(one_tag_planner.prepare(20.1, telemetry, horizon));
@@ -1031,8 +1003,7 @@ TEST(ClosedLoopLandingPlannerTest, IgnoresStaleVisionAndKeepsRecordedHold) {
   TelemetrySnapshot entry;
   entry.position = {3.0, 4.0, 1.0};
   planner.start(entry);
-  planner.updateObservation(
-      LandingObservation{true, 100.0, -100.0, 5, 1.0, 0.0});
+  planner.updateObservation(LandingObservation{true, 100.0, -100.0, 5, 1.0, 0.0});
 
   TelemetrySnapshot telemetry = entry;
   telemetry.position = {3.2, 4.2, 1.0};
