@@ -5,6 +5,9 @@ version: "3"
 # required for editing or building this workspace.
 services:
   jy-dev:
+    build:
+      context: ..
+      dockerfile: docker/dev/Dockerfile.dev
     image: localhost/jiangyin_jy-dev:latest
     environment:
       ROS_MASTER_URI: http://localhost:11311

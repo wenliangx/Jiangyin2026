@@ -6,7 +6,7 @@ import sys
 import time
 
 import rospy
-from gazebo_msgs.srv import GetLinkState
+from gazebo_msgs.srv import GetLinkState, GetModelState
 from geometry_msgs.msg import PoseStamped
 from livox_ros_driver2.msg import CustomMsg
 from mavros_msgs.msg import State
@@ -68,6 +68,10 @@ def check_topics():
 
 
 def flight_test(timeout=45.0):
+    rospy.wait_for_service("/gazebo/get_model_state", timeout=20.0)
+    get_model_state = rospy.ServiceProxy("/gazebo/get_model_state", GetModelState)
+    initial_truth = get_model_state("iris_mid360", "world").pose.position
+    initial_odom = wait_message("/Odometry", Odometry).pose.pose.position
     initial = wait_message("/mavros/local_position/pose", PoseStamped).pose.position.z
     send_command(2)
     deadline = time.monotonic() + timeout
@@ -77,7 +81,31 @@ def flight_test(timeout=45.0):
         pose = wait_message("/mavros/local_position/pose", PoseStamped, timeout=3.0)
         last_z = pose.pose.position.z
         if state.armed and state.mode == "OFFBOARD" and last_z > 0.30:
+            final_truth = get_model_state("iris_mid360", "world").pose.position
+            final_odom = wait_message("/Odometry", Odometry).pose.pose.position
+            truth_delta = (
+                final_truth.x - initial_truth.x,
+                final_truth.y - initial_truth.y,
+                final_truth.z - initial_truth.z,
+            )
+            odom_delta = (
+                final_odom.x - initial_odom.x,
+                final_odom.y - initial_odom.y,
+                final_odom.z - initial_odom.z,
+            )
+            errors = tuple(abs(odom - truth) for odom, truth in zip(odom_delta, truth_delta))
+            if max(errors) > 0.12:
+                raise RuntimeError(
+                    "RA-LIO delta disagrees with Gazebo truth: "
+                    f"truth={truth_delta}, odom={odom_delta}, abs_error={errors}"
+                )
             print(f"flight: armed=True, mode=OFFBOARD, z={last_z:.3f} m")
+            print(
+                "localization: "
+                f"truth_delta=({truth_delta[0]:.3f}, {truth_delta[1]:.3f}, {truth_delta[2]:.3f}), "
+                f"odom_delta=({odom_delta[0]:.3f}, {odom_delta[1]:.3f}, {odom_delta[2]:.3f}), "
+                f"max_error={max(errors):.3f} m"
+            )
             return
     raise RuntimeError(f"hover test failed: initial_z={initial:.3f}, final_z={last_z:.3f}")
 

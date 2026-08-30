@@ -58,7 +58,7 @@ if [[ "${DEV_MODE}" == "true" ]]; then
   if ! dpkg-query -W -f='${Status}' jiangyin-livox-ros-driver2 2>/dev/null \
       | grep -qx 'install ok installed'; then
     log_error "jiangyin-livox-ros-driver2 is not installed in the jy-dev image."
-    log_error "Rebuild localhost/jiangyin_core:latest from docker/Dockerfile.core.prebuilt, then rebuild jy-dev."
+    log_error "Rebuild localhost/jiangyin_jy-dev:latest from docker/dev/Dockerfile.dev."
     exit 1
   fi
 

@@ -4,14 +4,19 @@
 点云桥接、RA-LIO、PX4 外部视觉转发以及 `flight_fsm`/NMPC。雷达使用 Gazebo
 CPU ray 传感器，因此远程服务器不需要 X11、VirtualGL 或 NVIDIA 运行时。
 
-## 镜像分层
+## 镜像结构
 
-- `docker/sim/Dockerfile`：从 ROS Noetic 基础环境构建完整 PX4/Gazebo 基础镜像。
-  仅在 PX4 版本或系统依赖变化时使用。
-- `docker/sim/Dockerfile.stack`：日常使用的薄派生镜像。复用
-  `localhost/jiangyin_px4_mid360:latest`，只安装仓库内的预编译 deb、更新 MID360
-  模型并编译当前工作区。航点封存也在这一层生成。
-- `docker/sim/build-stack-podman.sh`：启用 Podman layers 的构建入口。
+仓库只保留三个镜像构建文件：依赖包、开发编译环境和完整仿真环境。
+
+- `docker/Dockerfile.debs`：构建可复用的第三方依赖 deb；
+- `docker/dev/Dockerfile.dev`：开发和编译工作区，由 devcontainer 自动构建；
+- `docker/sim/Dockerfile`：单文件构建完整 PX4/Gazebo、MID360、RA-LIO 和控制栈。
+
+开发镜像复用 `localhost/jiangyin_dev:v0.2` 中稳定的 ROS、编译器和 IDE 工具层；
+仿真镜像复用 `localhost/jiangyin_px4_mid360:latest` 中昂贵且稳定的 PX4/Gazebo
+工具链。仓库只维护项目相关的 deb、模型、算法和入口层，日常重建可直接命中缓存。
+
+- `docker/sim/build-sim-podman.sh`：启用 Podman layers 的仿真构建入口。
 - `docker/sim/scripts/configure_px4_mid360.py`：幂等生成 PX4 airframe 和 Gazebo
   模型，并修补 Gazebo ROS API 插件。
 - `docker/sim/scripts/start_sim_stack.sh`：单容器进程编排和逐级就绪检查。
@@ -19,17 +24,16 @@ CPU ray 传感器，因此远程服务器不需要 X11、VirtualGL 或 NVIDIA �
   `smoke_sim_stack.sh` 自动加载 ROS 环境。
 - `docker-compose.yml`：最终运行入口，仅包含 `sim-stack` 服务。
 
-已有基础镜像时，在仓库根目录执行：
+在仓库根目录执行：
 
 ```bash
-BUILD_JOBS=4 ./docker/sim/build-stack-podman.sh
+BUILD_JOBS=4 ./docker/sim/build-sim-podman.sh
 podman compose up -d
 podman compose exec sim-stack smoke_sim_stack
 ```
 
-若基础镜像标签不同，可以覆盖 `PX4_SIM_BASE`；输出标签可用
-`SIM_STACK_IMAGE` 覆盖。派生镜像构建全程使用本地 deb，不依赖构建时访问 apt
-仓库。服务器实测基础镜像为 6.88 GB，派生镜像为约 7.16 GB。
+基础标签可用 `PX4_SIM_BASE` 覆盖，输出标签可用 `SIM_IMAGE` 覆盖，编译并行度
+可用 `BUILD_JOBS` 调整。CasADi、Livox SDK/ROS 驱动和 Sophus 使用仓库内 deb。
 
 ## 雷达安装与坐标
 
@@ -53,15 +57,11 @@ Gazebo `/gazebo/get_link_state` 服务独立检查安装位姿，而不是只检
 - Gazebo CPU ray 点云约 46080 点/帧，Livox 转换后约 17745 个有效点；
 - 雷达实测安装高度 `0.120 m`、俯仰 `-15.00 deg`；
 - MAVROS 已连接，RA-LIO `/Odometry`、IMU、PX4 本地位姿和状态机节点均持续可用；
-- 普通冒烟检查输出 `SIM_STACK_SMOKE_OK`。
-
-完整起飞回归当前仍失败。PX4 原生健康报告指出
-`local_position_estimate` 起飞前检查失败，RA-LIO 静止初始化后的
-`vehicle_local_position.heading_good_for_control` 为 false。测试中仅为诊断强制解锁
-后，PX4 能进入 OFFBOARD，NMPC 推力和四路电机输出均已到达仿真器，但 RA-LIO
-反馈姿态与 Gazebo 真值存在约 180 度的航向/四元数差异，控制器产生较大角速度和
-不均衡电机输出，无人机未离地。因此 `smoke_sim_stack --flight` 应保留为后续坐标系
-对齐修复的回归门槛，不应在 CI 中绕过 PX4 起飞前检查。
+- 普通冒烟检查输出 `SIM_STACK_SMOKE_OK`；
+- 正常解锁、OFFBOARD 和 NMPC 起飞通过，没有绕过 PX4 起飞前检查；
+- 最终精简镜像中正常起飞至 `0.587 m`，Gazebo 与 RA-LIO 三轴位移最大误差为
+  `0.016 m`；
+- FSM 测试共 84 项，0 错误、0 失败。
 
 排查日志位于容器内 `/tmp/jiangyin_sim/`。入口默认设置 `NO_PXH=1`，避免 PX4
 交互提示符在无 TTY 环境中持续写入日志。

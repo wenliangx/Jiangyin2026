@@ -1,59 +1,35 @@
-FROM localhost/jiangyin_core:latest
-
-ARG CLANGD_VERSION=22
+ARG DEV_BASE=localhost/jiangyin_dev:v0.2
+FROM ${DEV_BASE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GAZEBO_PLUGIN_PATH=/opt/ros/noetic/lib
 
-RUN if ! dpkg-query -W -f='${Status}\n' jiangyin-livox-ros-driver2 \
-        | grep -qx 'install ok installed'; then \
-      echo "ERROR: jiangyin-livox-ros-driver2 is missing from localhost/jiangyin_core:latest."; \
-      echo "Build the core image from docker/Dockerfile.core.prebuilt after generating debs,"; \
-      echo "or install /tmp/jiangyin-debs/jiangyin-livox-ros-driver2_*.deb into the core image."; \
-      exit 1; \
-    fi \
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# The shared development base provides ROS Noetic, CMake, clangd, Gazebo and
+# compiler tooling. Project-specific third-party dependencies stay versioned
+# as repository debs produced by docker/Dockerfile.debs.
+COPY deb/jiangyin-casadi-dev_*.deb \
+     deb/jiangyin-livox-sdk2-dev_*.deb \
+     deb/jiangyin-livox-ros-driver2_*.deb \
+     deb/jiangyin-sophus-dev_*.deb \
+     /tmp/jiangyin-debs/
+RUN dpkg -i /tmp/jiangyin-debs/*.deb \
+    && rm -rf /tmp/jiangyin-debs \
+    && ldconfig \
+    && source /opt/ros/noetic/setup.bash \
+    && command -v catkin_make \
+    && command -v clangd \
     && test -f /opt/ros/noetic/share/livox_ros_driver2/cmake/livox_ros_driver2Config.cmake
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-      ca-certificates \
-      curl \
-      gnupg \
-      lsb-release \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
-      -o /etc/apt/keyrings/apt.llvm.org.asc \
-    && echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${CLANGD_VERSION} main" \
-      > /etc/apt/sources.list.d/apt.llvm.org.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends "clangd-${CLANGD_VERSION}" \
-    && update-alternatives --install /usr/local/bin/clangd clangd "/usr/bin/clangd-${CLANGD_VERSION}" 100 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libdw-dev \
-    libglfw3-dev \
-    libpcl-dev \
-    ros-noetic-gazebo-msgs \
-    ros-noetic-gazebo-ros \
-    ros-noetic-gazebo-plugins \
-    ros-noetic-gazebo-ros-control \
-    ros-noetic-velodyne-gazebo-plugins \
-    ros-noetic-plotjuggler \
-    ros-noetic-plotjuggler-ros \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN for so in /opt/ros/noetic/lib/*.so; do \
-        ln -sf "$so" "/usr/lib/x86_64-linux-gnu/gazebo-11/plugins/$(basename $so)"; \
-    done 2>/dev/null || true
-
-COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
-COPY scripts/jy-sim-control.sh /usr/local/bin/jy-sim-control
-COPY scripts/jy-stack.sh /usr/local/bin/jy-stack
+COPY docker/dev/scripts/start_jy2026.sh /opt/start_jy2026.sh
+COPY docker/dev/scripts/jy-sim-control.sh /usr/local/bin/jy-sim-control
+COPY docker/dev/scripts/jy-stack.sh /usr/local/bin/jy-stack
 RUN chmod +x /opt/start_jy2026.sh /usr/local/bin/jy-sim-control /usr/local/bin/jy-stack \
     && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-takeoff \
     && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-land \
     && ln -sf /usr/local/bin/jy-sim-control /usr/local/bin/jy-reset \
     && ln -sf /usr/local/bin/jy-stack /usr/local/bin/jy-start-stack
 
+WORKDIR /ws
 CMD ["bash", "/opt/start_jy2026.sh", "--dev"]

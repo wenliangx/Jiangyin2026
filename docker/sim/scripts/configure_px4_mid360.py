@@ -28,6 +28,13 @@ models = px4_home / "Tools/simulation/gazebo-classic/sitl_gazebo-classic/models"
 # p_imu = R_y(-15 deg) * p_lidar + [0, 0, 0.12].
 mount_pose = "0 0 0.12 0 -0.2617993877991494 0"
 
+# The stock Iris motor constant requires roughly 0.8 normalized motor output
+# to hover once the 265 g lidar is attached, while the deployed NMPC model is
+# calibrated around hover_thrust=0.4.  Match the simulation plant to that
+# controller calibration instead of changing flight-control logic:
+#   k_f = m * g / (4 * (0.4 * 1000 rad/s)^2), m ~= 1.805 kg.
+sim_motor_constant = "2.77e-05"
+
 # 1. 从 iris 模型克隆，创建 iris_mid360 目录
 src = models / "iris" / "iris.sdf.jinja"
 dst_dir = models / "iris_mid360"
@@ -35,6 +42,13 @@ dst_dir.mkdir(parents=True, exist_ok=True)
 sdf = src.read_text()
 sdf = sdf.replace('<model name="iris">', '<model name="iris_mid360">', 1)
 sdf = sdf.replace("<model name='iris'>", "<model name='iris_mid360'>", 1)
+stock_motor_constant = "<motorConstant>5.84e-06</motorConstant>"
+if sdf.count(stock_motor_constant) != 4:
+    raise RuntimeError("Unexpected Iris motor model layout")
+sdf = sdf.replace(
+    stock_motor_constant,
+    f"<motorConstant>{sim_motor_constant}</motorConstant>",
+)
 
 # 2. 定义 MID360 LiDAR 传感器（插入到 </model> 标签前）
 mid360 = r'''
@@ -144,6 +158,19 @@ shutil.copyfile(
     airframes / "10015_gazebo-classic_iris",
     airframes / "1020_gazebo-classic_iris_mid360",
 )
+mid360_airframe = airframes / "1020_gazebo-classic_iris_mid360"
+airframe_script = mid360_airframe.read_text()
+airframe_script += """
+
+# RA-LIO is sent through MAVROS vision_pose (pose only, no velocity).
+# Use vision position and yaw as the estimator references, and do not ask
+# EKF2 to fuse a velocity field that this message does not contain.
+param set-default EKF2_EV_CTRL 11
+param set-default EKF2_HGT_REF 3
+param set-default EKF2_GPS_CTRL 0
+param set-default EKF2_MAG_TYPE 5
+"""
+mid360_airframe.write_text(airframe_script)
 airframes_cmake = airframes / "CMakeLists.txt"
 cmake = airframes_cmake.read_text()
 airframe_entry = "\t1020_gazebo-classic_iris_mid360\n"

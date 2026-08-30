@@ -52,7 +52,6 @@
 #define INIT_TIME (0.1)            // EKF初始化时间（s），系统启动后0.1秒内不进行EKF更新
 #define LASER_POINT_COV (0.001)    // 激光点观测噪声协方差（约3.16cm标准差）
 #define PUBFRAME_PERIOD (20)       // 每隔20帧发布一次点云（降低发布频率）
-#define PI 3.1415926
 
 
 // === 时间统计变量 ===
@@ -65,8 +64,6 @@ float res_last[100000] = {0.0};          // 残差缓存
 float DET_RANGE = 300.0f;                 // 局部地图检测范围（m），决定局部地图的中心移动阈值
 const float MOV_THRESHOLD = 1.5f;         // 地图滑动阈值系数
 double time_diff_lidar_to_imu = 0.0;     // LiDAR到IMU的时间偏移（用于时间对齐）
-double theta = 30;                       // 俯仰补偿角 Pitch（度），用于输出显示补偿
-double alpha = 180;                       // 横滚补偿角 Roll（度），用于输出显示补偿
 
 // === 线程同步 ===
 mutex mtx_buffer;                         // 数据buffer互斥锁
@@ -331,34 +328,6 @@ void pointBodyToWorld(PointType const *const pi, PointType *const po)
     po->intensity = pi->intensity;
 }
 
-// === pointComp：带姿态补偿的坐标变换 ===
-// 用于发布时的姿态补偿：通过R_3 = diag(1,-1,-1)进行坐标系调整
-// 同时应用theta(俯仰)和alpha(横滚)补偿角度（用于倾斜安装的无人机）
-// 变换公式: p_w = R_3 * R_roll * R_pitch * [R * (R_ext * p_b + T_ext) + pos]
-void pointComp(PointType const *const pi1, PointType *const po1)
-{
-    // R_3 = diag(1, -1, -1) 坐标系方向调整（典型的ROS到视觉坐标系的转换）
-    Eigen::Matrix3d R_3;
-    R_3<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;
-
-    // 姿态补偿旋转矩阵（绕x轴 alpha角度，绕y轴 theta角度）
-    Eigen::Matrix3d R_compensate_roll = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate3 = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-    Eigen::Vector3d Pos_w(state_point.pos(0),  state_point.pos(1), state_point.pos(2));
-    Eigen::Vector3d Pos_compensate3= R_3*R_compensate_roll*R_compensate3* Pos_w;  // 补偿后的位置
-    Eigen::Matrix3d rot_comp = R_3*R_compensate_roll*R_compensate3*state_point.rot.matrix();  // 补偿后的旋转
-
-    V3D p_body1(pi1->x, pi1->y, pi1->z);
-    V3D p_global1(rot_comp * (state_point.offset_R_L_I.matrix() * p_body1 + state_point.offset_T_L_I) + Pos_compensate3);
-
-    po1->x = p_global1(0);
-    po1->y = p_global1(1);
-    po1->z = p_global1(2);
-    po1->intensity = pi1->intensity;
-}
-
 // === 模板版本的pointBodyToWorld（用于Eigen T类型） ===
 template <typename T>
 void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
@@ -543,10 +512,10 @@ void publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
         int size = laserCloudFullRes->points.size();
         PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
 
-        // 将每个点从body系转到世界系（带姿态补偿）
+        // 使用与建图和里程计相同的世界坐标系发布点云。
         for (int i = 0; i < size; i++)
         {
-            pointComp(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
+            pointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
         }
 
         sensor_msgs::PointCloud2 laserCloudmsg;
@@ -654,50 +623,24 @@ static bool set_quaternion_msg(const Eigen::Matrix3d &rot, geometry_msgs::Quater
     return true;
 }
 
-// 位置补偿：pos_comp = R_3 * R_roll * R_pitch * pos
-// 姿态补偿：q_comp = R_3 * R_roll * R_pitch * R * (R_3 * R_roll * R_pitch)^{-1}
+// 输出 RA-LIO 的世界坐标状态。雷达安装外参已在滤波器内部处理，
+// 此处不能再次施加固定安装角补偿。
 template <typename T>
 void set_posestamp(T &out)
 {
-    Eigen::Matrix3d R_0;
-    R_0<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;  // ROS -> 自定义坐标系的旋转矩阵
-
-    Eigen::Matrix3d R_compensate_roll1 = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-
-    Eigen::Vector3d Pos_(state_point.pos(0),  state_point.pos(1), state_point.pos(2));
-    Eigen::Vector3d Pos_compensate= R_0*R_compensate_roll1*R_compensate* Pos_;
-
-    out.pose.position.x = Pos_compensate(0);
-    out.pose.position.y = Pos_compensate(1);
-    out.pose.position.z = Pos_compensate(2);
-
-    // 姿态补偿：将原始姿态通过坐标变换矩阵进行旋转
-    set_quaternion_msg(R_0*R_compensate_roll1*R_compensate*state_point.rot.matrix()*(R_0*R_compensate_roll1*R_compensate).inverse(),
-                       out.pose.orientation);
+    out.pose.position.x = state_point.pos(0);
+    out.pose.position.y = state_point.pos(1);
+    out.pose.position.z = state_point.pos(2);
+    set_quaternion_msg(state_point.rot.matrix(), out.pose.orientation);
 }
 
 // === set_twiststamp：设置里程计消息中的线速度 ===
-// 速度同样经过姿态补偿
 template <typename T>
 void set_twiststamp(T &twi)
 {
-    Eigen::Matrix3d R_1;
-    R_1<<1,0,0,
-                 0,-1,0,
-                 0,0,-1;
-
-    Eigen::Matrix3d R_compensate_roll2 = Eigen::AngleAxisd(alpha*PI/180.0, Eigen::Vector3d(1,0,0)).toRotationMatrix();
-    Eigen::Matrix3d R_compensate1 = Eigen::AngleAxisd(theta*PI/180.0, Eigen::Vector3d(0,1,0)).toRotationMatrix();
-
-    Eigen::Vector3d Vel_(state_point.vel(0),  state_point.vel(1), state_point.vel(2));
-    Eigen::Vector3d Vel_compensate= R_1*R_compensate_roll2*R_compensate1* Vel_;
-
-    twi.twist.linear.x = Vel_compensate(0);
-    twi.twist.linear.y = Vel_compensate(1);
-    twi.twist.linear.z = Vel_compensate(2);
+    twi.twist.linear.x = state_point.vel(0);
+    twi.twist.linear.y = state_point.vel(1);
+    twi.twist.linear.z = state_point.vel(2);
 }
 
 // === set_pathstamp：设置路径消息中的位姿（不带姿态补偿，直接使用原始状态） ===
@@ -802,23 +745,9 @@ static void visualization_speed(const ros::Publisher &marker_pub) {
   marker.color.b = 1.0f;
   marker.color.a = 1.0;
 
-  // 应用姿态补偿（13.5647°俯仰补偿，针对特定安装角度）
-  Eigen::Matrix3d R_compensate =
-      Eigen::AngleAxisd(30 * PI / 180.0, Eigen::Vector3d(0, 1, 0))
-          .toRotationMatrix();
-  Eigen::Vector3d Pos_(odomAftMapped.pose.pose.position.x,
-                       odomAftMapped.pose.pose.position.y,
-                       odomAftMapped.pose.pose.position.z);
-  Eigen::Vector3d Pos_compensate = R_compensate * Pos_;
-  Eigen::Matrix3d Atti_compensate = R_compensate * kf.get_x().rot.matrix();
-
   // 设置marker的位置和姿态
-  marker.pose.position.x = Pos_compensate(0);
-  marker.pose.position.y = Pos_compensate(1);
-  marker.pose.position.z = Pos_compensate(2);
-
-  Atti_compensate = Atti_compensate.transpose();
-  set_quaternion_msg(Atti_compensate, marker.pose.orientation);
+  marker.pose.position = odomAftMapped.pose.pose.position;
+  set_quaternion_msg(kf.get_x().rot.matrix(), marker.pose.orientation);
 
   marker_pub.publish(marker);
 }
@@ -989,15 +918,6 @@ int main(int argc, char **argv)
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot.matrix() * state_point.offset_T_L_I;
 
-            // --- 姿态补偿角度计算 ---
-            // 基于估计的重力向量计算俯仰(pitch)和横滚(roll)补偿角
-            // theta = -atan(g_x / g_z);
-            // alpha = -atan(g_y / g_z);
-            // theta = -atan(kf.get_x().grav(0)/kf.get_x().grav(2))*180.0/PI;
-            // alpha = -atan(kf.get_x().grav(1)/kf.get_x().grav(2)) *180.0/PI;
-
-            std::printf(" theta: %.4f \n", theta);
-            std::printf(" alpha: %.4f \n", alpha);
             std::printf("6\n");
 
             // --- 步骤9：发布里程计 ---
