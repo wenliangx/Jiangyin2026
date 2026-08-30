@@ -27,8 +27,7 @@ COPY scripts/start_jy2026.sh /opt/start_jy2026.sh
 
 WORKDIR /ws
 
-RUN rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE && \
-    if [ -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml ]; then \
+RUN if [ -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml ]; then \
         cp -f /ws/src/libs/livox_ros_driver2/package_ROS1.xml /ws/src/libs/livox_ros_driver2/package.xml; \
     fi
 

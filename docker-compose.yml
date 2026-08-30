@@ -90,9 +90,6 @@ services:
       - QT_QPA_PLATFORM=xcb
       - QT_X11_NO_MITSHM=1
       - XAUTHORITY=/root/.Xauthority
-      - GZ_MOCAP_ENABLED=1
-      - GZ_MOCAP_MODEL=iris_mid360
-      - GZ_MOCAP_ZERO_ORIGIN=true
     volumes:
       - .:/ws:Z
       - /tmp/.X11-unix:/tmp/.X11-unix:rw

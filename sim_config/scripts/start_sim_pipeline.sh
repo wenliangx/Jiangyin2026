@@ -11,7 +11,6 @@
 # 用法:
 #   ./sim_config/scripts/start_sim_pipeline.sh                  # 默认参数
 #   ./sim_config/scripts/start_sim_pipeline.sh --hover 0.420   # 指定悬停推力
-#   ./sim_config/scripts/start_sim_pipeline.sh --mocap          # 使用gazebo真值
 #   ./sim_config/scripts/start_sim_pipeline.sh --no-lio         # 不启动RA-LIO
 #   ./sim_config/scripts/start_sim_pipeline.sh --tune-hover     # 悬停推力调参模式
 # =============================================================================
@@ -23,7 +22,6 @@ CONFIG_DIR="${WORKSPACE_DIR}/sim_config"
 LAUNCH_DIR="${CONFIG_DIR}/launch"
 
 HOVER_THRUST=0.400
-USE_MOCAP=false
 USE_RA_LIO=true
 TUNE_HOVER=false
 
@@ -34,7 +32,6 @@ log_error() { printf '[sim ERROR] %s\n' "$*" >&2; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --hover) HOVER_THRUST="$2"; shift 2 ;;
-        --mocap) USE_MOCAP=true; shift ;;
         --no-lio) USE_RA_LIO=false; shift ;;
         --tune-hover) TUNE_HOVER=true; HOVER_THRUST="$2"; shift 2 ;;
         -h|--help)
@@ -115,39 +112,26 @@ launch "mid360_bridge" \
 launch "imu_relay" \
     "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2
 
-# Step 3 (optional): Gazebo ground truth mocap
-if [[ "${USE_MOCAP}" == "true" ]]; then
-    launch "gz_mocap" \
-        "roslaunch gz_external_pose gazebo_pose_to_vrpn.launch \
-            model_name:=iris_mid360 \
-            output_topic:=/vrpn_client_node/jy0/pose \
-            odom_topic:=/ground_truth/state \
-            ready_topic:=/gz_mocap/ready \
-            zero_origin:=true" 2
-fi
-
-# Step 4: RA-LIO (LiDAR-inertial odometry)
+# Step 3: RA-LIO (LiDAR-inertial odometry)
 if [[ "${USE_RA_LIO}" == "true" ]]; then
     launch "ra_lio" \
         "roslaunch ra_lio mapping_mid360.launch use_sim_time:=false rviz:=false" 5
 fi
 
-# Step 5: px4_estimator (odometry fusion for PX4 EKF2)
+# Step 4: px4_estimator (odometry fusion for PX4 EKF2)
 launch "px4_estimator" \
     "roslaunch fsm_ctrl px4_estimator.launch" 3
 
-# Step 6: FSM + NMPC (controller with hover thrust tuning)
+# Step 5: FSM + NMPC (controller with hover thrust tuning)
 launch "fsm_nmpc" \
     "roslaunch ${LAUNCH_DIR}/pipeline_sim.launch \
         hover_thrust:=${HOVER_THRUST} \
-        use_mocap:=${USE_MOCAP} \
         use_ra_lio:=${USE_RA_LIO}" 5
 
 log_info ""
 log_info "=== Pipeline ready ==="
 log_info "  hover_thrust: ${HOVER_THRUST}"
 log_info "  RA-LIO:       ${USE_RA_LIO}"
-log_info "  Gazebo mocap: ${USE_MOCAP}"
 log_info ""
 log_info "Send commands:"
 log_info "  jy-takeoff                    # 起飞"

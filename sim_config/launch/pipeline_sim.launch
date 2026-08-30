@@ -12,7 +12,6 @@
 
   可配置参数:
       hover_thrust:   NMPC 悬停推力 (默认 0.400)
-      use_mocap:      是否使用 Gazebo 真值 (代替 RA-LIO, 默认 false)
       use_ra_lio:     是否启动 RA-LIO (默认 true)
   =============================================================================
 -->
@@ -20,7 +19,6 @@
 <launch>
 
     <arg name="hover_thrust"   default="0.400" />
-    <arg name="use_mocap"      default="false" />
     <arg name="use_ra_lio"     default="true"  />
 
     <!-- ==================== Step 1: mid360_bridge ==================== -->
@@ -31,18 +29,7 @@
     <node pkg="topic_tools" type="relay" name="imu_relay"
           args="/mavros/imu/data /livox/imu" output="screen" />
 
-    <!-- ==================== Step 3: Gazebo mocap (可选) ==================== -->
-    <group if="$(arg use_mocap)">
-        <include file="$(find gz_external_pose)/launch/gazebo_pose_to_vrpn.launch">
-            <arg name="model_name"    value="iris_mid360" />
-            <arg name="output_topic"  value="/vrpn_client_node/jy0/pose" />
-            <arg name="odom_topic"    value="/ground_truth/state" />
-            <arg name="ready_topic"   value="/gz_mocap/ready" />
-            <arg name="zero_origin"   value="true" />
-        </include>
-    </group>
-
-    <!-- ==================== Step 4: RA-LIO ==================== -->
+    <!-- ==================== Step 3: RA-LIO ==================== -->
     <group if="$(arg use_ra_lio)">
         <include file="$(find ra_lio)/launch/mapping_mid360.launch">
             <arg name="use_sim_time" value="false" />
@@ -50,10 +37,10 @@
         </include>
     </group>
 
-    <!-- ==================== Step 5: px4_estimator ==================== -->
+    <!-- ==================== Step 4: px4_estimator ==================== -->
     <include file="$(find fsm_ctrl)/launch/px4_estimator.launch" />
 
-    <!-- ==================== Step 6: FSM + NMPC ==================== -->
+    <!-- ==================== Step 5: FSM + NMPC ==================== -->
     <include file="$(find fsm_ctrl)/launch/flight_fsm.launch">
         <arg name="start_mavros" value="false" />
         <arg name="nmpc_hover_thrust" value="$(arg hover_thrust)" />

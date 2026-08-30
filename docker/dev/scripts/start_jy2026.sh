@@ -107,7 +107,6 @@ if [[ "${DEV_MODE}" == "true" ]]; then
     fi
   fi
 
-  rm -f /ws/src/ego-planner-v2/CATKIN_IGNORE
   cd /ws
 
   log_info "catkin_make..."
@@ -167,11 +166,6 @@ launch_service "mid360_bridge" \
 
 launch_service "IMU relay" \
   "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2
-
-if [[ "${GZ_MOCAP_ENABLED:-0}" == "1" ]]; then
-  launch_service "Gazebo mocap bridge" \
-    "roslaunch gz_external_pose gazebo_pose_to_vrpn.launch model_name:=${GZ_MOCAP_MODEL:-iris_mid360} output_topic:=/vrpn_client_node/jy0/pose odom_topic:=/ground_truth/state ready_topic:=/gz_mocap/ready zero_origin:=${GZ_MOCAP_ZERO_ORIGIN:-true}" 2
-fi
 
 launch_service "RA-LIO" \
   "roslaunch ra_lio mapping_mid360.launch use_sim_time:=false rviz:=false" 5

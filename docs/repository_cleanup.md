@@ -17,15 +17,15 @@
 - 旧的单机控制节点、对应 launch 和悬停指南已删除。
 - Docker、tmux 和仿真入口已统一迁移到 `flight_fsm.launch`。
 - AI 助手生成的仓库内配置和过程文件已删除并加入忽略规则。
+- 未使用的 tmux 启动脚本、ego-planner-v2、gz_external_pose 和 px4_plugs 已删除；
+  仿真与部署脚本已同步清理对应入口。
 
 ## 已审计但保留
 
 以下内容看起来属于旧流程，但仍存在引用链，后续应单独确认后再删除：
 
 - `swarm_user_cmd`、`swarm.launch`：仍在使用的多机控制入口。
-- `src/plane_Det/`：带 `CATKIN_IGNORE`，但 `tmux-real.sh` 仍引用它。
-- `tmux-real.sh`、`tmux-sim.sh`、`sim_config/`：仍承载当前仿真和部署入口。
+- `src/plane_Det/`：带 `CATKIN_IGNORE`，当前没有活动启动入口。
+- `sim_config/`：仍承载当前仿真入口。
 - SUPER 的 PCD 地图和 `yunque-M.dae`：体积较大，但仍被
   `perfect_drone_sim/config/*.yaml` 使用。
-- ego-planner-v2 中带 `CATKIN_IGNORE` 的上游工具包：默认不编译，但仍有相互
-  引用，适合在单独的 vendor 裁剪变更中处理。

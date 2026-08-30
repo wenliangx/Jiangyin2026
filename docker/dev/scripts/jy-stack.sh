@@ -84,11 +84,6 @@ start_stack() {
   launch_service "imu_relay" \
     "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2
 
-  if [[ "${GZ_MOCAP_ENABLED:-0}" == "1" ]]; then
-    launch_service "gz_mocap_bridge" \
-      "roslaunch gz_external_pose gazebo_pose_to_vrpn.launch model_name:=${GZ_MOCAP_MODEL:-iris_mid360} output_topic:=/vrpn_client_node/jy0/pose odom_topic:=/ground_truth/state ready_topic:=/gz_mocap/ready zero_origin:=${GZ_MOCAP_ZERO_ORIGIN:-true}" 2
-  fi
-
   launch_service "ra_lio" \
     "roslaunch ra_lio mapping_mid360.launch use_sim_time:=false rviz:=false" 5
 
@@ -107,7 +102,6 @@ stop_stack() {
   for node in \
     /mid360_bridge \
     /relay \
-    /gazebo_pose_to_vrpn \
     /laserMapping \
     /px4_estimator \
     /flight_fsm; do
