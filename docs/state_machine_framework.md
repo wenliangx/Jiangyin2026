@@ -60,5 +60,14 @@ machine.tick();
 6. `machine`：仅包含转换表与 active machine 选择。
 7. ROS 节点：消息转换、参数加载、订阅发布和 50 Hz 调度。
 
+当前 ROS 边界集中在 `include/fsm_ctrl/ros/` 和 `src/ros/`：
+
+- `flight_fsm_node.cpp` 只初始化 ROS 并启动运行时；
+- `flight_runtime.cpp` 负责端口组装、消息转换和 50 Hz 调度；
+- `mission_loader.cpp`、`parameter_loader.cpp` 与 `udp_command_mailbox.cpp` 分别负责
+  任务文件、ROS 参数和网络命令输入。
+
+这些文件是适配层，不参与 SML 转换表定义；复用状态机框架时可以整体替换。
+
 测试示例见 `test/state_machine_framework_test.cpp`；完整的端口 fake 与安全终态
 测试见 `test/flight_fsm_test.cpp`。

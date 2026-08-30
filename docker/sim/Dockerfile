@@ -20,7 +20,9 @@ COPY deb/jiangyin-casadi-dev_*.deb \
      deb/jiangyin-livox-ros-driver2_*.deb \
      deb/jiangyin-sophus-dev_*.deb \
      /tmp/jiangyin-debs/
-RUN dpkg -i /tmp/jiangyin-debs/*.deb \
+COPY docker/install-project-debs.sh /usr/local/bin/install-project-debs
+RUN chmod +x /usr/local/bin/install-project-debs \
+    && install-project-debs /tmp/jiangyin-debs/*.deb \
     && rm -rf /tmp/jiangyin-debs \
     && ldconfig \
     && test -f /opt/ros/noetic/share/livox_ros_driver2/cmake/livox_ros_driver2Config.cmake
@@ -42,7 +44,12 @@ RUN python3 /usr/local/bin/configure_px4_mid360.py \
     && grep -q '^param set-default EKF2_MAG_TYPE 5$' "${airframe}"
 
 WORKDIR /ws
-COPY src/ /ws/src/
+COPY src/CMakeLists.txt /ws/src/CMakeLists.txt
+COPY src/fsm_ctrl/ /ws/src/fsm_ctrl/
+COPY src/RA-LIO/ /ws/src/RA-LIO/
+COPY src/mid360_sim/ /ws/src/mid360_sim/
+COPY src/uav_vision_msgs/ /ws/src/uav_vision_msgs/
+COPY src/SUPER/mars_uav_sim/mars_super_msgs/ /ws/src/SUPER/mars_uav_sim/mars_super_msgs/
 RUN python3 /ws/src/fsm_ctrl/scripts/validate_super_waypoints.py \
       --waypoints /ws/src/fsm_ctrl/config/mission_super_waypoints.yaml \
       --rules /ws/src/fsm_ctrl/config/waypoint_validation_rules.yaml \

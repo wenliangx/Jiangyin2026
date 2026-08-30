@@ -14,7 +14,9 @@ COPY deb/jiangyin-casadi-dev_*.deb \
      deb/jiangyin-livox-ros-driver2_*.deb \
      deb/jiangyin-sophus-dev_*.deb \
      /tmp/jiangyin-debs/
-RUN dpkg -i /tmp/jiangyin-debs/*.deb \
+COPY docker/install-project-debs.sh /usr/local/bin/install-project-debs
+RUN chmod +x /usr/local/bin/install-project-debs \
+    && install-project-debs /tmp/jiangyin-debs/*.deb \
     && rm -rf /tmp/jiangyin-debs \
     && ldconfig \
     && source /opt/ros/noetic/setup.bash \

@@ -15,6 +15,8 @@ CPU ray 传感器，因此远程服务器不需要 X11、VirtualGL 或 NVIDIA �
 开发镜像复用 `localhost/jiangyin_dev:v0.2` 中稳定的 ROS、编译器和 IDE 工具层；
 仿真镜像复用 `localhost/jiangyin_px4_mid360:latest` 中昂贵且稳定的 PX4/Gazebo
 工具链。仓库只维护项目相关的 deb、模型、算法和入口层，日常重建可直接命中缓存。
+容器构建上下文只包含当前仿真会编译的控制、定位、雷达桥接、视觉消息和必要消息
+包；其余源码仍保留在仓库中，但不会进入仿真镜像层。
 
 - `docker/sim/build-sim-podman.sh`：启用 Podman layers 的仿真构建入口。
 - `docker/sim/scripts/configure_px4_mid360.py`：幂等生成 PX4 airframe 和 Gazebo
@@ -59,8 +61,8 @@ Gazebo `/gazebo/get_link_state` 服务独立检查安装位姿，而不是只检
 - MAVROS 已连接，RA-LIO `/Odometry`、IMU、PX4 本地位姿和状态机节点均持续可用；
 - 普通冒烟检查输出 `SIM_STACK_SMOKE_OK`；
 - 正常解锁、OFFBOARD 和 NMPC 起飞通过，没有绕过 PX4 起飞前检查；
-- 最终精简镜像中正常起飞至 `0.587 m`，Gazebo 与 RA-LIO 三轴位移最大误差为
-  `0.016 m`；
+- 镜像精简后再次正常起飞至 `0.342 m`，Gazebo 与 RA-LIO 三轴位移最大误差为
+  `0.068 m`，低于回归阈值 `0.12 m`；
 - FSM 测试共 84 项，0 错误、0 失败。
 
 排查日志位于容器内 `/tmp/jiangyin_sim/`。入口默认设置 `NO_PXH=1`，避免 PX4

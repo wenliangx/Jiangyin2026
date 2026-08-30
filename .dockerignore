@@ -1,0 +1,27 @@
+.git
+build
+devel
+install
+logs
+**/__pycache__
+*.bag
+
+# Container builds only need the active control/localization packages. SUPER
+# remains untouched in the repository; only its message package enters the
+# build context.
+src/*
+!src/CMakeLists.txt
+!src/fsm_ctrl
+!src/fsm_ctrl/**
+!src/RA-LIO
+!src/RA-LIO/**
+!src/mid360_sim
+!src/mid360_sim/**
+!src/uav_vision_msgs
+!src/uav_vision_msgs/**
+!src/SUPER
+src/SUPER/*
+!src/SUPER/mars_uav_sim
+src/SUPER/mars_uav_sim/*
+!src/SUPER/mars_uav_sim/mars_super_msgs
+!src/SUPER/mars_uav_sim/mars_super_msgs/**

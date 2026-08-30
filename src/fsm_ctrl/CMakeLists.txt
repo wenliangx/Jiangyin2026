@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.10)
 project(fsm_ctrl)
 
 ## ------------------------------------------------------------------
@@ -7,6 +7,13 @@ project(fsm_ctrl)
 add_library(boost_sml INTERFACE)
 target_include_directories(boost_sml SYSTEM INTERFACE ${PROJECT_SOURCE_DIR}/third_party/boost_sml/include)
 target_compile_features(boost_sml INTERFACE cxx_std_14)
+
+add_library(fsm_framework INTERFACE)
+target_include_directories(fsm_framework INTERFACE
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CATKIN_GLOBAL_INCLUDE_DESTINATION}>
+)
+target_link_libraries(fsm_framework INTERFACE boost_sml)
 find_package(Threads REQUIRED)
 find_package(PythonInterp REQUIRED)
 
@@ -24,6 +31,10 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_library(CASADI_LIBRARY NAMES casadi)
+if(NOT CASADI_LIBRARY)
+  message(FATAL_ERROR "CasADi library not found")
+endif()
 if(TARGET yaml-cpp::yaml-cpp)
   set(FSM_CTRL_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
 elseif(TARGET yaml-cpp)
@@ -60,46 +71,49 @@ generate_messages(
 
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES fsm
-#LIBRARIES motordriver
-   CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime super_msgs uav_vision_msgs
-#  DEPENDS system_lib
+  LIBRARIES ctrl_math nmpc_controller
+  CATKIN_DEPENDS geometry_msgs roscpp std_msgs tf message_runtime super_msgs uav_vision_msgs
+  DEPENDS EIGEN3
 )
 
 ###########
 ## Build ##
 ###########
 
-include_directories(
-  ${catkin_INCLUDE_DIRS}
-  ${PROJECT_SOURCE_DIR}/include
-  ${EIGEN3_INCLUDE_DIRS}
-  ${YAML_CPP_INCLUDE_DIRS}
-)
-
-#add_executable(single_offboard src/single_offboard.cpp)
-#target_link_libraries(single_offboard ${catkin_LIBRARIES} boost_system boost_filesystem)
-
 add_library(ctrl_math
   src/ctrl_math.cpp
 )
+target_include_directories(ctrl_math PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CATKIN_GLOBAL_INCLUDE_DESTINATION}>
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+)
+target_link_libraries(ctrl_math PUBLIC ${catkin_LIBRARIES})
 
 add_library(nmpc_controller
   src/nmpc_controller.cpp
 )
+target_include_directories(nmpc_controller PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CATKIN_GLOBAL_INCLUDE_DESTINATION}>
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+)
+target_link_libraries(nmpc_controller PUBLIC ctrl_math ${catkin_LIBRARIES} ${CASADI_LIBRARY})
 
 add_executable(px4_estimator
   src/px4_estimator.cpp
 )
 target_link_libraries(px4_estimator
-  ctrl_math ${catkin_LIBRARIES} boost_system boost_filesystem
+  ctrl_math
 )
 
 add_executable(swarm_user_cmd
   src/swarm_user_cmd.cpp
 )
 target_link_libraries(swarm_user_cmd
-  ctrl_math ${catkin_LIBRARIES} boost_system boost_filesystem
+  ctrl_math Threads::Threads
 )
 
 # ------------------------------------------------------------------
@@ -107,20 +121,28 @@ target_link_libraries(swarm_user_cmd
 # ------------------------------------------------------------------
 add_executable(flight_fsm
   src/flight_fsm_node.cpp
+  src/ros/flight_runtime.cpp
+  src/ros/mission_loader.cpp
+  src/ros/parameter_loader.cpp
+  src/ros/udp_command_mailbox.cpp
 )
 target_compile_features(flight_fsm PRIVATE cxx_std_14)
+target_include_directories(flight_fsm PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
+)
 add_dependencies(flight_fsm
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
 )
 target_link_libraries(flight_fsm
-  boost_sml
-  nmpc_controller ctrl_math
+  fsm_framework
+  nmpc_controller
   ${catkin_LIBRARIES}
   ${FSM_CTRL_YAML_CPP_TARGET}
-  boost_system boost_filesystem
   Threads::Threads
-  /usr/local/lib/libcasadi.so.3.7
 )
 
 catkin_install_python(PROGRAMS
@@ -136,6 +158,12 @@ install(DIRECTORY config/
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+install(TARGETS ctrl_math nmpc_controller
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 # StateMachine 公开头依赖 vendored Boost.SML；一并安装后，下游包无需复制
@@ -194,14 +222,14 @@ if(CATKIN_ENABLE_TESTING)
     test/flight_fsm_test.cpp
   )
   target_link_libraries(flight_fsm_test
-    boost_sml
+    fsm_framework
   )
   target_compile_features(flight_fsm_test PRIVATE cxx_std_14)
   catkin_add_gtest(state_machine_framework_test
     test/state_machine_framework_test.cpp
   )
   target_link_libraries(state_machine_framework_test
-    boost_sml
+    fsm_framework
   )
   target_compile_features(state_machine_framework_test PRIVATE cxx_std_14)
   add_rostest(

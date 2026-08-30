@@ -19,13 +19,15 @@
 - AI 助手生成的仓库内配置和过程文件已删除并加入忽略规则。
 - 未使用的 tmux 启动脚本、ego-planner-v2、gz_external_pose 和 px4_plugs 已删除；
   仿真与部署脚本已同步清理对应入口。
+- 没有对应 gitlink 的 Livox `.gitmodules` 已删除；Livox SDK 和 ROS 驱动统一由
+  `docker/Dockerfile.debs` 构建。
+- 被新容器仿真入口替代的 `sim_config/`、写死历史 bag 路径的一次性分析脚本，
+  以及长期带 `CATKIN_IGNORE` 且没有活动引用的 `plane_Det` 已删除。
 
 ## 已审计但保留
 
 以下内容看起来属于旧流程，但仍存在引用链，后续应单独确认后再删除：
 
 - `swarm_user_cmd`、`swarm.launch`：仍在使用的多机控制入口。
-- `src/plane_Det/`：带 `CATKIN_IGNORE`，当前没有活动启动入口。
-- `sim_config/`：仍承载当前仿真入口。
 - SUPER 的 PCD 地图和 `yunque-M.dae`：体积较大，但仍被
   `perfect_drone_sim/config/*.yaml` 使用。
