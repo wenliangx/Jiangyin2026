@@ -162,7 +162,7 @@ fi
 
 # ---- Launch pipeline (production fallback) --------------------------------
 launch_service "mid360_bridge" \
-  "rosrun mid360_gazebo mid360_bridge.py" 2
+  "rosrun mid360_sim pointcloud_to_livox" 2
 
 launch_service "IMU relay" \
   "rosrun topic_tools relay /mavros/imu/data /livox/imu" 2

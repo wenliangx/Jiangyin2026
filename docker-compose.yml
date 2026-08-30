@@ -1,98 +1,17 @@
-# ============================================================================
-# docker-compose.yml  —  PX4 SITL + Gazebo + LiDAR Localization Pipeline
-#
-# Services:
-#   sim    — gzserver + PX4  (GPU, EGL headless, no X11)
-#   gui    — gzclient        (X11 via XRDP, needs GPU)
-#   jy2026 — localization    (RA-LIO, FSM ctrl, etc.)
-#
-# Usage:
-#   podman-compose up -d           # sim + jy2026 (headless)
-#   podman-compose up -d sim gui   # sim + GUI (in XRDP desktop)
-#   podman-compose down            # stop all
-# ============================================================================
-
 version: "3"
 
-networks:
-  jy-net:
-    driver: bridge
-
+# PX4 SITL, Gazebo, MID360 bridge, RA-LIO and FSM/NMPC run in one container.
+# No GPU is required: the simulated lidar uses Gazebo's CPU ray sensor.
 services:
-  sim:
-    image: localhost/jiangyin_px4_mid360:latest
-    container_name: sim
-    networks:
-      - jy-net
-    devices:
-      - nvidia.com/gpu=all
+  sim-stack:
+    image: localhost/jiangyin_sim_stack:latest
+    container_name: jiangyin-sim-stack
     environment:
-      - HEADLESS=1
-      - __NV_PRIME_RENDER_OFFLOAD=1
-      - __GLX_VENDOR_LIBRARY_NAME=nvidia
-      - ROS_MASTER_URI=http://sim:11311
-      - ROS_IP=sim
-      - ROS_HOSTNAME=sim
-      - PX4_SIM_WORLD=obstacle_test
-      - GAZEBO_MODEL_PATH=
-    command: --gui=false
-    restart: "no"
-
-  gui:
-    image: localhost/jiangyin_px4_mid360:latest
-    container_name: gui
-    networks:
-      - jy-net
-    devices:
-      - nvidia.com/gpu=all
-    entrypoint: bash
-    environment:
-      - DISPLAY=
-      - QT_QPA_PLATFORM=xcb
-      - XAUTHORITY=/root/.Xauthority
-      - ROS_MASTER_URI=http://sim:11311
-      - GAZEBO_MASTER_URI=http://sim:11345
-      - ROS_IP=gui
-      - GAZEBO_MODEL_DATABASE_URI=
-      - __NV_PRIME_RENDER_OFFLOAD=1
-      - __GLX_VENDOR_LIBRARY_NAME=nvidia
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /home/wenliang/.Xauthority:/root/.Xauthority:ro
-      - ./sim_logs/gazebo_gui:/root/.gazebo:Z
-    command: -c "source /opt/ros/noetic/setup.bash && source /opt/PX4-Autopilot/Tools/simulation/gazebo-classic/setup_gazebo.bash /opt/PX4-Autopilot /opt/PX4-Autopilot/build/px4_sitl_default && gzclient --verbose"
-    restart: "no"
-    depends_on:
-      - sim
-
-  jy2026:
-    image: localhost/jiangyin_jy2026:with-mid360-sim
-    container_name: jy2026
-    networks:
-      - jy-net
-    environment:
-      - ROS_MASTER_URI=http://sim:11311
-      - ROS_IP=jy2026
-    command: /opt/start_jy2026.sh
-    restart: "no"
-    depends_on:
-      - sim
-
-  jy-dev:
-    image: localhost/jiangyin_jy-dev:latest
-    container_name: jy-dev
-    networks:
-      - jy-net
-    environment:
-      - ROS_MASTER_URI=http://localhost:11311
-      - ROS_IP=jy-dev
-      - DISPLAY=${DISPLAY:-:11.0}
-      - QT_QPA_PLATFORM=xcb
-      - QT_X11_NO_MITSHM=1
-      - XAUTHORITY=/root/.Xauthority
-    volumes:
-      - .:/ws:Z
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /home/wenliang/.Xauthority:/root/.Xauthority:ro
-    command: /opt/start_jy2026.sh --dev
+      ROS_MASTER_URI: http://localhost:11311
+      ROS_IP: 127.0.0.1
+      HEADLESS: "1"
+      PX4_SIM_MODEL: iris_mid360
+      PX4_SIM_WORLD: obstacle_test
+    command: all
+    shm_size: 1gb
     restart: "no"

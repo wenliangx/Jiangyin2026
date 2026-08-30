@@ -28,8 +28,7 @@ preprocess:
                                  #   3 = Ouster OS1-64
                                  #   4 = 速腾聚创 RS-32
                                  #   5 = 万集 Vanjee-16
-    scan_line: 4                 # Livox MID360 的扫描线数为 4
-                                 # （Velodyne VLP-16 = 16，Ouster OS1-64 = 64 等）
+    scan_line: 64                # 仿真 ray sensor 的垂直采样线数
     blind: 0.4                   # 盲区距离（米），小于此距离的激光点被过滤
                                  # MID360 最小测距约0.1m，这里滤掉0.4m内的点
 
@@ -55,12 +54,12 @@ mapping:
                                  # false: 使用下方固定外参值（标定后用此模式）
 
     # LiDAR 到 IMU 的外参（LiDAR系在IMU系下的位姿）
-    extrinsic_T: [ -0.011, -0.02329, 0.04412 ]  # 平移 [x, y, z] 单位：米
-                                                 # MID360出厂外参，实际可根据标定修改
+    extrinsic_T: [0.0, 0.0, 0.12]               # 雷达位于机体/IMU上方12cm
 
-    extrinsic_R: [ 1, 0, 0,                      # 旋转矩阵（行优先 3×3）
-                   0, 1, 0,                      # 当前为单位阵，表示LiDAR和IMU
-                   0, 0, 1]                      # 坐标轴方向一致
+    # LiDAR→IMU/机体系，绕Y轴 -15°（雷达向前俯仰15°）。
+    extrinsic_R: [0.9659258263, 0, -0.2588190451,
+                  0,            1,  0,
+                  0.2588190451, 0,  0.9659258263]
 
 # === 发布控制 ===
 publish:

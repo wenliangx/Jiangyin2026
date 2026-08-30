@@ -9,8 +9,9 @@ configure_px4_mid360.py — 在 PX4 SITL 中创建 iris_mid360 无人机模型
      - 720 个水平采样点、64 个垂直采样点
      - 测距范围 0.1m~40m，分辨率 2cm
      - 添加高斯噪声 (stddev=0.01m) 模拟真实传感器
-     - 使用 velodyne_gazebo_plugins 作为 Gazebo 插件
+     - 使用 CPU ray 版 velodyne_gazebo_plugins，支持无 GPU 的 headless 仿真
      - 点云发布到 /mid360/points 话题
+     - 雷达安装在机体上方 0.12m，并向前俯仰 15°
   3. 注册新的 1020 机型到 PX4 airframe 列表
   4. 修改 sitl_run.sh 使其加载 libgazebo_ros_api_plugin.so
 
@@ -23,6 +24,10 @@ import shutil
 px4_home = Path("/opt/PX4-Autopilot")
 models = px4_home / "Tools/simulation/gazebo-classic/sitl_gazebo-classic/models"
 
+# SDF 使用弧度。该位姿同时记录在 RA-LIO 的 mid360.yaml 中：
+# p_imu = R_y(-15 deg) * p_lidar + [0, 0, 0.12].
+mount_pose = "0 0 0.12 0 -0.2617993877991494 0"
+
 # 1. 从 iris 模型克隆，创建 iris_mid360 目录
 src = models / "iris" / "iris.sdf.jinja"
 dst_dir = models / "iris_mid360"
@@ -34,7 +39,7 @@ sdf = sdf.replace("<model name='iris'>", "<model name='iris_mid360'>", 1)
 # 2. 定义 MID360 LiDAR 传感器（插入到 </model> 标签前）
 mid360 = r'''
     <link name="mid360_link">
-      <pose>0 0 0.12 0 0 0</pose>         <!-- LiDAR安装在机身上方12cm处 -->
+      <pose>''' + mount_pose + r'''</pose> <!-- 上方12cm，向前俯仰15° -->
       <inertial>
         <mass>0.265</mass>                  <!-- LiDAR质量 ~265g -->
         <inertia>
@@ -141,20 +146,22 @@ shutil.copyfile(
 )
 airframes_cmake = airframes / "CMakeLists.txt"
 cmake = airframes_cmake.read_text()
-cmake = cmake.replace(
-    "\t1019_gazebo-classic_iris_dual_gps\n",
-    "\t1019_gazebo-classic_iris_dual_gps\n\t1020_gazebo-classic_iris_mid360\n",
-    1,
-)
-airframes_cmake.write_text(cmake)
+airframe_entry = "\t1020_gazebo-classic_iris_mid360\n"
+if airframe_entry not in cmake:
+    anchor = "\t1019_gazebo-classic_iris_dual_gps\n"
+    if anchor not in cmake:
+        raise RuntimeError("Unexpected PX4 airframe CMake layout")
+    cmake = cmake.replace(anchor, anchor + airframe_entry, 1)
+    airframes_cmake.write_text(cmake)
 
 # 5. 修改 sitl_run.sh 使 Gazebo 加载 ROS API 插件
 #    这样 /mid360/points 话题才能被 ROS 感知
 sitl_run = px4_home / "Tools/simulation/gazebo-classic/sitl_run.sh"
 script = sitl_run.read_text()
-script = script.replace(
-    "gzserver $verbose $world_path $ros_args &",
-    "gzserver -s libgazebo_ros_api_plugin.so $verbose $world_path $ros_args &",
-    1,
-)
-sitl_run.write_text(script)
+ros_gzserver = "gzserver -s libgazebo_ros_api_plugin.so $verbose $world_path $ros_args &"
+if ros_gzserver not in script:
+    plain_gzserver = "gzserver $verbose $world_path $ros_args &"
+    if plain_gzserver not in script:
+        raise RuntimeError("Unexpected PX4 sitl_run.sh layout")
+    script = script.replace(plain_gzserver, ros_gzserver, 1)
+    sitl_run.write_text(script)

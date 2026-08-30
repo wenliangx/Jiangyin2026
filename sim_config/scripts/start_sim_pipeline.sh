@@ -106,7 +106,7 @@ launch() {
 
 # Step 1: mid360_bridge (Gazebo PointCloud2 → Livox CustomMsg)
 launch "mid360_bridge" \
-    "rosrun mid360_gazebo mid360_bridge.py" 2
+    "rosrun mid360_sim pointcloud_to_livox" 2
 
 # Step 2: IMU relay (MAVROS IMU → RA-LIO input)
 launch "imu_relay" \

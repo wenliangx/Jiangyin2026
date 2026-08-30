@@ -22,7 +22,7 @@
     <arg name="use_ra_lio"     default="true"  />
 
     <!-- ==================== Step 1: mid360_bridge ==================== -->
-    <node pkg="mid360_gazebo" type="mid360_bridge.py" name="mid360_bridge"
+    <node pkg="mid360_sim" type="pointcloud_to_livox" name="mid360_bridge"
           output="screen" />
 
     <!-- ==================== Step 2: IMU relay ==================== -->
