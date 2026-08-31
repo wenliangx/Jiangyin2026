@@ -5,7 +5,7 @@
 //   3. 可选的特征提取（平面点、角点/边缘点分类）
 // 支持雷达：Livox AVIA, Velodyne VLP-16, Ouster OS1-64, RS-32, Vanjee-16
 
-#include "preprocess.h"
+#include "preprocess.hpp"
 
 // 返回0（只输出面特征点）
 #define RETURN0 0x00

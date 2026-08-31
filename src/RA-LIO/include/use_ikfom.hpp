@@ -1,12 +1,11 @@
-// use-ikfom.hpp - IKFoM (Iterated Kalman Filter on Manifold) 状态定义和过程模型
+// use_ikfom.hpp - IKFoM (Iterated Kalman Filter on Manifold) 状态定义和过程模型
 // 功能：
 //   1. 定义24维系统状态量 state_ikfom：位置、姿态、外参（LiDAR到IMU）、速度、IMU偏置、重力向量
 //   2. 定义IMU输入量 input_ikfom：加速度、角速度
 //   3. 定义系统过程模型函数 get_f（状态导数）、df_dx（状态雅可比）、df_dw（噪声雅可比）
 //   4. 定义过程噪声协方差 process_noise_cov
 
-#ifndef USE_IKFOM_H1
-#define USE_IKFOM_H1
+#pragma once
 
 #include <vector>
 #include <cstdlib>
@@ -16,7 +15,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include "common_lib.h"
+#include "common_lib.hpp"
 #include <sophus/so3.hpp>
 
 // === 状态量结构体 ===
@@ -129,5 +128,3 @@ Eigen::Matrix<double, 24, 12> df_dw(state_ikfom s, input_ikfom in)
 	cov.block<3, 3>(18, 9) = Eigen::Matrix3d::Identity();      // d(ba)/d(n_ba) = I (公式(7)第5行第4列)
 	return cov;
 }
-
-#endif

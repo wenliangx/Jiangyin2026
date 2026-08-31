@@ -2,7 +2,7 @@
 # RA-LIO 配置文件 —— Livox MID360 激光雷达
 # =============================================================================
 # 本文件被 launch/mapping_mid360.launch 中的 <rosparam> 标签加载
-# 所有参数通过 ros::NodeHandle 在 laserMapping.cpp 的 main() 中读取
+# 所有参数通过 ros::NodeHandle 在 laser_mapping.cpp 的 main() 中读取
 #
 # 坐标系约定:
 #   LiDAR系 → IMU系 (外参 extrinsic_T/R) → 世界系 (状态量 pos/rot)

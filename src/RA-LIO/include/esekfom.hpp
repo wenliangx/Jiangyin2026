@@ -6,8 +6,7 @@
 //   4. 观测模型 h_share_model()：基于点到平面距离残差
 // 理论基础：FAST-LIO2 论文中的迭代卡尔曼滤波器
 
-#ifndef ESEKFOM_EKF_HPP1
-#define ESEKFOM_EKF_HPP1
+#pragma once
 
 #include <vector>
 #include <cstdlib>
@@ -17,7 +16,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include "use-ikfom.hpp"
+#include "use_ikfom.hpp"
 #include <ikd-Tree/ikd_Tree.h>
 
 // 收敛判定阈值：状态增量小于此值时认为收敛
@@ -391,5 +390,3 @@ namespace esekfom
 	};
 
 } // namespace esekfom
-
-#endif //  ESEKFOM_EKF_HPP1
