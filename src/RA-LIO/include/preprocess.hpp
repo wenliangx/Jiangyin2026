@@ -10,18 +10,17 @@
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 
+#include <array>
 #include <cstdint>
+#include <vector>
 
-using namespace std;
+#include "common_lib.hpp"
 
-// 判断浮点数是否有效的宏（abs(a) > 1e8 时视为无效值）
-#define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
+namespace ra_lio {
 
-// 统一使用PCL标准点类型
-// PointXYZINormal（包含xyz、强度intensity、法向量normal_x/y/z、曲率curvature）
-// curvature字段在此代码中被复用为点的时间偏移（单位ms）
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloudXYZI;
+[[nodiscard]] inline bool isInvalidCoordinate(double value) noexcept {
+  return std::abs(value) > 1e8;
+}
 
 // 激光雷达类型枚举
 enum LID_TYPE {
@@ -82,6 +81,8 @@ struct orgtype {
     intersect = 2;  // 初始化为2（远大于1，表示未计算）
   }
 };
+
+}  // namespace ra_lio
 
 // === 各品牌激光雷达的自定义PCL点结构体注册 ===
 // PCL要求对不同厂商雷达的点云格式进行注册，以便使用fromROSMsg/toROSMsg转换
@@ -157,11 +158,22 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
 )
 // clang-format on
 
+namespace ra_lio {
+
+struct PreprocessorConfig {
+  bool feature_enabled{false};
+  int lidar_type{AVIA};
+  int scan_lines{6};
+  int scan_rate{10};
+  int timestamp_unit{US};
+  int point_filter_num{1};
+  double blind{0.01};
+};
+
 // 点云预处理类
-class Preprocess {
+class Preprocessor {
  public:
-  Preprocess();
-  ~Preprocess();
+  Preprocessor();
 
   // process函数重载：支持Livox自定义消息格式和标准PointCloud2格式
   void process(const livox_ros_driver2::CustomMsg::ConstPtr& msg, PointCloudXYZI::Ptr& pcl_out);
@@ -169,19 +181,21 @@ class Preprocess {
 
   // 通过参数设置预处理参数
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
+  void configure(const PreprocessorConfig& config);
+  [[nodiscard]] int lidarType() const noexcept { return lidar_type; }
 
+ private:
   // 点云存储：pl_full全部点、pl_corn角点/边缘点、pl_surf平面点/输出点
   PointCloudXYZI pl_full, pl_corn, pl_surf;
-  PointCloudXYZI pl_buff[128];  // 按线号缓存点云，最大支持128线
-  vector<orgtype> typess[128];  // 按线号缓存点的特征类型信息
-  float time_unit_scale;        // 时间单位缩放因子
+  std::array<PointCloudXYZI, 128> pl_buff;       // 按线号缓存点云，最大支持128线
+  std::array<std::vector<orgtype>, 128> typess;  // 按线号缓存点的特征类型信息
+  float time_unit_scale;                         // 时间单位缩放因子
   int lidar_type, point_filter_num, N_SCANS, SCAN_RATE, time_unit;
   double blind;            // 盲区距离（m），小于此距离的点被过滤
   bool feature_enabled;    // 是否启用特征提取（AVIA雷达的特定功能）
   bool given_offset_time;  // 雷达数据是否自带时间偏移
   ros::Publisher pub_full, pub_surf, pub_corn;
 
- private:
   // 各雷达型号的处理函数
   void vanjee_handler(const sensor_msgs::PointCloud2::ConstPtr& msg);
   void rs_handler(const sensor_msgs::PointCloud2::ConstPtr& msg);
@@ -190,13 +204,13 @@ class Preprocess {
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr& msg);
 
   // 特征提取辅助函数
-  void give_feature(PointCloudXYZI& pl, vector<orgtype>& types);  // 给点云中每个点赋予特征类型
-  void pub_func(PointCloudXYZI& pl, const ros::Time& ct);         // 发布点云
-  int plane_judge(const PointCloudXYZI& pl, vector<orgtype>& types, uint i, uint& i_nex,
+  void give_feature(PointCloudXYZI& pl, std::vector<orgtype>& types);  // 给点云中每个点赋予特征类型
+  void pub_func(PointCloudXYZI& pl, const ros::Time& ct);              // 发布点云
+  int plane_judge(const PointCloudXYZI& pl, std::vector<orgtype>& types, uint i, uint& i_nex,
                   Eigen::Vector3d& curr_direct);  // 平面判定
-  bool small_plane(const PointCloudXYZI& pl, vector<orgtype>& types, uint i_cur, uint& i_nex,
+  bool small_plane(const PointCloudXYZI& pl, std::vector<orgtype>& types, uint i_cur, uint& i_nex,
                    Eigen::Vector3d& curr_direct);
-  bool edge_jump_judge(const PointCloudXYZI& pl, vector<orgtype>& types, uint i,
+  bool edge_jump_judge(const PointCloudXYZI& pl, std::vector<orgtype>& types, uint i,
                        Surround nor_dir);  // 边缘跳变判定
 
   // 特征提取相关参数
@@ -210,3 +224,5 @@ class Preprocess {
   double smallp_intersect, smallp_ratio;            // 小平面判定参数
   double vx, vy, vz;                                // 差分向量分量（当前点与下一点的xyz差）
 };
+
+}  // namespace ra_lio

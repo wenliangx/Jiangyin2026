@@ -10,6 +10,22 @@
 # 一、文件依赖关系图
 # ==================
 #
+# 现代化后的运行边界：
+#
+#   laser_mapping.cpp (仅 main)
+#          │
+#          ▼
+#   MappingNode ── MappingConfig
+#      │   │   │
+#      │   │   ├── Preprocessor（五类雷达统一入口）
+#      │   ├────── ImuProcessor（PImpl，初始化/预测/去畸变）
+#      └────────── ErrorStateKalmanFilter + IncrementalMap
+#                                      │
+#                                      └── ikd-Tree（隔离的上游实现）
+#
+# 第一方代码统一使用 C++17 和 `ra_lio` 命名空间；ROS 节点名、参数、话题、
+# frame 与 TF 契约保持不变。
+#
 #                              ┌──────────────┐
 #                             │common_lib.hpp│  ◄── 公共类型/宏/工具函数
 #                              └──────┬───────┘
@@ -73,7 +89,7 @@
 #      └──────────┬───────────┘
 #                 │
 #      ┌──────────▼───────────┐
-#      │  ImuProcess::        │
+#      │  ImuProcessor::      │
 #      │    Process()         │
 #      │                      │
 #      │  ┌─ IMU_init()       │  初始化阶段：重力对齐、bias估计
@@ -177,12 +193,12 @@
 #     end
 #
 #     subgraph 数据预处理 preprocess.cpp
-#         CB_L --> PP[Preprocess::process<br/>格式转换/降采样/盲区过滤]
+#         CB_L --> PP[Preprocessor::process<br/>格式转换/降采样/盲区过滤]
 #         PP --> LB[lidar_buffer + time_buffer]
 #         CB_I --> IB[imu_buffer]
 #     end
 #
-#     subgraph 数据同步 laser_mapping.cpp
+#     subgraph 数据同步 mapping_node.cpp
 #         LB --> SP[sync_packages<br/>一帧LiDAR+对应IMU]
 #         IB --> SP
 #         SP --> MG[MeasureGroup]
@@ -220,7 +236,7 @@
 #         FOV --> DEL[ikdtree.Delete_Point_Boxes<br/>删除超出FOV的点]
 #     end
 #
-#     subgraph 发布输出 laser_mapping.cpp
+#     subgraph 发布输出 mapping_node.cpp
 #         SP2 --> ODOM[publish_odometry<br/>里程计 + TF变换]
 #         SP2 --> PATH[publish_path<br/>运动轨迹]
 #         SP2 --> MKR[Visualization_speed<br/>速度向量箭头]
